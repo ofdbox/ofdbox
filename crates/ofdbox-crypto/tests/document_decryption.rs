@@ -47,6 +47,7 @@ fn decrypts_hello_enc_document_lazily() {
     package
         .parse_page_for(&page)
         .expect("decrypted Content.xml");
+    assert!(package.cache_stats().plain_bytes > 0);
 
     package.clear_cache();
     let mut streamed = Vec::new();
@@ -59,7 +60,6 @@ fn decrypts_hello_enc_document_lazily() {
     let names = package.entry_names().expect("entry names");
     assert!(names.iter().any(|name| name == "OFD.xml"));
     assert!(names.iter().any(|name| name == "Doc_0/Document.xml"));
-    assert!(package.cache_stats().plain_bytes > 0);
 
     package.close_decryption();
     assert!(!package.decryption_enabled());
