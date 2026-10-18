@@ -4,22 +4,26 @@ use std::fs;
 use std::io::{Cursor, Write};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
-use std::time::Duration;
+use std::time::{Duration, UNIX_EPOCH};
 
 use ofdbox_crypto::{DEFAULT_DIST_ID, sign_sm3};
 use sm2::SecretKey;
 use sm2::dsa::DerSignature;
 use sm2::dsa::signature::{Keypair, Signer};
 use x509_cert::Certificate;
-use x509_cert::builder::{Builder, CertificateBuilder, profile::BuilderProfile};
-use x509_cert::der::Encode;
+use x509_cert::builder::{Builder, CertificateBuilder, CrlBuilder, profile::BuilderProfile};
+use x509_cert::crl::{CertificateList, RevokedCert};
 use x509_cert::der::asn1::{BitString, ObjectIdentifier};
+use x509_cert::der::{Decode, Encode};
+use x509_cert::ext::ToExtension;
+use x509_cert::ext::pkix::crl::CrlNumber;
+use x509_cert::ext::pkix::{BasicConstraints, KeyUsage, KeyUsages};
 use x509_cert::name::Name;
 use x509_cert::serial_number::SerialNumber;
 use x509_cert::spki::{
     AlgorithmIdentifierOwned, DynSignatureAlgorithmIdentifier, SubjectPublicKeyInfoOwned,
 };
-use x509_cert::time::Validity;
+use x509_cert::time::{Time, Validity};
 use zip::ZipWriter;
 use zip::write::SimpleFileOptions;
 
@@ -99,29 +103,59 @@ pub fn picture() -> Vec<u8> {
     seq(&[ia5("PNG"), octets(PNG), integer(40), integer(40)])
 }
 
-pub fn gm_property() -> Vec<u8> {
+pub fn gm_property_with_certs(certificates: &[Vec<u8>]) -> Vec<u8> {
     seq(&[
         integer(1),
         utf8("测试公章"),
-        seq(&[octets(b"fictional-certificate")]),
+        seq(&certificates
+            .iter()
+            .map(|certificate| octets(certificate))
+            .collect::<Vec<_>>()),
         utc("230117071431Z"),
         utc("230109071043Z"),
         utc("280109071043Z"),
     ])
 }
 
-pub fn gb_property() -> Vec<u8> {
+pub fn gm_property() -> Vec<u8> {
+    gm_property_with_certs(&[b"fictional-certificate".to_vec()])
+}
+
+pub fn gb_property_with_certs(certificates: &[Vec<u8>]) -> Vec<u8> {
     seq(&[
         integer(1),
         utf8("测试公章"),
         integer(1),
-        seq(&[
-            octets(b"fictional-certificate"),
-            octets(b"fictional-certificate-2"),
-        ]),
+        seq(&certificates
+            .iter()
+            .map(|certificate| octets(certificate))
+            .collect::<Vec<_>>()),
         generalized("20211229175736Z"),
         generalized("20211229180422Z"),
         generalized("20241231180430Z"),
+    ])
+}
+
+pub fn gb_property_with_digests(digests: &[[u8; 32]]) -> Vec<u8> {
+    let entries = digests
+        .iter()
+        .map(|digest| seq(&[tlv(0x13, b"SM3"), octets(digest)]))
+        .collect::<Vec<_>>();
+    seq(&[
+        integer(1),
+        utf8("测试公章"),
+        integer(2),
+        seq(&entries),
+        generalized("20211229175736Z"),
+        generalized("20211229180422Z"),
+        generalized("20241231180430Z"),
+    ])
+}
+
+pub fn gb_property() -> Vec<u8> {
+    gb_property_with_certs(&[
+        b"fictional-certificate".to_vec(),
+        b"fictional-certificate-2".to_vec(),
     ])
 }
 
@@ -175,9 +209,101 @@ pub fn test_secret() -> SecretKey {
     SecretKey::from_slice(&[0x44u8; 32]).expect("secret")
 }
 
+pub const FIXED_NOT_BEFORE: u64 = 1_577_836_800;
+pub const FIXED_NOT_AFTER: u64 = 2_051_222_400;
+pub const ROOT_SERIAL: u32 = 1;
+pub const LEAF_SERIAL: u32 = 2;
+
 pub fn test_certificate(secret: &SecretKey) -> Vec<u8> {
-    let signing = sm2::dsa::SigningKey::new(DEFAULT_DIST_ID, secret).expect("signing key");
-    let public = secret.public_key().to_sec1_bytes();
+    build_certificate(
+        "CN=OFDBox Seal Test",
+        "CN=OFDBox Seal Test",
+        secret,
+        secret,
+        1,
+        false,
+        Validity::from_now(Duration::from_secs(3600)).expect("validity"),
+    )
+}
+
+pub fn test_root_key() -> SecretKey {
+    SecretKey::from_slice(&[0x11u8; 32]).expect("root key")
+}
+
+pub fn test_leaf_key() -> SecretKey {
+    SecretKey::from_slice(&[0x22u8; 32]).expect("leaf key")
+}
+
+pub fn test_root_certificate() -> Vec<u8> {
+    build_certificate(
+        "CN=OFDBox Root",
+        "CN=OFDBox Root",
+        &test_root_key(),
+        &test_root_key(),
+        ROOT_SERIAL,
+        true,
+        fixed_validity(),
+    )
+}
+
+pub fn test_leaf_certificate() -> Vec<u8> {
+    build_certificate(
+        "CN=OFDBox Seal",
+        "CN=OFDBox Root",
+        &test_leaf_key(),
+        &test_root_key(),
+        LEAF_SERIAL,
+        false,
+        fixed_validity(),
+    )
+}
+
+pub fn fixed_validity() -> Validity {
+    Validity::new(cert_time(FIXED_NOT_BEFORE), cert_time(FIXED_NOT_AFTER))
+}
+
+pub fn cert_time(unix_seconds: u64) -> Time {
+    Time::try_from(UNIX_EPOCH + Duration::from_secs(unix_seconds)).expect("time")
+}
+
+pub fn test_crl(
+    root_der: &[u8],
+    root_key: &SecretKey,
+    revoked_serials: &[u32],
+    this_update: u64,
+    next_update: Option<u64>,
+) -> Vec<u8> {
+    let root = Certificate::from_der(root_der).expect("root certificate");
+    let mut builder = CrlBuilder::new_with_this_update(
+        &root,
+        CrlNumber::try_from(1u32).expect("crl number"),
+        cert_time(this_update),
+    )
+    .expect("crl builder");
+    builder = builder.with_next_update(next_update.map(cert_time));
+    builder = builder.with_certificates(revoked_serials.iter().map(|serial| RevokedCert {
+        serial_number: SerialNumber::from(*serial),
+        revocation_date: cert_time(this_update),
+        crl_entry_extensions: None,
+    }));
+    let signing = sm2::dsa::SigningKey::new(DEFAULT_DIST_ID, root_key).expect("signing key");
+    let crl: CertificateList = builder
+        .build::<_, DerSignature>(&Sm2Signer { key: signing })
+        .expect("crl");
+    crl.to_der().expect("crl der")
+}
+
+pub fn build_certificate(
+    subject: &str,
+    issuer: &str,
+    subject_key: &SecretKey,
+    issuer_key: &SecretKey,
+    serial: u32,
+    is_ca: bool,
+    validity: Validity,
+) -> Vec<u8> {
+    let signing = sm2::dsa::SigningKey::new(DEFAULT_DIST_ID, issuer_key).expect("signing key");
+    let public = subject_key.public_key().to_sec1_bytes();
     let spki = SubjectPublicKeyInfoOwned {
         algorithm: AlgorithmIdentifierOwned {
             oid: ObjectIdentifier::new_unwrap(SM2_CURVE_OID),
@@ -186,15 +312,12 @@ pub fn test_certificate(secret: &SecretKey) -> Vec<u8> {
         subject_public_key: BitString::from_bytes(&public).expect("public key bit string"),
     };
     let profile = TestProfile {
-        subject: Name::from_str("CN=OFDBox Seal Test").expect("name"),
+        subject: Name::from_str(subject).expect("subject"),
+        issuer: Name::from_str(issuer).expect("issuer"),
+        is_ca,
     };
-    let builder = CertificateBuilder::new(
-        profile,
-        SerialNumber::from(1u32),
-        Validity::from_now(Duration::from_secs(3600)).expect("validity"),
-        spki,
-    )
-    .expect("certificate builder");
+    let builder = CertificateBuilder::new(profile, SerialNumber::from(serial), validity, spki)
+        .expect("certificate builder");
     let certificate: Certificate = builder
         .build::<_, DerSignature>(&Sm2Signer { key: signing })
         .expect("certificate");
@@ -202,7 +325,21 @@ pub fn test_certificate(secret: &SecretKey) -> Vec<u8> {
 }
 
 pub fn signed_gm_seal(certificate: &[u8], secret: &[u8], dist_id: &str) -> Vec<u8> {
-    let info = seal_info(gm_property(), false);
+    signed_gm_seal_with_certs(
+        certificate,
+        &[b"fictional-certificate".to_vec()],
+        secret,
+        dist_id,
+    )
+}
+
+pub fn signed_gm_seal_with_certs(
+    certificate: &[u8],
+    signer_certificates: &[Vec<u8>],
+    secret: &[u8],
+    dist_id: &str,
+) -> Vec<u8> {
+    let info = seal_info(gm_property_with_certs(signer_certificates), false);
     let certificate_value = octets(certificate);
     let algorithm = oid(OID_SM2_SM3);
     let tbs = seq(&[info.clone(), certificate_value.clone(), algorithm.clone()]);
@@ -212,7 +349,30 @@ pub fn signed_gm_seal(certificate: &[u8], secret: &[u8], dist_id: &str) -> Vec<u
 }
 
 pub fn signed_gb_seal(certificate: &[u8], secret: &[u8], dist_id: &str) -> Vec<u8> {
-    let info = seal_info(gb_property(), false);
+    signed_gb_seal_with_property(gb_property(), certificate, secret, dist_id)
+}
+
+pub fn signed_gb_seal_with_certs(
+    certificate: &[u8],
+    signer_certificates: &[Vec<u8>],
+    secret: &[u8],
+    dist_id: &str,
+) -> Vec<u8> {
+    signed_gb_seal_with_property(
+        gb_property_with_certs(signer_certificates),
+        certificate,
+        secret,
+        dist_id,
+    )
+}
+
+pub fn signed_gb_seal_with_property(
+    property: Vec<u8>,
+    certificate: &[u8],
+    secret: &[u8],
+    dist_id: &str,
+) -> Vec<u8> {
+    let info = seal_info(property, false);
     let signature = sign_sm3(secret, &info, dist_id).expect("seal signature");
     seq(&[
         info,
@@ -233,11 +393,13 @@ pub fn signed_gb_seal_with_rsa_oid(certificate: &[u8]) -> Vec<u8> {
 
 struct TestProfile {
     subject: Name,
+    issuer: Name,
+    is_ca: bool,
 }
 
 impl BuilderProfile for TestProfile {
     fn get_issuer(&self, _subject: &Name) -> Name {
-        self.subject.clone()
+        self.issuer.clone()
     }
 
     fn get_subject(&self) -> Name {
@@ -250,7 +412,19 @@ impl BuilderProfile for TestProfile {
         _issuer_spk: x509_cert::spki::SubjectPublicKeyInfoRef<'_>,
         _tbs: &x509_cert::certificate::TbsCertificate,
     ) -> x509_cert::builder::Result<Vec<x509_cert::ext::Extension>> {
-        Ok(Vec::new())
+        let mut extensions = Vec::new();
+        let constraints = BasicConstraints {
+            ca: self.is_ca,
+            path_len_constraint: None,
+        };
+        extensions.push(constraints.to_extension(&self.subject, &extensions)?);
+        let usage: x509_cert::der::flagset::FlagSet<KeyUsages> = if self.is_ca {
+            KeyUsages::KeyCertSign | KeyUsages::CRLSign
+        } else {
+            KeyUsages::DigitalSignature.into()
+        };
+        extensions.push(KeyUsage(usage).to_extension(&self.subject, &extensions)?);
+        Ok(extensions)
     }
 }
 

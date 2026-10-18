@@ -1,14 +1,20 @@
 use std::fs;
 use std::path::PathBuf;
 
+use ofdbox_crypto::sm3_digest;
 use ofdbox_seal::{
-    SM2_SM3_SIGNATURE_OID, SealError, SealFormat, SealVerifyOptions, fingerprint_seal, verify_seal,
-    verify_seal_with_options,
+    CertificatePolicy, SM2_SM3_SIGNATURE_OID, SealError, SealFormat, SealVerifyOptions,
+    fingerprint_seal, signer_in_seal, verify_seal, verify_seal_with_options,
 };
 
 mod common;
 
 use common::*;
+
+const SEAL_TIME: u64 = 1_654_041_600;
+const AFTER_SEAL_EXPIRY: u64 = 1_735_689_600;
+const BEFORE_SEAL_START: u64 = 1_600_000_000;
+const GM_SEAL_TIME: u64 = 1_704_067_200;
 
 #[test]
 fn verifies_synthetic_gm_t_0031_seal() {
@@ -105,9 +111,7 @@ fn custom_dist_id_is_supported_explicitly() {
         verify_seal(&seal, SealFormat::GbT38540),
         Err(SealError::SignatureInvalid)
     );
-    let options = SealVerifyOptions {
-        dist_id: "ofdbox-test-id",
-    };
+    let options = SealVerifyOptions::new().with_dist_id("ofdbox-test-id");
     verify_seal_with_options(&seal, SealFormat::GbT38540, &options).expect("verify custom id");
 }
 
@@ -139,6 +143,138 @@ fn unknown_vendor_structure_is_not_verified() {
             actual: SealFormat::Unknown,
         })
     );
+}
+
+#[test]
+fn validates_seal_certificate_chain_and_validity() {
+    let root = test_root_certificate();
+    let leaf = test_leaf_certificate();
+    let leaf_key = test_leaf_key();
+    let seal = signed_gb_seal_with_certs(
+        &leaf,
+        std::slice::from_ref(&leaf),
+        &leaf_key.to_bytes(),
+        "1234567812345678",
+    );
+    let policy = CertificatePolicy::new()
+        .with_trust_anchor(root)
+        .at_time(SEAL_TIME);
+    let options = SealVerifyOptions::new()
+        .with_certificate_policy(&policy)
+        .with_seal_validity(Some(SEAL_TIME))
+        .with_signer_certificate(&leaf);
+
+    let result = verify_seal_with_options(&seal, SealFormat::GbT38540, &options)
+        .expect("valid certified seal");
+    assert_eq!(result.certificate_chain_length, Some(2));
+    assert!(!result.revocation_checked);
+}
+
+#[test]
+fn validates_gm_t_0031_seal_chain_and_validity() {
+    let root = test_root_certificate();
+    let leaf = test_leaf_certificate();
+    let leaf_key = test_leaf_key();
+    let seal = signed_gm_seal_with_certs(
+        &leaf,
+        std::slice::from_ref(&leaf),
+        &leaf_key.to_bytes(),
+        "1234567812345678",
+    );
+    let policy = CertificatePolicy::new()
+        .with_trust_anchor(root)
+        .at_time(GM_SEAL_TIME);
+    let options = SealVerifyOptions::new()
+        .with_certificate_policy(&policy)
+        .with_seal_validity(Some(GM_SEAL_TIME))
+        .with_signer_certificate(&leaf);
+
+    verify_seal_with_options(&seal, SealFormat::GmT0031, &options)
+        .expect("valid certified gm seal");
+}
+
+#[test]
+fn rejects_untrusted_seal_certificate() {
+    let leaf = test_leaf_certificate();
+    let leaf_key = test_leaf_key();
+    let seal = signed_gb_seal_with_certs(
+        &leaf,
+        std::slice::from_ref(&leaf),
+        &leaf_key.to_bytes(),
+        "1234567812345678",
+    );
+    let policy = CertificatePolicy::new().at_time(SEAL_TIME);
+    let options = SealVerifyOptions::new().with_certificate_policy(&policy);
+    assert_eq!(
+        verify_seal_with_options(&seal, SealFormat::GbT38540, &options),
+        Err(SealError::UntrustedCertificate)
+    );
+}
+
+#[test]
+fn rejects_expired_and_not_yet_valid_seals() {
+    let root = test_root_certificate();
+    let leaf = test_leaf_certificate();
+    let leaf_key = test_leaf_key();
+    let seal = signed_gb_seal_with_certs(
+        &leaf,
+        std::slice::from_ref(&leaf),
+        &leaf_key.to_bytes(),
+        "1234567812345678",
+    );
+    let policy = CertificatePolicy::new()
+        .with_trust_anchor(root)
+        .at_time(SEAL_TIME);
+
+    let expired = SealVerifyOptions::new()
+        .with_certificate_policy(&policy)
+        .with_seal_validity(Some(AFTER_SEAL_EXPIRY));
+    assert_eq!(
+        verify_seal_with_options(&seal, SealFormat::GbT38540, &expired),
+        Err(SealError::SealExpired)
+    );
+
+    let future = SealVerifyOptions::new()
+        .with_certificate_policy(&policy)
+        .with_seal_validity(Some(BEFORE_SEAL_START));
+    assert_eq!(
+        verify_seal_with_options(&seal, SealFormat::GbT38540, &future),
+        Err(SealError::SealNotYetValid)
+    );
+}
+
+#[test]
+fn rejects_signer_missing_from_certificate_list() {
+    let root = test_root_certificate();
+    let leaf = test_leaf_certificate();
+    let leaf_key = test_leaf_key();
+    let seal = signed_gb_seal_with_certs(
+        &leaf,
+        std::slice::from_ref(&leaf),
+        &leaf_key.to_bytes(),
+        "1234567812345678",
+    );
+    let policy = CertificatePolicy::new()
+        .with_trust_anchor(root.clone())
+        .at_time(SEAL_TIME);
+    let options = SealVerifyOptions::new()
+        .with_certificate_policy(&policy)
+        .with_signer_certificate(&root);
+    assert_eq!(
+        verify_seal_with_options(&seal, SealFormat::GbT38540, &options),
+        Err(SealError::SignerNotInSeal)
+    );
+}
+
+#[test]
+fn checks_digest_based_certificate_list() {
+    let leaf = test_leaf_certificate();
+    let leaf_key = test_leaf_key();
+    let property = gb_property_with_digests(&[sm3_digest(&leaf)]);
+    let seal =
+        signed_gb_seal_with_property(property, &leaf, &leaf_key.to_bytes(), "1234567812345678");
+    assert!(signer_in_seal(&seal, &leaf).expect("digest list"));
+    assert!(!signer_in_seal(&seal, &test_root_certificate()).expect("digest list"));
 }
 
 #[test]

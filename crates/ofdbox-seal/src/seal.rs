@@ -101,10 +101,25 @@ pub(crate) struct Layout<'a> {
     pub(crate) header: SealHeader<'a>,
     pub(crate) seal_id: &'a str,
     pub(crate) property: SealProperty<'a>,
+    pub(crate) validity: [(&'a str, TimeKind); 3],
+    pub(crate) signer_list: SignerList<'a>,
     pub(crate) picture: Tlv<'a>,
     pub(crate) fingerprint: SealFingerprint,
     pub(crate) seal_info: Tlv<'a>,
     pub(crate) envelope: Envelope<'a>,
+}
+
+/// 印章属性中的签章者证书信息列表。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum SignerList<'a> {
+    /// 直接存放证书 DER。
+    Certificates(Vec<&'a [u8]>),
+    /// 存放证书杂凑值。
+    Digests(Vec<&'a [u8]>),
+    /// 证书信息类型不受支持。
+    Unsupported(i64),
+    /// 列表内容与声明的类型不符。
+    Malformed,
 }
 
 /// 印章外层签名容器的原始字段。
@@ -148,10 +163,18 @@ pub(crate) fn parse_layout(bytes: &[u8]) -> Result<Layout<'_>, SealError> {
         signature_algorithm,
         has_extensions: fields.len() > 4,
     };
+    let validity = [
+        (property.dates[0], property.kinds[0]),
+        (property.dates[1], property.kinds[1]),
+        (property.dates[2], property.kinds[2]),
+    ];
+    let signer_list = property.signer_list.clone();
     Ok(Layout {
         header,
         seal_id,
         property: property.into_property(),
+        validity,
+        signer_list,
         picture,
         fingerprint,
         seal_info,
@@ -196,33 +219,27 @@ fn parse_property(tlv: Tlv<'_>) -> Result<PropertyFields<'_>, SealError> {
         TAG_SEQUENCE,
         "签章者证书信息列表必须是 SEQUENCE",
     )?;
-    let mut certificate_count = 0;
-    for entry in certificate_list.children()? {
-        entry?;
-        certificate_count += 1;
-    }
+    let entries = der::items(certificate_list)?;
+    let certificate_count = entries.len();
+    let signer_list = parse_signer_list(certificate_list_type, &entries);
     cursor += 1;
 
     let mut dates = [""; 3];
-    let mut kinds = [None; 3];
+    let mut kinds = [TimeKind::Utc; 3];
     for (index, date) in dates.iter_mut().enumerate() {
         let field = *fields
             .get(cursor + index)
             .ok_or(SealError::Invalid("印章属性缺少时间字段"))?;
         let (value, kind) = der::time(field)?;
         *date = value;
-        kinds[index] = Some(kind);
+        kinds[index] = kind;
     }
     let time_type = match kinds {
+        [TimeKind::Utc, TimeKind::Utc, TimeKind::Utc] => TimeType::Utc,
         [
-            Some(TimeKind::Utc),
-            Some(TimeKind::Utc),
-            Some(TimeKind::Utc),
-        ] => TimeType::Utc,
-        [
-            Some(TimeKind::Generalized),
-            Some(TimeKind::Generalized),
-            Some(TimeKind::Generalized),
+            TimeKind::Generalized,
+            TimeKind::Generalized,
+            TimeKind::Generalized,
         ] => TimeType::Generalized,
         _ => TimeType::Mixed,
     };
@@ -232,9 +249,38 @@ fn parse_property(tlv: Tlv<'_>) -> Result<PropertyFields<'_>, SealError> {
         name,
         certificate_list_type,
         certificate_count,
+        signer_list,
         dates,
+        kinds,
         time_type,
     })
+}
+
+fn parse_signer_list<'a>(
+    certificate_list_type: Option<i64>,
+    entries: &[Tlv<'a>],
+) -> SignerList<'a> {
+    match certificate_list_type {
+        None | Some(1) => entries
+            .iter()
+            .map(|entry| der::octet_string(*entry, "证书列表项必须是 OCTET STRING"))
+            .collect::<Result<Vec<_>, _>>()
+            .map(SignerList::Certificates)
+            .unwrap_or(SignerList::Malformed),
+        Some(2) => entries
+            .iter()
+            .map(|entry| {
+                let fields = der::items(*entry)?;
+                if fields.len() < 2 || fields[0].tag != 0x13 {
+                    return Err(SealError::Invalid("证书杂凑项结构无效"));
+                }
+                der::octet_string(fields[1], "证书杂凑值必须是 OCTET STRING")
+            })
+            .collect::<Result<Vec<_>, _>>()
+            .map(SignerList::Digests)
+            .unwrap_or(SignerList::Malformed),
+        Some(other) => SignerList::Unsupported(other),
+    }
 }
 
 struct PropertyFields<'a> {
@@ -242,7 +288,9 @@ struct PropertyFields<'a> {
     name: &'a str,
     certificate_list_type: Option<i64>,
     certificate_count: usize,
+    signer_list: SignerList<'a>,
     dates: [&'a str; 3],
+    kinds: [TimeKind; 3],
     time_type: TimeType,
 }
 

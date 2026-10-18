@@ -15,6 +15,7 @@
 mod backend;
 mod certificate;
 mod cipher;
+mod digest;
 mod encrypt;
 mod error;
 mod kdf;
@@ -28,6 +29,7 @@ pub use certificate::{
     public_key_from_certificate,
 };
 pub use cipher::{decrypt_cbc, encrypt_cbc};
+pub use digest::sm3_digest;
 #[cfg(not(target_arch = "wasm32"))]
 pub use encrypt::encrypt_package;
 pub use encrypt::{EncryptOptions, EncryptionFilter, EncryptionScheme, encrypt_package_with_rng};

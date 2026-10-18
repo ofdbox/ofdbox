@@ -9,6 +9,7 @@ publish = false
 
 [dependencies]
 ofdbox-crypto = { path = "../ofdbox-crypto" }
+x509-cert.workspace = true
 
 [dev-dependencies]
 dotenvy.workspace = true
