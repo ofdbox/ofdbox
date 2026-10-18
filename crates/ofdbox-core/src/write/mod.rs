@@ -8,6 +8,7 @@ pub mod document;
 pub mod encryption;
 pub mod entries_map;
 pub mod extensions;
+pub mod integrity;
 pub mod ofd;
 pub mod outline;
 pub mod page;

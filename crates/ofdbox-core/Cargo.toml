@@ -8,6 +8,7 @@ description = "OFD 文档结构读取、解析与严格序列化。"
 publish = false
 
 [dependencies]
+base64.workspace = true
 quick-xml.workspace = true
 thiserror.workspace = true
 zip.workspace = true

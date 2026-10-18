@@ -2,16 +2,16 @@
 
 OFDBox 是一个用 Rust 实现的 OFD 文档处理库。项目目标是覆盖 OFD 的结构读写、密码应用、签章验签、渲染、格式转换和文档生成。
 
-当前仓库处于基础结构阶段：`ofdbox-core` 已实现 GB/T 33190—2016 的结构读取、宽松解析与严格写出，以及 GM/T 0099—2020 的签名扩展和加密描述结构。密码运算、渲染、转换和生成尚未实现。
+当前仓库已实现 GB/T 33190—2016 的结构读写、GM/T 0099—2020 的签名扩展和加密描述结构，以及 `ofdbox-crypto` 中的 SM2/SM3/SM4 密码原语、口令/证书密钥处理和单层文档解密。签名值的完整验签、多重加密、渲染、转换和生成尚未实现。
 
 ## 目标范围
 
 | 能力 | 状态 | 说明 |
 | --- | --- | --- |
 | 基本结构读取/写入 | 已完成 | GB/T 33190—2016 全部根文件和具名复杂类型；宽松解析、严格校验、规范化写出；按需读取与缓存 |
-| GM/T 0099 描述结构 | 部分完成 | 签名扩展、`Encryptions.xml`、`DecryptSeed`、`EncryptedEntries` 已解析/写出；`OFDEntries.xml` 尚未实现 |
-| 文档加密/解密 | 未开始 | 需要 SM2/SM3/SM4、密钥解包、明密文映射与透明读取 |
-| 签章/验签 | 未开始 | 签名结构已解析；密码学签名与验签未实现 |
+| GM/T 0099 描述结构 | 已完成 | 签名扩展、`Encryptions.xml`、`DecryptSeed`、`EncryptedEntries`、`OFDEntries.xml` 已解析/写出 |
+| 文档加密/解密 | 已完成（结构层） | 口令/证书、单层与多重懒解密、加密写出；证书后端尚无真实样本验证 |
+| 签章/验签 | 部分完成 | 签名结构、References 摘要校验、SM2DSA 原语和验签注入点已实现；GB/T 35275 默认 SignedData 验签未实现 |
 | 文档渲染 | 未开始 | 页面、图元、字体和颜色尚未绘制到输出设备 |
 | 格式转换 | 未开始 | 规划 OFD ↔ PDF、OFD ↔ 图片 |
 | 文档生成 | 未开始 | 规划由结构化数据自动排版生成 OFD/PDF |
@@ -40,8 +40,8 @@ OFDBox 是一个用 Rust 实现的 OFD 文档处理库。项目目标是覆盖 O
 
 | crate | 状态 | 职责 |
 | --- | --- | --- |
-| `ofdbox-core` | 已实现 | 容器、XML 语法树、类型化视图、严格写出、缓存 |
-| `ofdbox-crypto` | 规划 | SM2/SM3/SM4、签名/验签、密钥解包、透明解密 |
+| `ofdbox-core` | 已实现 | 容器、XML 语法树、类型化视图、严格写出、缓存、透明解密会话 |
+| `ofdbox-crypto` | 已实现（部分） | SM3-KDF、SM4-CBC、SM2 加解密/签名、口令/证书后端、方案注册表、加密写出；SignedData 验签未实现 |
 | `ofdbox-render` | 规划 | 页面布局与绘制、图片/PDF 输出后端 |
 | `ofdbox-convert` | 规划 | OFD ↔ PDF、OFD ↔ 图片 |
 | `ofdbox-generate` | 规划 | 结构化数据 → 布局 → OFD/PDF |
@@ -72,6 +72,24 @@ fn main() -> Result<(), ofdbox_core::OfdError> {
 ```
 
 WASM 或内存场景使用 `OfdPackage::from_bytes(bytes)`。
+
+加密文档：
+
+```rust
+use ofdbox_core::OfdPackage;
+use ofdbox_crypto::{CertificateBackend, PasswordBackend};
+
+let mut package = OfdPackage::open("encrypted.ofd")?;
+package.enable_decryption(Box::new(PasswordBackend::new("password")))?;
+
+// 或者使用 SM2 私钥
+// package.enable_decryption(Box::new(CertificateBackend::new(private_key)))?;
+
+let root = package.parse_root()?;
+let document = package.parse_document()?;
+```
+
+解密按需发生：启用时只解出文件密钥和明密文映射表，页面与资源在读取时解密并进入独立明文缓存。`close_decryption()` 会释放会话并清空明文缓存。
 
 ## 标准覆盖
 
@@ -104,7 +122,7 @@ cargo test
 | 阶段 | 内容 | 状态 |
 | --- | --- | --- |
 | M0 | 2016 结构读写、0099 描述结构、缓存、WASM 编译 | 已完成 |
-| M1 | SM2/SM3/SM4、签名/验签、解密与透明读取 | 下一步 |
+| M1 | SM2/SM3/SM4、解密、加密写出、References 校验 | 已实现；GB/T 35275 默认验签待合规样本 |
 | M2 | 页面渲染、图片导出、PDF 导出 | 规划 |
 | M3 | OFD ↔ PDF、OFD ↔ 图片转换 | 规划 |
 | M4 | 结构化数据布局与 OFD/PDF 生成 | 规划 |

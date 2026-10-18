@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/ofdbox-core"]
+members = ["crates/ofdbox-core", "crates/ofdbox-crypto"]
 
 [workspace.package]
 version = "0.1.0"
@@ -14,3 +14,12 @@ thiserror = "2"
 zip = { version = "9", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 tempfile = "3"
 dotenvy = "0.15"
+sm3 = "0.5"
+sm4 = "0.6"
+cbc = "0.2"
+sm2 = { version = "0.14", default-features = false, features = ["alloc", "arithmetic", "dsa", "der", "pkcs8", "pke", "precomputed-tables", "std"] }
+x509-cert = { version = "0.3", default-features = false, features = ["std"] }
+der = "0.8"
+zeroize = { version = "1", features = ["derive"] }
+getrandom = { version = "0.4", features = ["sys_rng"] }
+base64 = "0.23"

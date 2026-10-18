@@ -77,4 +77,24 @@ pub enum OfdError {
     /// 严格模式下发现一处或多处不符合标准。
     #[error("OFD 不符合标准: {0:?}")]
     Conformance(Vec<Diagnostic>),
+
+    /// 文档已加密，但尚未启用解密。
+    #[error("文档已加密，需要先启用解密")]
+    EncryptionRequired,
+
+    /// 密码运算失败。
+    #[error("密码运算失败: {0}")]
+    Crypto(String),
+
+    /// 没有注册对应加密方案的后端。
+    #[error("不支持的加密方案: {0}")]
+    UnsupportedScheme(String),
+
+    /// 不支持的摘要算法。
+    #[error("不支持的摘要算法: {0}")]
+    UnsupportedDigest(String),
+
+    /// 不支持的签名方案。
+    #[error("不支持的签名方案: {0}")]
+    UnsupportedSignature(String),
 }

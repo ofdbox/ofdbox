@@ -25,7 +25,10 @@ impl EncryptedEntriesView {
     /// 基于已解析的语法树创建视图。
     pub fn from_document(doc: Arc<XmlDocument>, options: ReadOptions) -> Result<Self, OfdError> {
         let node = doc.root();
-        if doc.name(node).local != "EncryptedEntries" {
+        if !matches!(
+            doc.name(node).local.as_str(),
+            "EncryptedEntries" | "EncryptEntries"
+        ) {
             return Err(OfdError::InvalidStructure(
                 "明密文映射表的根元素不是 EncryptedEntries".to_owned(),
             ));

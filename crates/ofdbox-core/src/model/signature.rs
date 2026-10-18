@@ -606,3 +606,23 @@ fn validate_seal(doc: &XmlDocument, node: NodeId, diagnostics: &mut Vec<Diagnost
         }
     }
 }
+
+/// 单个 `Reference` 的摘要校验结果。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReferenceDigest {
+    /// 被保护文件路径。
+    pub file_ref: String,
+    /// 摘要方法。
+    pub check_method: String,
+    /// XML 中记录的摘要值。
+    pub expected: Vec<u8>,
+    /// 实际计算出的摘要值。
+    pub actual: Vec<u8>,
+}
+
+impl ReferenceDigest {
+    /// 摘要是否一致。
+    pub fn matches(&self) -> bool {
+        self.expected == self.actual
+    }
+}

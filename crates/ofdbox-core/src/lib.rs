@@ -12,6 +12,7 @@
 //! - 缓存按需解压的 entry 字节和解析后的 XML 语法树。
 
 mod cache;
+mod crypto;
 mod error;
 mod model;
 mod options;
@@ -19,6 +20,7 @@ mod package;
 mod write;
 mod xml;
 
+pub use crypto::{CryptoBackend, CryptoRegistry, FileKey, SignatureVerifier};
 pub use error::{Diagnostic, DiagnosticCode, OfdError};
 pub use model::action::{
     ActionView, ActionsView, GotoAView, GotoView, MovieView, SoundView, UriView,
@@ -44,6 +46,7 @@ pub use model::encryption::{
 };
 pub use model::entries_map::{EncryptEntryView, EncryptedEntriesView};
 pub use model::extensions::{DataView, ExtensionView, ExtensionsView, PropertyView};
+pub use model::integrity::{DocEntriesView, DocEntryFileView};
 pub use model::ofd::{
     CustomDataView, DocBodyView, DocInfoView, OfdRootView, VersionView, VersionsView,
 };
@@ -59,7 +62,7 @@ pub use model::res::{
     MultiMediaView, ResView,
 };
 pub use model::signature::{
-    ProviderView, ReferenceView, ReferencesView, SealView, SignatureEntryView,
+    ProviderView, ReferenceDigest, ReferenceView, ReferencesView, SealView, SignatureEntryView,
     SignatureParameterView, SignatureView, SignaturesView, SignedInfoView, StampAnnotView,
 };
 pub use model::version::{DocVersionView, VersionFileView};

@@ -200,3 +200,15 @@ fn real_hello_enc_sample_parses() {
     assert_eq!(user.user_name(), Some("777"));
     assert!(user.encrypted_work_key().is_some());
 }
+
+#[test]
+fn encrypt_entries_alias_is_accepted_and_normalized() {
+    let alias = ENTRIES_MAP
+        .replace("<ofd:EncryptedEntries", "<ofd:EncryptEntries")
+        .replace("</ofd:EncryptedEntries>", "</ofd:EncryptEntries>");
+    let view =
+        EncryptedEntriesView::from_xml(alias.as_bytes(), ReadOptions::STRICT).expect("alias");
+    let xml = view.to_xml().expect("strict writer");
+    assert!(xml.contains("<ofd:EncryptedEntries"));
+    assert!(!xml.contains("EncryptEntries "));
+}

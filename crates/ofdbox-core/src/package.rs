@@ -1,9 +1,11 @@
+use std::collections::{HashMap, HashSet};
 use std::io::{Cursor, Read, Seek};
 use std::sync::Arc;
 
 use zip::ZipArchive;
 
 use crate::cache::ByteLruCache;
+use crate::crypto::{CryptoBackend, FileKey, SignatureVerifier};
 use crate::error::OfdError;
 use crate::model::annotation::{AnnotationsView, PageAnnotView};
 use crate::model::attachment::AttachmentsView;
@@ -13,10 +15,11 @@ use crate::model::document::{DocumentView, PageView};
 use crate::model::encryption::EncryptionsView;
 use crate::model::entries_map::EncryptedEntriesView;
 use crate::model::extensions::ExtensionsView;
+use crate::model::integrity::DocEntriesView;
 use crate::model::ofd::OfdRootView;
 use crate::model::page::PageContentView;
 use crate::model::res::ResView;
-use crate::model::signature::{SignatureView, SignaturesView};
+use crate::model::signature::{ReferenceDigest, SignatureView, SignaturesView};
 use crate::model::version::DocVersionView;
 use crate::options::{CacheOptions, ReadOptions};
 use crate::xml::parser::parse_xml;
@@ -27,6 +30,18 @@ pub const ROOT_ENTRY: &str = "OFD.xml";
 
 trait ReadSeek: Read + Seek {}
 impl<T: Read + Seek> ReadSeek for T {}
+
+struct DecryptionOperation {
+    file_key: FileKey,
+    /// 逻辑路径 -> 物理密文路径。
+    entries: HashMap<String, String>,
+}
+
+struct DecryptionContext {
+    backend: Box<dyn CryptoBackend>,
+    /// 解密顺序：最新一次加密在前。
+    operations: Vec<DecryptionOperation>,
+}
 
 /// 缓存统计。
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -43,6 +58,12 @@ pub struct CacheStats {
     pub xml_hits: u64,
     /// XML 缓存未命中次数。
     pub xml_misses: u64,
+    /// 解密后明文缓存占用。
+    pub plain_bytes: usize,
+    /// 明文缓存命中次数。
+    pub plain_hits: u64,
+    /// 明文缓存未命中次数。
+    pub plain_misses: u64,
 }
 
 /// 只读 OFD 包。
@@ -50,8 +71,11 @@ pub struct OfdPackage {
     archive: ZipArchive<Box<dyn ReadSeek>>,
     options: ReadOptions,
     entry_cache: ByteLruCache<String, Arc<[u8]>>,
+    plain_cache: ByteLruCache<String, Arc<[u8]>>,
     xml_cache: ByteLruCache<(String, bool), Arc<XmlDocument>>,
+    decryption: Option<DecryptionContext>,
     document_entry: Option<String>,
+    signature_entry: Option<String>,
     annotations_entry: Option<String>,
     signatures_entry: Option<String>,
 }
@@ -62,6 +86,7 @@ impl std::fmt::Debug for OfdPackage {
             .debug_struct("OfdPackage")
             .field("entry_count", &self.entry_count())
             .field("options", &self.options)
+            .field("decryption_enabled", &self.decryption.is_some())
             .finish()
     }
 }
@@ -97,8 +122,11 @@ impl OfdPackage {
             archive,
             options,
             entry_cache: ByteLruCache::new(cache_options.max_bytes),
+            plain_cache: ByteLruCache::new(cache_options.max_bytes),
             xml_cache: ByteLruCache::new(cache_options.max_bytes),
+            decryption: None,
             document_entry: None,
+            signature_entry: None,
             annotations_entry: None,
             signatures_entry: None,
         })
@@ -127,7 +155,18 @@ impl OfdPackage {
     }
 
     /// 是否包含指定 entry。
+    ///
+    /// 启用解密后，映射中的逻辑路径也视为存在。
     pub fn contains(&self, name: &str) -> bool {
+        let name = name.trim_start_matches('/');
+        if let Some(context) = &self.decryption
+            && context
+                .operations
+                .iter()
+                .any(|operation| operation.entries.contains_key(name))
+        {
+            return true;
+        }
         self.archive.index_for_name(name).is_some()
     }
 
@@ -142,20 +181,80 @@ impl OfdPackage {
         for name in self.archive.file_names() {
             names.push(name?.into_owned());
         }
+        if let Some(context) = &self.decryption {
+            for operation in &context.operations {
+                for name in operation.entries.keys() {
+                    if !names.iter().any(|existing| existing == name) {
+                        names.push(name.clone());
+                    }
+                }
+            }
+        }
         Ok(names)
     }
 
-    /// 按需读取并解压一个 entry。
+    /// 按需读取一个 entry。
+    ///
+    /// 未启用解密时返回 ZIP 原始字节；启用后，映射中的逻辑路径会透明解密。
     pub fn read_entry(&mut self, name: &str) -> Result<Arc<[u8]>, OfdError> {
         let name = normalize_entry_name(name)?;
-        if let Some(bytes) = self.entry_cache.get(&name) {
+        if let Some(bytes) = self.plain_cache.get(&name) {
+            return Ok(bytes);
+        }
+        let layer = self.decryption.as_ref().and_then(|context| {
+            context
+                .operations
+                .iter()
+                .position(|operation| operation.entries.contains_key(&name))
+        });
+        let Some(start) = layer else {
+            return self.read_raw_entry(&name);
+        };
+        let (physical, first_key) = {
+            let context = self.decryption.as_ref().expect("decryption context");
+            let operation = &context.operations[start];
+            (operation.entries[&name].clone(), operation.file_key.clone())
+        };
+        let ciphertext = self.read_raw_entry(&physical)?;
+        let mut plaintext = self
+            .decryption
+            .as_ref()
+            .expect("decryption context")
+            .backend
+            .decrypt(&first_key, &ciphertext)?;
+        for operation in self
+            .decryption
+            .as_ref()
+            .expect("decryption context")
+            .operations
+            .iter()
+            .skip(start + 1)
+        {
+            if !operation.entries.contains_key(&name) {
+                break;
+            }
+            plaintext = self
+                .decryption
+                .as_ref()
+                .expect("decryption context")
+                .backend
+                .decrypt(&operation.file_key, &plaintext)?;
+        }
+        let plaintext: Arc<[u8]> = Arc::from(plaintext);
+        self.plain_cache
+            .insert(name, Arc::clone(&plaintext), plaintext.len());
+        Ok(plaintext)
+    }
+
+    fn read_raw_entry(&mut self, name: &str) -> Result<Arc<[u8]>, OfdError> {
+        if let Some(bytes) = self.entry_cache.get(&name.to_owned()) {
             return Ok(bytes);
         }
 
-        let mut entry = match self.archive.by_name(&name) {
+        let mut entry = match self.archive.by_name(name) {
             Ok(entry) => entry,
             Err(zip::result::ZipError::FileNotFound) => {
-                return Err(OfdError::MissingEntry(name));
+                return Err(OfdError::MissingEntry(name.to_owned()));
             }
             Err(error) => return Err(error.into()),
         };
@@ -163,7 +262,7 @@ impl OfdPackage {
         entry.read_to_end(&mut bytes)?;
         let bytes: Arc<[u8]> = Arc::from(bytes);
         self.entry_cache
-            .insert(name, Arc::clone(&bytes), bytes.len());
+            .insert(name.to_owned(), Arc::clone(&bytes), bytes.len());
         Ok(bytes)
     }
 
@@ -434,6 +533,12 @@ impl OfdPackage {
         Ok(view)
     }
 
+    /// 按包根路径直接解析签名描述文件。
+    pub fn parse_signature_file(&mut self, loc: &str) -> Result<SignatureView, OfdError> {
+        let entry = resolve_loc("", loc)?;
+        self.parse_signature_entry(entry)
+    }
+
     /// 解析签名列表中 `BaseLoc` 指向的签名描述文件。
     ///
     /// 路径相对于签名列表文件所在目录解析；列表尚未解析时会先读取 `OFD.xml`。
@@ -525,7 +630,166 @@ impl OfdPackage {
         EncryptedEntriesView::from_document(doc, self.options)
     }
 
+    /// 启用文档解密。
+    ///
+    /// 只解出文件密钥和明密文映射表；页面和资源在读取时按需解密。
+    /// 当前只支持单层加密。
+    pub fn enable_decryption(&mut self, backend: Box<dyn CryptoBackend>) -> Result<(), OfdError> {
+        if self.decryption.is_some() {
+            return Ok(());
+        }
+        let encryptions = self.parse_encryptions()?;
+        let infos: Vec<_> = encryptions.encrypt_infos().collect();
+        if infos.is_empty() {
+            return Err(OfdError::Crypto(
+                "Encryptions.xml 中没有 EncryptInfo".to_owned(),
+            ));
+        }
+        let mut specs = Vec::with_capacity(infos.len());
+        for info in &infos {
+            let id = info
+                .id()
+                .ok_or_else(|| OfdError::InvalidStructure("EncryptInfo 缺少 ID".to_owned()))?;
+            let seed_loc = info
+                .decrypt_seed_loc()
+                .ok_or_else(|| {
+                    OfdError::InvalidStructure("EncryptInfo 缺少 DecryptSeedLoc".to_owned())
+                })?
+                .to_owned();
+            let map_loc = info
+                .entries_map_loc()
+                .ok_or_else(|| {
+                    OfdError::InvalidStructure("EncryptInfo 缺少 EntriesMapLoc".to_owned())
+                })?
+                .to_owned();
+            specs.push((
+                id.to_owned(),
+                info.relative().map(str::to_owned),
+                seed_loc,
+                map_loc,
+            ));
+        }
+        let order = decryption_order(&specs)?;
+
+        let mut operations = Vec::with_capacity(order.len());
+        for index in order {
+            let (_, _, seed_loc, map_loc) = &specs[index];
+            let info = &infos[index];
+            let seed = self.parse_decrypt_seed(seed_loc)?;
+            let file_key = backend.unwrap_file_key(info, &seed)?;
+
+            let map_entry = normalize_entry_name(&resolve_loc("", map_loc)?)?;
+            let map_raw = self.read_raw_entry(&map_entry)?;
+            let map_bytes = if looks_like_xml(&map_raw) {
+                map_raw.to_vec()
+            } else {
+                backend
+                    .decrypt(&file_key, &map_raw)
+                    .map_err(|_| OfdError::Crypto("明密文映射表解密失败".to_owned()))?
+            };
+            let map = EncryptedEntriesView::from_xml(&map_bytes, self.options)?;
+            let mut entries = HashMap::new();
+            for entry in map.entries() {
+                let path = entry.path().ok_or_else(|| {
+                    OfdError::InvalidStructure("EncryptEntry 缺少 Path".to_owned())
+                })?;
+                let epath = entry.epath().unwrap_or(path);
+                entries.insert(normalize_entry_name(path)?, normalize_entry_name(epath)?);
+            }
+            operations.push(DecryptionOperation { file_key, entries });
+        }
+
+        self.decryption = Some(DecryptionContext {
+            backend,
+            operations,
+        });
+        self.plain_cache.clear();
+        Ok(())
+    }
+
+    /// 使用调用方提供的验签器验证签名值。
+    ///
+    /// `content` 为 `Signature.xml` 原始字节，`signed_value` 为 `SignedValue.dat` 原始字节。
+    pub fn verify_signature(
+        &mut self,
+        signature: &SignatureView,
+        verifier: &dyn SignatureVerifier,
+    ) -> Result<(), OfdError> {
+        let entry = self
+            .signature_entry
+            .clone()
+            .ok_or_else(|| OfdError::InvalidStructure("尚未解析 Signature.xml".to_owned()))?;
+        let method = signature
+            .signed_info()
+            .and_then(|info| info.signature_method().map(str::to_owned))
+            .ok_or_else(|| OfdError::InvalidStructure("签名缺少 SignatureMethod".to_owned()))?;
+        if !verifier.supports(&method) {
+            return Err(OfdError::UnsupportedSignature(method));
+        }
+        let content = self.read_entry(&entry)?;
+        let signed_value_loc = signature
+            .signed_value()
+            .ok_or_else(|| OfdError::InvalidStructure("签名缺少 SignedValue".to_owned()))?;
+        let signed_entry = resolve_loc(parent_dir(&entry).unwrap_or(""), signed_value_loc)?;
+        let signed_value = self.read_entry(&signed_entry)?;
+        verifier.verify(&method, &content, &signed_value)
+    }
+
+    /// 校验一个签名描述中的 `References` 文件摘要。
+    ///
+    /// 只校验文件摘要，不验证 `SignedValue` 的密码学签名。
+    pub fn verify_references(
+        &mut self,
+        signature: &SignatureView,
+        backend: &dyn CryptoBackend,
+    ) -> Result<Vec<ReferenceDigest>, OfdError> {
+        use base64::Engine;
+
+        let info = signature
+            .signed_info()
+            .ok_or_else(|| OfdError::InvalidStructure("签名缺少 SignedInfo".to_owned()))?;
+        let references = info
+            .references()
+            .ok_or_else(|| OfdError::InvalidStructure("签名缺少 References".to_owned()))?;
+        let method = references.check_method().unwrap_or("MD5");
+        let mut checks = Vec::new();
+        for reference in references.references() {
+            let file_ref = reference
+                .file_ref()
+                .ok_or_else(|| OfdError::InvalidStructure("Reference 缺少 FileRef".to_owned()))?;
+            let entry = resolve_loc("", file_ref)?;
+            let bytes = self.read_entry(&entry)?;
+            let actual = backend.digest(method, &bytes)?;
+            let expected = base64::engine::general_purpose::STANDARD
+                .decode(reference.check_value().trim())
+                .map_err(|_| OfdError::InvalidStructure("CheckValue 不是合法 Base64".to_owned()))?;
+            checks.push(ReferenceDigest {
+                file_ref: file_ref.to_owned(),
+                check_method: method.to_owned(),
+                expected,
+                actual,
+            });
+        }
+        Ok(checks)
+    }
+
+    /// 解析包根目录下的完整性保护描述 `OFDEntries.xml`。
+    pub fn parse_ofd_entries(&mut self) -> Result<DocEntriesView, OfdError> {
+        let entry = resolve_loc("", "OFDEntries.xml")?;
+        let key = (entry.clone(), self.options.strict);
+        if let Some(doc) = self.xml_cache.get(&key) {
+            return DocEntriesView::from_document(doc, self.options);
+        }
+
+        let bytes = self.read_entry(&entry)?;
+        let doc = Arc::new(parse_xml(&bytes, self.options)?);
+        self.xml_cache
+            .insert(key, Arc::clone(&doc), doc.estimated_size());
+        DocEntriesView::from_document(doc, self.options)
+    }
+
     fn parse_signature_entry(&mut self, entry: String) -> Result<SignatureView, OfdError> {
+        self.signature_entry = Some(entry.clone());
         let key = (entry.clone(), self.options.strict);
         if let Some(doc) = self.xml_cache.get(&key) {
             return SignatureView::from_document(doc, self.options);
@@ -541,13 +805,26 @@ impl OfdPackage {
     /// 清空缓存；已经取出的 `Arc` 视图仍然有效。
     pub fn clear_cache(&mut self) {
         self.entry_cache.clear();
+        self.plain_cache.clear();
         self.xml_cache.clear();
+    }
+
+    /// 关闭解密会话并清空明文缓存。
+    pub fn close_decryption(&mut self) {
+        self.decryption = None;
+        self.plain_cache.clear();
+    }
+
+    /// 是否已启用解密。
+    pub fn decryption_enabled(&self) -> bool {
+        self.decryption.is_some()
     }
 
     /// 当前缓存统计。
     pub fn cache_stats(&self) -> CacheStats {
         let entry = self.entry_cache.stats();
         let xml = self.xml_cache.stats();
+        let plain = self.plain_cache.stats();
         CacheStats {
             entry_bytes: entry.bytes,
             xml_bytes: xml.bytes,
@@ -555,12 +832,18 @@ impl OfdPackage {
             entry_misses: entry.misses,
             xml_hits: xml.hits,
             xml_misses: xml.misses,
+            plain_bytes: plain.bytes,
+            plain_hits: plain.hits,
+            plain_misses: plain.misses,
         }
     }
 
     fn root_entry_name(&self) -> Result<String, OfdError> {
         if self.contains(ROOT_ENTRY) {
             return Ok(ROOT_ENTRY.to_owned());
+        }
+        if self.archive.index_for_name("Encryptions.xml").is_some() {
+            return Err(OfdError::EncryptionRequired);
         }
         if self.options.strict {
             return Err(OfdError::MissingEntry(ROOT_ENTRY.to_owned()));
@@ -602,6 +885,14 @@ fn parent_dir(path: &str) -> Option<&str> {
     Some(path.rfind('/').map(|index| &path[..index]).unwrap_or(""))
 }
 
+fn looks_like_xml(bytes: &[u8]) -> bool {
+    let bytes = bytes.strip_prefix(b"\xEF\xBB\xBF").unwrap_or(bytes);
+    bytes
+        .iter()
+        .find(|byte| !byte.is_ascii_whitespace())
+        .is_some_and(|byte| *byte == b'<')
+}
+
 fn normalize_entry_name(name: &str) -> Result<String, OfdError> {
     let name = name.replace('\\', "/");
     let mut parts = Vec::new();
@@ -620,4 +911,55 @@ fn normalize_entry_name(name: &str) -> Result<String, OfdError> {
         return Err(OfdError::InvalidStructure("entry 名为空".to_owned()));
     }
     Ok(parts.join("/"))
+}
+
+fn decryption_order(
+    specs: &[(String, Option<String>, String, String)],
+) -> Result<Vec<usize>, OfdError> {
+    if specs.len() == 1 {
+        return Ok(vec![0]);
+    }
+    let mut by_id = HashMap::new();
+    for (index, (id, _, _, _)) in specs.iter().enumerate() {
+        if by_id.insert(id.as_str(), index).is_some() {
+            return Err(OfdError::InvalidStructure(format!(
+                "EncryptInfo ID 重复: {id}"
+            )));
+        }
+    }
+    let referenced: HashSet<&str> = specs
+        .iter()
+        .filter_map(|(_, relative, _, _)| relative.as_deref())
+        .collect();
+    let heads: Vec<usize> = specs
+        .iter()
+        .enumerate()
+        .filter(|(_, (id, _, _, _))| !referenced.contains(id.as_str()))
+        .map(|(index, _)| index)
+        .collect();
+    if heads.len() != 1 {
+        return Err(OfdError::Crypto(
+            "多重加密缺少唯一的最新 EncryptInfo 或 Relative 链".to_owned(),
+        ));
+    }
+
+    let mut order = Vec::with_capacity(specs.len());
+    let mut seen = HashSet::new();
+    let mut current = heads[0];
+    loop {
+        if !seen.insert(current) {
+            return Err(OfdError::Crypto("多重加密 Relative 链存在环".to_owned()));
+        }
+        order.push(current);
+        let Some(relative) = specs[current].1.as_deref() else {
+            break;
+        };
+        current = *by_id.get(relative).ok_or_else(|| {
+            OfdError::InvalidStructure(format!("Relative 指向不存在的 EncryptInfo: {relative}"))
+        })?;
+    }
+    if order.len() != specs.len() {
+        return Err(OfdError::Crypto("多重加密 Relative 链不完整".to_owned()));
+    }
+    Ok(order)
 }
