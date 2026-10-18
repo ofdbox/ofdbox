@@ -10,6 +10,7 @@ publish = false
 [dependencies]
 base64.workspace = true
 cbc.workspace = true
+cms.workspace = true
 ofdbox-core = { path = "../ofdbox-core" }
 der.workspace = true
 sm2.workspace = true

@@ -20,6 +20,7 @@ mod error;
 mod kdf;
 mod password;
 mod signature;
+mod signed_data;
 
 pub use backend::{CERTIFICATE_CASE_ID, CertificateBackend, PASSWORD_CASE_ID, PasswordBackend};
 pub use certificate::{
@@ -36,3 +37,4 @@ pub use password::{
     FILE_KEY_LEN, PASSWORD_KEK_LEN, derive_password_kek, unwrap_file_key, wrap_file_key,
 };
 pub use signature::{DEFAULT_DIST_ID, sign_sm3, verify_sm3};
+pub use signed_data::{Sm2SignedDataVerifier, verify_signed_data};

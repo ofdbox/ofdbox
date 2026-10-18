@@ -11,7 +11,7 @@ OFDBox 是一个用 Rust 实现的 OFD 文档处理库。项目目标是覆盖 O
 | 基本结构读取/写入 | 已完成 | GB/T 33190—2016 全部根文件和具名复杂类型；宽松解析、严格校验、规范化写出；按需读取与缓存 |
 | GM/T 0099 描述结构 | 已完成 | 签名扩展、`Encryptions.xml`、`DecryptSeed`、`EncryptedEntries`、`OFDEntries.xml` 已解析/写出 |
 | 文档加密/解密 | 已完成（结构层） | 口令/证书、单层与多重懒解密、加密写出、流式解密；密钥内存在 drop 时擦除 |
-| 签章/验签 | 部分完成 | 签名结构、References 摘要校验、SM2DSA 原语和验签注入点已实现；GB/T 35275 默认 SignedData 验签未实现 |
+| 签章/验签 | 已完成（结构层） | 签名结构、References 摘要校验、SM2DSA、GB/T 35275 SignedData 默认验签和自定义验签注入 |
 | 文档渲染 | 未开始 | 页面、图元、字体和颜色尚未绘制到输出设备 |
 | 格式转换 | 未开始 | 规划 OFD ↔ PDF、OFD ↔ 图片 |
 | 文档生成 | 未开始 | 规划由结构化数据自动排版生成 OFD/PDF |
@@ -41,7 +41,7 @@ OFDBox 是一个用 Rust 实现的 OFD 文档处理库。项目目标是覆盖 O
 | crate | 状态 | 职责 |
 | --- | --- | --- |
 | `ofdbox-core` | 已实现 | 容器、XML 语法树、类型化视图、严格写出、缓存、透明解密会话 |
-| `ofdbox-crypto` | 已实现（部分） | SM3-KDF、SM4-CBC、SM2 加解密/签名、口令/证书后端、方案注册表、加密写出；SignedData 验签未实现 |
+| `ofdbox-crypto` | 已实现 | SM3-KDF、SM4-CBC、SM2 加解密/签名、口令/证书后端、方案注册表、加密写出、SignedData 验签 |
 | `ofdbox-render` | 规划 | 页面布局与绘制、图片/PDF 输出后端 |
 | `ofdbox-convert` | 规划 | OFD ↔ PDF、OFD ↔ 图片 |
 | `ofdbox-generate` | 规划 | 结构化数据 → 布局 → OFD/PDF |
@@ -122,7 +122,7 @@ cargo test
 | 阶段 | 内容 | 状态 |
 | --- | --- | --- |
 | M0 | 2016 结构读写、0099 描述结构、缓存、WASM 编译 | 已完成 |
-| M1 | SM2/SM3/SM4、解密、加密写出、References 校验 | 已实现；GB/T 35275 默认验签待合规样本 |
+| M1 | SM2/SM3/SM4、解密、加密写出、References 校验、SignedData 验签 | 已完成（合成 SignedData 验证） |
 | M2 | 页面渲染、图片导出、PDF 导出 | 规划 |
 | M3 | OFD ↔ PDF、OFD ↔ 图片转换 | 规划 |
 | M4 | 结构化数据布局与 OFD/PDF 生成 | 规划 |
