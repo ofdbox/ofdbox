@@ -21,4 +21,13 @@ pub enum CryptoError {
     /// 编码或 ASN.1 结构不合法。
     #[error("密码数据结构不合法")]
     InvalidEncoding,
+    /// I/O 错误。
+    #[error("I/O 错误: {0}")]
+    Io(String),
+}
+
+impl From<std::io::Error> for CryptoError {
+    fn from(error: std::io::Error) -> Self {
+        Self::Io(error.to_string())
+    }
 }

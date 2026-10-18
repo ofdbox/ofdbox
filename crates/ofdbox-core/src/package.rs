@@ -1,5 +1,5 @@
 use std::collections::{HashMap, HashSet};
-use std::io::{Cursor, Read, Seek};
+use std::io::{Cursor, Read, Seek, Write};
 use std::sync::Arc;
 
 use zip::ZipArchive;
@@ -244,6 +244,75 @@ impl OfdPackage {
         self.plain_cache
             .insert(name, Arc::clone(&plaintext), plaintext.len());
         Ok(plaintext)
+    }
+
+    /// 读取 entry 并将最终明文写入 sink，不写入明文缓存。
+    ///
+    /// 单层加密时 SM4 按块解密后写出；多层加密仍会先合并各层明文。
+    pub fn read_entry_to(&mut self, name: &str, writer: &mut impl Write) -> Result<(), OfdError> {
+        let name = normalize_entry_name(name)?;
+        if let Some(bytes) = self.plain_cache.get(&name) {
+            writer.write_all(&bytes)?;
+            return Ok(());
+        }
+        let layer = self.decryption.as_ref().and_then(|context| {
+            context
+                .operations
+                .iter()
+                .position(|operation| operation.entries.contains_key(&name))
+        });
+        let Some(start) = layer else {
+            let bytes = self.read_raw_entry(&name)?;
+            writer.write_all(&bytes)?;
+            return Ok(());
+        };
+        let (physical, first_key) = {
+            let context = self.decryption.as_ref().expect("decryption context");
+            let operation = &context.operations[start];
+            (operation.entries[&name].clone(), operation.file_key.clone())
+        };
+        let ciphertext = self.read_raw_entry(&physical)?;
+        let remaining = self
+            .decryption
+            .as_ref()
+            .expect("decryption context")
+            .operations
+            .len()
+            - start;
+        if remaining == 1 {
+            return self
+                .decryption
+                .as_ref()
+                .expect("decryption context")
+                .backend
+                .decrypt_to(&first_key, &ciphertext, writer);
+        }
+        let mut plaintext = self
+            .decryption
+            .as_ref()
+            .expect("decryption context")
+            .backend
+            .decrypt(&first_key, &ciphertext)?;
+        for operation in self
+            .decryption
+            .as_ref()
+            .expect("decryption context")
+            .operations
+            .iter()
+            .skip(start + 1)
+        {
+            if !operation.entries.contains_key(&name) {
+                break;
+            }
+            plaintext = self
+                .decryption
+                .as_ref()
+                .expect("decryption context")
+                .backend
+                .decrypt(&operation.file_key, &plaintext)?;
+        }
+        writer.write_all(&plaintext)?;
+        Ok(())
     }
 
     fn read_raw_entry(&mut self, name: &str) -> Result<Arc<[u8]>, OfdError> {

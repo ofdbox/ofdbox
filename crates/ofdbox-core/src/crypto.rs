@@ -1,3 +1,7 @@
+use std::io::Write;
+
+use zeroize::Zeroizing;
+
 use crate::error::OfdError;
 use crate::model::decrypt_seed::DecryptSeedView;
 use crate::model::encryption::EncryptInfoView;
@@ -5,8 +9,8 @@ use crate::model::encryption::EncryptInfoView;
 /// 解密出的文件加密密钥、IV 和加密方案标识。
 #[derive(Clone)]
 pub struct FileKey {
-    key: Vec<u8>,
-    iv: Vec<u8>,
+    key: Zeroizing<Vec<u8>>,
+    iv: Zeroizing<Vec<u8>>,
     scheme: Option<String>,
 }
 
@@ -14,8 +18,8 @@ impl FileKey {
     /// 创建文件密钥。
     pub fn new(key: Vec<u8>, iv: Vec<u8>) -> Self {
         Self {
-            key,
-            iv,
+            key: Zeroizing::new(key),
+            iv: Zeroizing::new(iv),
             scheme: None,
         }
     }
@@ -28,12 +32,12 @@ impl FileKey {
 
     /// 文件加密密钥。
     pub fn key(&self) -> &[u8] {
-        &self.key
+        self.key.as_slice()
     }
 
     /// 初始化向量。
     pub fn iv(&self) -> &[u8] {
-        &self.iv
+        self.iv.as_slice()
     }
 
     /// 加密方案标识。
@@ -61,6 +65,17 @@ pub trait CryptoBackend {
 
     /// 解密包内文件或明密文映射表。
     fn decrypt(&self, key: &FileKey, data: &[u8]) -> Result<Vec<u8>, OfdError>;
+
+    /// 解密并写入输出 sink；默认实现先完整解密。
+    fn decrypt_to(
+        &self,
+        key: &FileKey,
+        data: &[u8],
+        writer: &mut dyn Write,
+    ) -> Result<(), OfdError> {
+        let plaintext = self.decrypt(key, data)?;
+        writer.write_all(&plaintext).map_err(OfdError::Io)
+    }
 
     /// 计算摘要，用于校验签名 `References`。
     fn digest(&self, method: &str, _data: &[u8]) -> Result<Vec<u8>, OfdError> {

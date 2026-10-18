@@ -1,5 +1,8 @@
+use std::io::Write;
+
 use base64::Engine;
 use ofdbox_core::{CryptoBackend, DecryptSeedView, EncryptInfoView, FileKey, OfdError};
+use zeroize::Zeroizing;
 
 /// 口令方案标识。
 pub const PASSWORD_CASE_ID: &str = "1.1.1";
@@ -8,7 +11,7 @@ pub const CERTIFICATE_CASE_ID: &str = "1.1.2";
 
 /// 口令解密后端。
 pub struct PasswordBackend {
-    password: String,
+    password: Zeroizing<String>,
     username: Option<String>,
 }
 
@@ -16,7 +19,7 @@ impl PasswordBackend {
     /// 创建口令后端，匹配密钥描述文件中的第一个可解密用户。
     pub fn new(password: impl Into<String>) -> Self {
         Self {
-            password: password.into(),
+            password: Zeroizing::new(password.into()),
             username: None,
         }
     }
@@ -53,7 +56,9 @@ impl CryptoBackend for PasswordBackend {
             };
             let iv = decode_base64(iv)?;
             let wrapped = decode_base64(wrapped)?;
-            if let Ok(file_key) = crate::password::unwrap_file_key(&self.password, &iv, &wrapped) {
+            if let Ok(file_key) =
+                crate::password::unwrap_file_key(self.password.as_str(), &iv, &wrapped)
+            {
                 return Ok(FileKey::new(file_key.to_vec(), iv).with_scheme(PASSWORD_CASE_ID));
             }
         }
@@ -65,6 +70,16 @@ impl CryptoBackend for PasswordBackend {
             .map_err(|_| OfdError::Crypto("SM4 解密失败".to_owned()))
     }
 
+    fn decrypt_to(
+        &self,
+        key: &FileKey,
+        data: &[u8],
+        writer: &mut dyn Write,
+    ) -> Result<(), OfdError> {
+        crate::cipher::decrypt_cbc_to_writer(key.key(), key.iv(), data, writer)
+            .map_err(|_| OfdError::Crypto("SM4 解密失败".to_owned()))
+    }
+
     fn digest(&self, method: &str, data: &[u8]) -> Result<Vec<u8>, OfdError> {
         digest(method, data)
     }
@@ -72,7 +87,7 @@ impl CryptoBackend for PasswordBackend {
 
 /// 证书解密后端。
 pub struct CertificateBackend {
-    private_key: Vec<u8>,
+    private_key: Zeroizing<Vec<u8>>,
     username: Option<String>,
 }
 
@@ -80,7 +95,7 @@ impl CertificateBackend {
     /// 创建证书后端，私钥为 32 字节 SM2 标量。
     pub fn new(private_key: impl Into<Vec<u8>>) -> Self {
         Self {
-            private_key: private_key.into(),
+            private_key: Zeroizing::new(private_key.into()),
             username: None,
         }
     }
@@ -117,9 +132,10 @@ impl CryptoBackend for CertificateBackend {
             };
             let iv = decode_base64(iv)?;
             let wrapped = decode_base64(wrapped)?;
-            if let Ok(file_key) =
-                crate::certificate::decrypt_file_key_with_private_key(&self.private_key, &wrapped)
-            {
+            if let Ok(file_key) = crate::certificate::decrypt_file_key_with_private_key(
+                self.private_key.as_slice(),
+                &wrapped,
+            ) {
                 return Ok(FileKey::new(file_key.to_vec(), iv).with_scheme(PASSWORD_CASE_ID));
             }
         }
@@ -128,6 +144,16 @@ impl CryptoBackend for CertificateBackend {
 
     fn decrypt(&self, key: &FileKey, data: &[u8]) -> Result<Vec<u8>, OfdError> {
         crate::cipher::decrypt_cbc(key.key(), key.iv(), data)
+            .map_err(|_| OfdError::Crypto("SM4 解密失败".to_owned()))
+    }
+
+    fn decrypt_to(
+        &self,
+        key: &FileKey,
+        data: &[u8],
+        writer: &mut dyn Write,
+    ) -> Result<(), OfdError> {
+        crate::cipher::decrypt_cbc_to_writer(key.key(), key.iv(), data, writer)
             .map_err(|_| OfdError::Crypto("SM4 解密失败".to_owned()))
     }
 

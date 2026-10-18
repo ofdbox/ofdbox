@@ -382,6 +382,7 @@ dependencies = [
  "quick-xml",
  "tempfile",
  "thiserror",
+ "zeroize",
  "zip",
 ]
 

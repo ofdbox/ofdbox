@@ -12,6 +12,7 @@ base64.workspace = true
 quick-xml.workspace = true
 thiserror.workspace = true
 zip.workspace = true
+zeroize.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

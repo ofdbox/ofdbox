@@ -48,6 +48,14 @@ fn decrypts_hello_enc_document_lazily() {
         .parse_page_for(&page)
         .expect("decrypted Content.xml");
 
+    package.clear_cache();
+    let mut streamed = Vec::new();
+    package
+        .read_entry_to("Doc_0/Document.xml", &mut streamed)
+        .expect("streamed read");
+    assert!(streamed.starts_with(b"<?xml"));
+    assert_eq!(package.cache_stats().plain_bytes, 0);
+
     let names = package.entry_names().expect("entry names");
     assert!(names.iter().any(|name| name == "OFD.xml"));
     assert!(names.iter().any(|name| name == "Doc_0/Document.xml"));
