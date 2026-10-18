@@ -32,10 +32,17 @@ pub use model::color::{
     RadialShdView, SegmentView,
 };
 pub use model::custom_tags::{CustomTagView, CustomTagsView};
+pub use model::decrypt_seed::{
+    DecryptSeedView, DecryptUserView, ExtendParameterView, ExtendParamsView,
+};
 pub use model::document::{
     BookmarkView, BookmarksView, CommonDataView, DestView, DocumentView, PageAreaView, PageView,
     PagesView, PermissionsView, PrintView, TemplatePageView, VPreferencesView, ValidPeriodView,
 };
+pub use model::encryption::{
+    EncryptInfoView, EncryptionParameterView, EncryptionProviderView, EncryptionsView,
+};
+pub use model::entries_map::{EncryptEntryView, EncryptedEntriesView};
 pub use model::extensions::{DataView, ExtensionView, ExtensionsView, PropertyView};
 pub use model::ofd::{
     CustomDataView, DocBodyView, DocInfoView, OfdRootView, VersionView, VersionsView,
@@ -52,8 +59,8 @@ pub use model::res::{
     MultiMediaView, ResView,
 };
 pub use model::signature::{
-    ProviderView, ReferenceView, ReferencesView, SealView, SignatureEntryView, SignatureView,
-    SignaturesView, SignedInfoView, StampAnnotView,
+    ProviderView, ReferenceView, ReferencesView, SealView, SignatureEntryView,
+    SignatureParameterView, SignatureView, SignaturesView, SignedInfoView, StampAnnotView,
 };
 pub use model::version::{DocVersionView, VersionFileView};
 pub use options::{CacheOptions, ReadOptions};

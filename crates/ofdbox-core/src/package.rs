@@ -8,7 +8,10 @@ use crate::error::OfdError;
 use crate::model::annotation::{AnnotationsView, PageAnnotView};
 use crate::model::attachment::AttachmentsView;
 use crate::model::custom_tags::CustomTagsView;
+use crate::model::decrypt_seed::DecryptSeedView;
 use crate::model::document::{DocumentView, PageView};
+use crate::model::encryption::EncryptionsView;
+use crate::model::entries_map::EncryptedEntriesView;
 use crate::model::extensions::ExtensionsView;
 use crate::model::ofd::OfdRootView;
 use crate::model::page::PageContentView;
@@ -473,6 +476,53 @@ impl OfdPackage {
         self.xml_cache
             .insert(key, Arc::clone(&doc), doc.estimated_size());
         DocVersionView::from_document(doc, self.options)
+    }
+
+    /// 解析包根目录下的解密入口 `Encryptions.xml`。
+    pub fn parse_encryptions(&mut self) -> Result<EncryptionsView, OfdError> {
+        let entry = resolve_loc("", "Encryptions.xml")?;
+        let key = (entry.clone(), self.options.strict);
+        if let Some(doc) = self.xml_cache.get(&key) {
+            return EncryptionsView::from_document(doc, self.options);
+        }
+
+        let bytes = self.read_entry(&entry)?;
+        let doc = Arc::new(parse_xml(&bytes, self.options)?);
+        self.xml_cache
+            .insert(key, Arc::clone(&doc), doc.estimated_size());
+        EncryptionsView::from_document(doc, self.options)
+    }
+
+    /// 解析密钥描述文件，路径相对于包根。
+    pub fn parse_decrypt_seed(&mut self, loc: &str) -> Result<DecryptSeedView, OfdError> {
+        let entry = resolve_loc("", loc)?;
+        let key = (entry.clone(), self.options.strict);
+        if let Some(doc) = self.xml_cache.get(&key) {
+            return DecryptSeedView::from_document(doc, self.options);
+        }
+
+        let bytes = self.read_entry(&entry)?;
+        let doc = Arc::new(parse_xml(&bytes, self.options)?);
+        self.xml_cache
+            .insert(key, Arc::clone(&doc), doc.estimated_size());
+        DecryptSeedView::from_document(doc, self.options)
+    }
+
+    /// 解析未加密的明密文映射表，路径相对于包根。
+    ///
+    /// `entriesmap.dat` 可能是加密二进制，需先解密后再调用本方法。
+    pub fn parse_entries_map(&mut self, loc: &str) -> Result<EncryptedEntriesView, OfdError> {
+        let entry = resolve_loc("", loc)?;
+        let key = (entry.clone(), self.options.strict);
+        if let Some(doc) = self.xml_cache.get(&key) {
+            return EncryptedEntriesView::from_document(doc, self.options);
+        }
+
+        let bytes = self.read_entry(&entry)?;
+        let doc = Arc::new(parse_xml(&bytes, self.options)?);
+        self.xml_cache
+            .insert(key, Arc::clone(&doc), doc.estimated_size());
+        EncryptedEntriesView::from_document(doc, self.options)
     }
 
     fn parse_signature_entry(&mut self, entry: String) -> Result<SignatureView, OfdError> {

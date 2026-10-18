@@ -569,6 +569,46 @@ pub(crate) fn check_attributes(
     }
 }
 
+/// 校验子元素集合，不要求顺序。适用于标准正文没有给出 `xs:sequence` 的结构。
+pub(crate) fn check_children_unordered(
+    doc: &XmlDocument,
+    node: NodeId,
+    allowed: &[&str],
+    required: &[&str],
+    repeated: &[&str],
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    let mut seen = HashSet::new();
+    for child in doc.element_children(node) {
+        check_namespace(doc, child, diagnostics);
+        let name = doc.name(child).local.as_str();
+        if !allowed.contains(&name) {
+            diagnostics.push(Diagnostic::new(
+                DiagnosticCode::UnexpectedElement,
+                doc.path(child),
+                "元素不在允许范围内",
+            ));
+            continue;
+        }
+        if !seen.insert(name) && !repeated.contains(&name) {
+            diagnostics.push(Diagnostic::new(
+                DiagnosticCode::DuplicateElement,
+                doc.path(child),
+                "单值元素重复出现",
+            ));
+        }
+    }
+    for name in required {
+        if !seen.contains(name) {
+            diagnostics.push(Diagnostic::new(
+                DiagnosticCode::MissingRequired,
+                format!("{}/{}", doc.path(node), name),
+                "缺少必选元素",
+            ));
+        }
+    }
+}
+
 pub(crate) fn check_children_order(
     doc: &XmlDocument,
     node: NodeId,

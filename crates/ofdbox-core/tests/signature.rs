@@ -160,7 +160,7 @@ fn missing_provider_name_is_strict_error() {
 
 #[test]
 fn unknown_check_method_is_strict_error() {
-    let unknown = SIGNATURE.replace(r#"CheckMethod="SHA1""#, r#"CheckMethod="SM3""#);
+    let unknown = SIGNATURE.replace(r#"CheckMethod="SHA1""#, r#"CheckMethod="SHA256""#);
     assert!(parse_signature(&unknown, ReadOptions::LENIENT).is_ok());
     match parse_signature(&unknown, ReadOptions::STRICT) {
         Err(OfdError::Conformance(diagnostics)) => {
@@ -216,4 +216,74 @@ fn package_resolves_signatures_and_signature() {
             .provider_name(),
         Some("ExampleProvider")
     );
+}
+
+const SIGNATURE_0099: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<ofd:Signature xmlns:ofd="http://www.ofdspec.org/2016">
+  <ofd:SignedValue>Signs/Sign_0/SignedValue.dat</ofd:SignedValue>
+  <ofd:SignedInfo>
+    <ofd:Provider ProviderName="Provider" Company="Example" Version="1.0" ProtocolVer="2.0">
+      <ofd:ExtendData>AAAA</ofd:ExtendData>
+    </ofd:Provider>
+    <ofd:SignatureDateTime>2024-01-02T03:04:05Z</ofd:SignatureDateTime>
+    <ofd:SignatureMethod>SM2-SM3</ofd:SignatureMethod>
+    <ofd:Parameters>
+      <ofd:Parameter Name="role" Type="string">owner</ofd:Parameter>
+    </ofd:Parameters>
+    <ofd:Seal>
+      <ofd:BaseLoc>Signs/Seal.esl</ofd:BaseLoc>
+      <ofd:ImageLoc>Signs/Seal.png</ofd:ImageLoc>
+    </ofd:Seal>
+    <ofd:StampAnnot ID="s2" PageRef="10" Boundary="0 0 100 50"/>
+    <ofd:References CheckMethod="SM3">
+      <ofd:Reference FileRef="/OFD.xml"><ofd:CheckValue>AAAA</ofd:CheckValue></ofd:Reference>
+    </ofd:References>
+  </ofd:SignedInfo>
+</ofd:Signature>"#;
+
+#[test]
+fn signature_0099_extensions_parse_and_roundtrip() {
+    for options in [ReadOptions::LENIENT, ReadOptions::STRICT] {
+        let view = parse_signature(SIGNATURE_0099, options).expect("0099 signature");
+        let info = view.signed_info().unwrap();
+        let provider = info.provider().unwrap();
+        assert_eq!(provider.protocol_version(), Some("2.0"));
+        assert_eq!(provider.extend_data(), Some("AAAA"));
+        let parameter = info.parameters().next().expect("Parameter");
+        assert_eq!(parameter.name(), Some("role"));
+        assert_eq!(parameter.value_type(), Some("string"));
+        assert_eq!(parameter.value(), "owner");
+        let seal = info.seal().unwrap();
+        assert_eq!(seal.base_loc(), Some("Signs/Seal.esl"));
+        assert_eq!(seal.image_loc(), Some("Signs/Seal.png"));
+        assert_eq!(info.references().unwrap().check_method(), Some("SM3"));
+    }
+
+    let view = parse_signature(SIGNATURE_0099, ReadOptions::LENIENT).unwrap();
+    let xml = view.to_xml().expect("strict writer");
+    assert!(xml.contains(r#"ProtocolVer="2.0""#));
+    assert!(xml.contains("<ofd:ExtendData>AAAA</ofd:ExtendData>"));
+    assert!(xml.contains(r#"<ofd:Parameter Name="role" Type="string">owner</ofd:Parameter>"#));
+    assert!(xml.contains("<ofd:ImageLoc>Signs/Seal.png</ofd:ImageLoc>"));
+    assert!(xml.contains(r#"CheckMethod="SM3""#));
+    let reparsed =
+        SignatureView::from_xml(xml.as_bytes(), ReadOptions::STRICT).expect("strict reparse");
+    assert_eq!(
+        reparsed
+            .signed_info()
+            .unwrap()
+            .provider()
+            .unwrap()
+            .protocol_version(),
+        Some("2.0")
+    );
+}
+
+#[test]
+fn signatures_index_relative_is_parsed() {
+    let with_relative = SIGNATURES.replace(r#"ID="s1""#, r#"ID="s1" Relative="s0""#);
+    let view = parse_signatures(&with_relative, ReadOptions::STRICT).expect("Relative");
+    assert_eq!(view.signatures().next().unwrap().relative(), Some("s0"));
+    let xml = view.to_xml().expect("strict writer");
+    assert!(xml.contains(r#"Relative="s0""#));
 }

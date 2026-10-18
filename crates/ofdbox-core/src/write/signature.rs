@@ -31,6 +31,9 @@ pub(crate) fn write_signatures(signatures: &SignaturesView) -> Result<String, Of
         if let Some(signature_type) = signature.signature_type() {
             attributes.push(("Type", signature_type));
         }
+        if let Some(relative) = signature.relative() {
+            attributes.push(("Relative", relative));
+        }
         attributes.push(("BaseLoc", base_loc));
         write_start(&mut writer, "ofd:Signature", &attributes)?;
         writer.write_event(Event::End(BytesEnd::new("ofd:Signature")))?;
@@ -74,13 +77,19 @@ fn write_signed_info(writer: &mut Writer<Vec<u8>>, info: &SignedInfoView) -> Res
         .provider_name()
         .ok_or_else(|| missing("/SignedInfo/Provider/@ProviderName", "缺少 ProviderName"))?;
     let mut attributes = vec![("ProviderName", provider_name)];
-    if let Some(version) = provider.version() {
-        attributes.push(("Version", version));
-    }
     if let Some(company) = provider.company() {
         attributes.push(("Company", company));
     }
+    if let Some(version) = provider.version() {
+        attributes.push(("Version", version));
+    }
+    if let Some(protocol_version) = provider.protocol_version() {
+        attributes.push(("ProtocolVer", protocol_version));
+    }
     write_start(writer, "ofd:Provider", &attributes)?;
+    if let Some(extend_data) = provider.extend_data() {
+        write_text_element(writer, "ofd:ExtendData", extend_data)?;
+    }
     writer.write_event(Event::End(BytesEnd::new("ofd:Provider")))?;
 
     if let Some(method) = info.signature_method() {
@@ -88,6 +97,27 @@ fn write_signed_info(writer: &mut Writer<Vec<u8>>, info: &SignedInfoView) -> Res
     }
     if let Some(date_time) = info.signature_date_time() {
         write_text_element(writer, "ofd:SignatureDateTime", date_time)?;
+    }
+    let parameters: Vec<_> = info.parameters().collect();
+    if !parameters.is_empty() {
+        write_start(writer, "ofd:Parameters", &[])?;
+        for parameter in parameters {
+            let name = parameter
+                .name()
+                .ok_or_else(|| missing("/SignedInfo/Parameters/Parameter/@Name", "缺少 Name"))?;
+            let mut attributes = vec![("Name", name)];
+            if let Some(value_type) = parameter.value_type() {
+                attributes.push(("Type", value_type));
+            }
+            write_start(writer, "ofd:Parameter", &attributes)?;
+            if !parameter.value().is_empty() {
+                writer.write_event(Event::Text(quick_xml::events::BytesText::new(
+                    parameter.value(),
+                )))?;
+            }
+            writer.write_event(Event::End(BytesEnd::new("ofd:Parameter")))?;
+        }
+        writer.write_event(Event::End(BytesEnd::new("ofd:Parameters")))?;
     }
 
     let references = info
@@ -108,10 +138,12 @@ fn write_signed_info(writer: &mut Writer<Vec<u8>>, info: &SignedInfoView) -> Res
     }
     if let Some(seal) = info.seal() {
         write_start(writer, "ofd:Seal", &[])?;
-        let base_loc = seal
-            .base_loc()
-            .ok_or_else(|| missing("/SignedInfo/Seal/BaseLoc", "缺少 Seal BaseLoc"))?;
-        write_text_element(writer, "ofd:BaseLoc", base_loc)?;
+        if let Some(base_loc) = seal.base_loc() {
+            write_text_element(writer, "ofd:BaseLoc", base_loc)?;
+        }
+        if let Some(image_loc) = seal.image_loc() {
+            write_text_element(writer, "ofd:ImageLoc", image_loc)?;
+        }
         writer.write_event(Event::End(BytesEnd::new("ofd:Seal")))?;
     }
 

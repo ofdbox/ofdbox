@@ -2,14 +2,15 @@ use std::sync::Arc;
 
 use crate::error::{Diagnostic, DiagnosticCode, OfdError};
 use crate::model::ofd::{
-    check_attributes, check_children_order, check_namespace, validate_text_element,
+    check_attributes, check_children_order, check_children_unordered, check_namespace,
+    validate_text_element,
 };
 use crate::options::ReadOptions;
 use crate::xml::parser::parse_xml;
 use crate::xml::tree::{NodeId, XmlDocument};
 
 const SIGNATURE_TYPES: &[&str] = &["Seal", "Sign"];
-const CHECK_METHODS: &[&str] = &["MD5", "SHA1"];
+const CHECK_METHODS: &[&str] = &["MD5", "SHA1", "SM3"];
 
 /// 签名列表文件的类型化视图。
 #[derive(Debug, Clone)]
@@ -114,6 +115,11 @@ impl SignatureEntryView {
         self.doc.attribute(self.node, "Type")
     }
 
+    /// 本次签名基于的签名标识（0099 新增）。
+    pub fn relative(&self) -> Option<&str> {
+        self.doc.attribute(self.node, "Relative")
+    }
+
     /// 签名描述文件路径。
     pub fn base_loc(&self) -> Option<&str> {
         self.doc.attribute(self.node, "BaseLoc")
@@ -181,7 +187,7 @@ impl SignatureView {
         let mut diagnostics = Vec::new();
         check_namespace(&self.doc, self.node, &mut diagnostics);
         check_attributes(&self.doc, self.node, &[], &[], &mut diagnostics);
-        check_children_order(
+        check_children_unordered(
             &self.doc,
             self.node,
             &["SignedInfo", "SignedValue"],
@@ -253,6 +259,20 @@ impl SignedInfoView {
             .into_iter()
     }
 
+    /// 签名扩展属性（0099 新增）。
+    pub fn parameters(&self) -> impl Iterator<Item = SignatureParameterView> {
+        let mut values = Vec::new();
+        if let Some(parameters) = self.doc.find_child(self.node, "Parameters") {
+            for node in self.doc.children_named(parameters, "Parameter") {
+                values.push(SignatureParameterView {
+                    doc: Arc::clone(&self.doc),
+                    node,
+                });
+            }
+        }
+        values.into_iter()
+    }
+
     /// 电子印章信息。
     pub fn seal(&self) -> Option<SealView> {
         self.doc.find_child(self.node, "Seal").map(|node| SealView {
@@ -289,6 +309,42 @@ impl ProviderView {
     /// 提供者制造商。
     pub fn company(&self) -> Option<&str> {
         self.doc.attribute(self.node, "Company")
+    }
+
+    /// 接口协议版本（0099 新增）。
+    pub fn protocol_version(&self) -> Option<&str> {
+        self.doc.attribute(self.node, "ProtocolVer")
+    }
+
+    /// 组件扩展信息（0099 新增）。
+    pub fn extend_data(&self) -> Option<&str> {
+        self.doc
+            .find_child(self.node, "ExtendData")
+            .map(|node| self.doc.text(node).trim())
+    }
+}
+
+/// 签名扩展属性的视图。
+#[derive(Debug, Clone)]
+pub struct SignatureParameterView {
+    doc: Arc<XmlDocument>,
+    node: NodeId,
+}
+
+impl SignatureParameterView {
+    /// 属性名称。
+    pub fn name(&self) -> Option<&str> {
+        self.doc.attribute(self.node, "Name")
+    }
+
+    /// 属性值类型。
+    pub fn value_type(&self) -> Option<&str> {
+        self.doc.attribute(self.node, "Type")
+    }
+
+    /// 属性值。
+    pub fn value(&self) -> &str {
+        self.doc.text(self.node).trim()
     }
 }
 
@@ -383,6 +439,13 @@ impl SealView {
             .find_child(self.node, "BaseLoc")
             .map(|node| self.doc.text(node).trim())
     }
+
+    /// 印模图片位置（0099 新增）。
+    pub fn image_loc(&self) -> Option<&str> {
+        self.doc
+            .find_child(self.node, "ImageLoc")
+            .map(|node| self.doc.text(node).trim())
+    }
 }
 
 fn validate_signature_entry(doc: &XmlDocument, node: NodeId, diagnostics: &mut Vec<Diagnostic>) {
@@ -390,7 +453,7 @@ fn validate_signature_entry(doc: &XmlDocument, node: NodeId, diagnostics: &mut V
     check_attributes(
         doc,
         node,
-        &["ID", "Type", "BaseLoc"],
+        &["ID", "Type", "Relative", "BaseLoc"],
         &["ID", "BaseLoc"],
         diagnostics,
     );
@@ -409,13 +472,14 @@ fn validate_signature_entry(doc: &XmlDocument, node: NodeId, diagnostics: &mut V
 fn validate_signed_info(doc: &XmlDocument, node: NodeId, diagnostics: &mut Vec<Diagnostic>) {
     check_namespace(doc, node, diagnostics);
     check_attributes(doc, node, &[], &[], diagnostics);
-    check_children_order(
+    check_children_unordered(
         doc,
         node,
         &[
             "Provider",
             "SignatureMethod",
             "SignatureDateTime",
+            "Parameters",
             "References",
             "StampAnnot",
             "Seal",
@@ -431,6 +495,9 @@ fn validate_signed_info(doc: &XmlDocument, node: NodeId, diagnostics: &mut Vec<D
         if let Some(child) = doc.find_child(node, name) {
             validate_text_element(doc, child, false, diagnostics);
         }
+    }
+    if let Some(parameters) = doc.find_child(node, "Parameters") {
+        validate_parameters(doc, parameters, diagnostics);
     }
     if let Some(references) = doc.find_child(node, "References") {
         validate_references(doc, references, diagnostics);
@@ -448,11 +515,32 @@ fn validate_provider(doc: &XmlDocument, node: NodeId, diagnostics: &mut Vec<Diag
     check_attributes(
         doc,
         node,
-        &["ProviderName", "Version", "Company"],
+        &["ProviderName", "Version", "Company", "ProtocolVer"],
         &["ProviderName"],
         diagnostics,
     );
-    check_children_order(doc, node, &[], &[], &[], diagnostics);
+    check_children_unordered(doc, node, &["ExtendData"], &[], &[], diagnostics);
+    if let Some(extend_data) = doc.find_child(node, "ExtendData") {
+        validate_text_element(doc, extend_data, false, diagnostics);
+    }
+}
+
+fn validate_parameters(doc: &XmlDocument, node: NodeId, diagnostics: &mut Vec<Diagnostic>) {
+    check_namespace(doc, node, diagnostics);
+    check_attributes(doc, node, &[], &[], diagnostics);
+    check_children_unordered(
+        doc,
+        node,
+        &["Parameter"],
+        &["Parameter"],
+        &["Parameter"],
+        diagnostics,
+    );
+    for parameter in doc.children_named(node, "Parameter") {
+        check_namespace(doc, parameter, diagnostics);
+        check_attributes(doc, parameter, &["Name", "Type"], &["Name"], diagnostics);
+        validate_text_element(doc, parameter, false, diagnostics);
+    }
 }
 
 fn validate_references(doc: &XmlDocument, node: NodeId, diagnostics: &mut Vec<Diagnostic>) {
@@ -511,8 +599,10 @@ fn validate_stamp_annot(doc: &XmlDocument, node: NodeId, diagnostics: &mut Vec<D
 fn validate_seal(doc: &XmlDocument, node: NodeId, diagnostics: &mut Vec<Diagnostic>) {
     check_namespace(doc, node, diagnostics);
     check_attributes(doc, node, &[], &[], diagnostics);
-    check_children_order(doc, node, &["BaseLoc"], &["BaseLoc"], &[], diagnostics);
-    if let Some(base_loc) = doc.find_child(node, "BaseLoc") {
-        validate_text_element(doc, base_loc, true, diagnostics);
+    check_children_unordered(doc, node, &["BaseLoc", "ImageLoc"], &[], &[], diagnostics);
+    for name in ["BaseLoc", "ImageLoc"] {
+        if let Some(child) = doc.find_child(node, name) {
+            validate_text_element(doc, child, true, diagnostics);
+        }
     }
 }
