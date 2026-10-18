@@ -624,6 +624,25 @@ impl OfdPackage {
         self.parse_signature_entry(entry)
     }
 
+    /// 按需读取签名描述引用的电子印章文件。
+    ///
+    /// 只有需要显示或验证印章时才应调用；普通内容解析不会读取该文件。
+    /// `Seal/BaseLoc` 相对于签名描述文件所在目录解析。
+    pub fn read_seal_bytes(&mut self, signature: &SignatureView) -> Result<Arc<[u8]>, OfdError> {
+        let base_loc = signature
+            .signed_info()
+            .and_then(|info| info.seal())
+            .and_then(|seal| seal.base_loc().map(str::to_owned))
+            .ok_or_else(|| OfdError::InvalidStructure("签名描述未声明印章文件".to_owned()))?;
+        let entry = self
+            .signature_entry
+            .clone()
+            .ok_or_else(|| OfdError::InvalidStructure("尚未解析 Signature.xml".to_owned()))?;
+        let base = parent_dir(&entry)
+            .ok_or_else(|| OfdError::InvalidStructure("无法解析印章文件路径".to_owned()))?;
+        self.read_entry(&resolve_loc(base, &base_loc)?)
+    }
+
     fn parse_signatures_entry(&mut self, entry: String) -> Result<SignaturesView, OfdError> {
         let key = (entry.clone(), self.options.strict);
         if let Some(doc) = self.xml_cache.get(&key) {

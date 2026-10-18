@@ -1,0 +1,15 @@
+[package]
+name = "ofdbox-seal"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "电子印章结构的格式识别与解析。"
+publish = false
+
+[dependencies]
+
+[dev-dependencies]
+dotenvy.workspace = true
+ofdbox-core = { path = "../ofdbox-core" }
+zip.workspace = true
