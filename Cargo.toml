@@ -1,0 +1,15 @@
+[workspace]
+resolver = "3"
+members = ["crates/ofdbox-core"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+
+[workspace.dependencies]
+quick-xml = "0.42"
+thiserror = "2"
+zip = { version = "9", default-features = false, features = ["deflate-flate2-zlib-rs"] }
+tempfile = "3"
+dotenvy = "0.15"

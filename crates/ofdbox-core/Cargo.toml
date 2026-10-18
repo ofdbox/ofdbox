@@ -1,0 +1,16 @@
+[package]
+name = "ofdbox-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "OFD 容器读取、OFD.xml 解析与严格序列化。"
+publish = false
+
+[dependencies]
+quick-xml.workspace = true
+thiserror.workspace = true
+zip.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+dotenvy.workspace = true
