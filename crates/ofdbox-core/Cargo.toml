@@ -3,7 +3,8 @@ name = "ofdbox-core"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-description = "OFD 容器读取、OFD.xml 解析与严格序列化。"
+license.workspace = true
+description = "OFD 文档结构读取、解析与严格序列化。"
 publish = false
 
 [dependencies]
