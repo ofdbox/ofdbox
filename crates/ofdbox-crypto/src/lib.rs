@@ -36,5 +36,5 @@ pub use kdf::sm3_kdf;
 pub use password::{
     FILE_KEY_LEN, PASSWORD_KEK_LEN, derive_password_kek, unwrap_file_key, wrap_file_key,
 };
-pub use signature::{DEFAULT_DIST_ID, sign_sm3, verify_sm3};
+pub use signature::{DEFAULT_DIST_ID, sign_sm3, verify_sm3, verify_sm3_raw};
 pub use signed_data::{Sm2SignedDataVerifier, verify_signed_data};

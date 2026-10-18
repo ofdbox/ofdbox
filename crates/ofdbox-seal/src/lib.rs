@@ -13,10 +13,15 @@ mod der;
 mod error;
 mod fingerprint;
 mod seal;
+mod verify;
 
 pub use error::SealError;
 pub use fingerprint::{OuterSignatureShape, SealFingerprint, SealFormat, TimeType};
 pub use seal::{
     SealDisplay, SealHeader, SealPicture, SealProperty, fingerprint_seal, identify_seal_format,
     parse_seal_for_display,
+};
+pub use verify::{
+    SM2_SM3_SIGNATURE_OID, SealVerification, SealVerifyOptions, verify_seal,
+    verify_seal_with_options,
 };

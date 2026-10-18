@@ -20,6 +20,7 @@ pub(crate) struct Tlv<'a> {
     pub(crate) tag: u8,
     pub(crate) constructed: bool,
     pub(crate) value: &'a [u8],
+    pub(crate) full: &'a [u8],
 }
 
 impl<'a> Tlv<'a> {
@@ -123,9 +124,37 @@ pub(crate) fn parse_tlv(
             tag,
             constructed,
             value: &input[cursor..value_end],
+            full: &input[offset..value_end],
         },
         value_end,
     ))
+}
+
+pub(crate) fn bit_string_content(tlv: Tlv<'_>) -> Option<&[u8]> {
+    if tlv.tag != TAG_BIT_STRING || tlv.value.is_empty() || tlv.value[0] != 0 {
+        return None;
+    }
+    Some(&tlv.value[1..])
+}
+
+/// 按 DER 规则编码一个单字节标签的 TLV。
+pub(crate) fn wrap(tag: u8, value: &[u8]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(value.len() + 9);
+    out.push(tag);
+    write_length(&mut out, value.len());
+    out.extend_from_slice(value);
+    out
+}
+
+fn write_length(out: &mut Vec<u8>, length: usize) {
+    if length < 0x80 {
+        out.push(length as u8);
+        return;
+    }
+    let bytes = (length as u64).to_be_bytes();
+    let start = bytes.iter().position(|&byte| byte != 0).unwrap_or(7);
+    out.push(0x80 | (bytes.len() - start) as u8);
+    out.extend_from_slice(&bytes[start..]);
 }
 
 pub(crate) fn parse_root(input: &[u8]) -> Result<Tlv<'_>, SealError> {

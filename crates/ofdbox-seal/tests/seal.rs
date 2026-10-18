@@ -1,147 +1,15 @@
 use std::fs;
-use std::io::{Cursor, Write};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use ofdbox_core::{OfdPackage, ReadOptions};
 use ofdbox_seal::{
     OuterSignatureShape, SealError, SealFormat, TimeType, fingerprint_seal, identify_seal_format,
     parse_seal_for_display,
 };
-use zip::ZipWriter;
-use zip::write::SimpleFileOptions;
 
-const PNG: &[u8] = b"\x89PNG\r\n\x1a\nfictional-seal-image";
-const OID_SM2_SM3: &[u8] = &[42, 0x81, 0x1c, 0xcf, 0x55, 0x01, 0x83, 0x75];
+mod common;
 
-fn tlv(tag: u8, value: &[u8]) -> Vec<u8> {
-    let mut out = vec![tag];
-    let length = value.len();
-    if length < 0x80 {
-        out.push(length as u8);
-    } else {
-        let bytes = (length as u32).to_be_bytes();
-        let start = bytes.iter().position(|&byte| byte != 0).unwrap();
-        out.push(0x80 | (bytes.len() - start) as u8);
-        out.extend_from_slice(&bytes[start..]);
-    }
-    out.extend_from_slice(value);
-    out
-}
-
-fn seq(items: &[Vec<u8>]) -> Vec<u8> {
-    tlv(0x30, &items.concat())
-}
-
-fn integer(value: i64) -> Vec<u8> {
-    let bytes = value.to_be_bytes();
-    let mut start = 0;
-    while start + 1 < bytes.len()
-        && ((bytes[start] == 0 && bytes[start + 1] & 0x80 == 0)
-            || (bytes[start] == 0xff && bytes[start + 1] & 0x80 != 0))
-    {
-        start += 1;
-    }
-    tlv(0x02, &bytes[start..])
-}
-
-fn ia5(value: &str) -> Vec<u8> {
-    tlv(0x16, value.as_bytes())
-}
-
-fn utf8(value: &str) -> Vec<u8> {
-    tlv(0x0c, value.as_bytes())
-}
-
-fn octets(value: &[u8]) -> Vec<u8> {
-    tlv(0x04, value)
-}
-
-fn oid(value: &[u8]) -> Vec<u8> {
-    tlv(0x06, value)
-}
-
-fn bit_string(value: &[u8]) -> Vec<u8> {
-    let mut content = vec![0];
-    content.extend_from_slice(value);
-    tlv(0x03, &content)
-}
-
-fn utc(value: &str) -> Vec<u8> {
-    tlv(0x17, value.as_bytes())
-}
-
-fn generalized(value: &str) -> Vec<u8> {
-    tlv(0x18, value.as_bytes())
-}
-
-fn header(version: i64, vendor: &str) -> Vec<u8> {
-    seq(&[ia5("ES"), integer(version), ia5(vendor)])
-}
-
-fn picture() -> Vec<u8> {
-    seq(&[ia5("PNG"), octets(PNG), integer(40), integer(40)])
-}
-
-fn gm_property() -> Vec<u8> {
-    seq(&[
-        integer(1),
-        utf8("测试公章"),
-        seq(&[octets(b"fictional-certificate")]),
-        utc("230117071431Z"),
-        utc("230109071043Z"),
-        utc("280109071043Z"),
-    ])
-}
-
-fn gb_property() -> Vec<u8> {
-    seq(&[
-        integer(1),
-        utf8("测试公章"),
-        integer(1),
-        seq(&[
-            octets(b"fictional-certificate"),
-            octets(b"fictional-certificate-2"),
-        ]),
-        generalized("20211229175736Z"),
-        generalized("20211229180422Z"),
-        generalized("20241231180430Z"),
-    ])
-}
-
-fn seal_info(property: Vec<u8>, extensions: bool) -> Vec<u8> {
-    let mut fields = vec![
-        header(1, "OFDBOX"),
-        ia5("seal-id-0001"),
-        property,
-        picture(),
-    ];
-    if extensions {
-        fields.push(seq(&[seq(&[
-            oid(&[42, 1]),
-            tlv(0x01, &[0xff]),
-            octets(b"extension"),
-        ])]));
-    }
-    seq(&fields)
-}
-
-fn gm_seal() -> Vec<u8> {
-    let signer = seq(&[
-        octets(b"fictional-certificate"),
-        oid(OID_SM2_SM3),
-        bit_string(b"fictional-signature"),
-    ]);
-    seq(&[seal_info(gm_property(), false), signer])
-}
-
-fn gb_seal() -> Vec<u8> {
-    seq(&[
-        seal_info(gb_property(), false),
-        octets(b"fictional-certificate"),
-        oid(OID_SM2_SM3),
-        bit_string(b"fictional-signature"),
-    ])
-}
+use common::*;
 
 #[test]
 fn recognizes_gm_t_0031_and_extracts_picture() {
@@ -297,17 +165,6 @@ fn excessive_children_are_rejected() {
     ));
 }
 
-fn zip_with_entries(entries: &[(&str, &[u8])]) -> Vec<u8> {
-    let mut writer = ZipWriter::new(Cursor::new(Vec::new()));
-    for (name, data) in entries {
-        writer
-            .start_file(*name, SimpleFileOptions::default())
-            .expect("start zip entry");
-        writer.write_all(data).expect("write zip entry");
-    }
-    writer.finish().expect("finish zip").into_inner()
-}
-
 #[test]
 fn reads_seal_only_on_demand() {
     let signature = br#"<ofd:Signature xmlns:ofd="http://www.ofdspec.org/2016">
@@ -365,25 +222,5 @@ fn parses_real_seal_samples() {
     if total > 0 {
         assert_eq!(gm_t_0031 + gb_t_38540 + unknown, total);
         assert_eq!(with_picture, total);
-    }
-}
-
-fn collect_seals(dir: &Path, paths: &mut Vec<PathBuf>) {
-    let Ok(entries) = fs::read_dir(dir) else {
-        return;
-    };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if path.is_dir() {
-            if path.file_name().is_some_and(|name| name == ".git") {
-                continue;
-            }
-            collect_seals(&path, paths);
-        } else if path
-            .extension()
-            .is_some_and(|extension| extension.eq_ignore_ascii_case("esl"))
-        {
-            paths.push(path);
-        }
     }
 }

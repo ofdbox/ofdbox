@@ -97,21 +97,36 @@ pub fn identify_seal_format(bytes: &[u8]) -> Result<SealFormat, SealError> {
     fingerprint_seal(bytes).map(|fingerprint| fingerprint.format())
 }
 
-struct Layout<'a> {
-    header: SealHeader<'a>,
-    seal_id: &'a str,
-    property: SealProperty<'a>,
-    picture: Tlv<'a>,
-    fingerprint: SealFingerprint,
+pub(crate) struct Layout<'a> {
+    pub(crate) header: SealHeader<'a>,
+    pub(crate) seal_id: &'a str,
+    pub(crate) property: SealProperty<'a>,
+    pub(crate) picture: Tlv<'a>,
+    pub(crate) fingerprint: SealFingerprint,
+    pub(crate) seal_info: Tlv<'a>,
+    pub(crate) envelope: Envelope<'a>,
 }
 
-fn parse_layout(bytes: &[u8]) -> Result<Layout<'_>, SealError> {
+/// 印章外层签名容器的原始字段。
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Envelope<'a> {
+    pub(crate) kind: OuterSignatureShape,
+    /// 制章者证书，OCTET STRING 的完整 TLV。
+    pub(crate) certificate: Option<Tlv<'a>>,
+    /// 签名算法标识，OID 的完整 TLV。
+    pub(crate) algorithm: Option<Tlv<'a>>,
+    /// BIT STRING 中的签名值内容。
+    pub(crate) signature: Option<&'a [u8]>,
+}
+
+pub(crate) fn parse_layout(bytes: &[u8]) -> Result<Layout<'_>, SealError> {
     let root = der::parse_root(bytes)?;
     der::expect_tag(root, TAG_SEQUENCE, "印章外层必须是 SEQUENCE")?;
     let top = der::items(root)?;
     let seal_info = *top.first().ok_or(SealError::Invalid("印章数据为空"))?;
     der::expect_tag(seal_info, TAG_SEQUENCE, "印章信息必须是 SEQUENCE")?;
-    let (outer, signature_algorithm) = classify_outer(&top[1..]);
+    let envelope = classify_outer(&top[1..]);
+    let signature_algorithm = envelope.algorithm.and_then(|tlv| der::oid(tlv).ok());
 
     let fields = der::items(seal_info)?;
     if fields.len() < 4 {
@@ -129,7 +144,7 @@ fn parse_layout(bytes: &[u8]) -> Result<Layout<'_>, SealError> {
         vendor: header.vendor.to_owned(),
         certificate_list_type: property.certificate_list_type,
         time_type: property.time_type,
-        outer,
+        outer: envelope.kind,
         signature_algorithm,
         has_extensions: fields.len() > 4,
     };
@@ -139,6 +154,8 @@ fn parse_layout(bytes: &[u8]) -> Result<Layout<'_>, SealError> {
         property: property.into_property(),
         picture,
         fingerprint,
+        seal_info,
+        envelope,
     })
 }
 
@@ -257,7 +274,7 @@ fn parse_picture(tlv: Tlv<'_>) -> Result<SealPicture<'_>, SealError> {
     })
 }
 
-fn classify_outer(rest: &[Tlv<'_>]) -> (OuterSignatureShape, Option<String>) {
+fn classify_outer<'a>(rest: &[Tlv<'a>]) -> Envelope<'a> {
     if rest.len() == 1 && rest[0].tag == TAG_SEQUENCE {
         if let Ok(fields) = der::items(rest[0])
             && fields.len() == 3
@@ -265,22 +282,44 @@ fn classify_outer(rest: &[Tlv<'_>]) -> (OuterSignatureShape, Option<String>) {
             && fields[1].tag == TAG_OID
             && fields[2].tag == TAG_BIT_STRING
         {
-            return (OuterSignatureShape::SignerInfo, der::oid(fields[1]).ok());
+            return Envelope {
+                kind: OuterSignatureShape::SignerInfo,
+                certificate: Some(fields[0]),
+                algorithm: Some(fields[1]),
+                signature: der::bit_string_content(fields[2]),
+            };
         }
-        return (OuterSignatureShape::Unknown, None);
+        return Envelope {
+            kind: OuterSignatureShape::Unknown,
+            certificate: None,
+            algorithm: None,
+            signature: None,
+        };
     }
     if rest.len() == 3
         && rest[0].tag == TAG_OCTET_STRING
         && rest[1].tag == TAG_OID
         && rest[2].tag == TAG_BIT_STRING
     {
-        return (
-            OuterSignatureShape::CertificateAndSignature,
-            der::oid(rest[1]).ok(),
-        );
+        return Envelope {
+            kind: OuterSignatureShape::CertificateAndSignature,
+            certificate: Some(rest[0]),
+            algorithm: Some(rest[1]),
+            signature: der::bit_string_content(rest[2]),
+        };
     }
     if rest.len() == 2 && rest[0].tag == TAG_OID && rest[1].tag == TAG_BIT_STRING {
-        return (OuterSignatureShape::SignatureOnly, der::oid(rest[0]).ok());
+        return Envelope {
+            kind: OuterSignatureShape::SignatureOnly,
+            certificate: None,
+            algorithm: Some(rest[0]),
+            signature: der::bit_string_content(rest[1]),
+        };
     }
-    (OuterSignatureShape::Unknown, None)
+    Envelope {
+        kind: OuterSignatureShape::Unknown,
+        certificate: None,
+        algorithm: None,
+        signature: None,
+    }
 }

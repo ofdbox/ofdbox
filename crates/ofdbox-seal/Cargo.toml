@@ -8,8 +8,11 @@ description = "电子印章结构的格式识别与解析。"
 publish = false
 
 [dependencies]
+ofdbox-crypto = { path = "../ofdbox-crypto" }
 
 [dev-dependencies]
 dotenvy.workspace = true
 ofdbox-core = { path = "../ofdbox-core" }
+sm2.workspace = true
+x509-cert = { workspace = true, features = ["builder"] }
 zip.workspace = true

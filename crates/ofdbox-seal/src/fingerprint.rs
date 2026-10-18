@@ -33,6 +33,17 @@ pub enum SealFormat {
     Unknown,
 }
 
+impl SealFormat {
+    /// 格式名称。
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::GmT0031 => "GM/T 0031",
+            Self::GbT38540 => "GB/T 38540",
+            Self::Unknown => "未知",
+        }
+    }
+}
+
 /// 印章的结构指纹。
 ///
 /// 指纹只记录结构特征，不哈希原始字节，也不代表签名已经通过验证。
