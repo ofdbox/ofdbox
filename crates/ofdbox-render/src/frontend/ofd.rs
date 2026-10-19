@@ -2271,9 +2271,20 @@ fn read_resource(
     if let Ok(entry) = package.resolve_entry("", file) {
         candidates.push(entry);
     }
-    for entry in candidates {
-        if package.contains(&entry) {
-            return package.read_entry(&entry);
+    for entry in &candidates {
+        if package.contains(entry) {
+            return package.read_entry(entry);
+        }
+    }
+    // 真实文件里资源引用和 ZIP 条目大小写经常不一致。
+    if let Ok(names) = package.entry_names() {
+        for candidate in &candidates {
+            if let Some(name) = names
+                .iter()
+                .find(|name| name.eq_ignore_ascii_case(candidate))
+            {
+                return package.read_entry(name);
+            }
         }
     }
     Err(OfdError::MissingEntry(file.to_owned()))

@@ -135,6 +135,61 @@ fn pixel(target: &RasterTarget, x: u16, y: u16) -> [u8; 4] {
 }
 
 #[test]
+fn finds_case_insensitive_resources() {
+    const RES: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<ofd:Res xmlns:ofd="http://www.ofdspec.org/2016">
+  <ofd:ColorSpaces><ofd:ColorSpace ID="1" Type="RGB"/></ofd:ColorSpaces>
+  <ofd:MultiMedias>
+    <ofd:MultiMedia ID="2" Type="Image" Format="PNG"><ofd:MediaFile>Images/IMG.PNG</ofd:MediaFile></ofd:MultiMedia>
+  </ofd:MultiMedias>
+</ofd:Res>"#;
+    const CONTENT: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<ofd:Page xmlns:ofd="http://www.ofdspec.org/2016">
+  <ofd:Area><ofd:PhysicalBox>0 0 100 100</ofd:PhysicalBox></ofd:Area>
+  <ofd:Content><ofd:Layer ID="1">
+    <ofd:ImageObject ID="i1" Boundary="10 10 20 20" ResourceID="2"/>
+  </ofd:Layer></ofd:Content>
+</ofd:Page>"#;
+    let png = blue_png();
+    let bytes = zip(&[
+        ("OFD.xml", OFD_XML.as_bytes()),
+        ("Doc_0/Document.xml", DOCUMENT_XML.as_bytes()),
+        ("Doc_0/PublicRes.xml", RES.as_bytes()),
+        ("Doc_0/Images/img.png", &png),
+        ("Doc_0/Pages/Page_0/Content.xml", CONTENT.as_bytes()),
+    ]);
+    let mut package = open(bytes);
+    let document = package.parse_document().expect("document");
+    let page = document
+        .pages()
+        .expect("pages")
+        .pages()
+        .next()
+        .expect("page");
+    let pool = ResourcePool::new(PoolBudget::default());
+    let scene = OfdFrontend::new(&mut package, &pool, RenderOptions::default())
+        .build_page(&page)
+        .expect("scene");
+    assert!(scene.diagnostics.is_empty(), "{:?}", scene.diagnostics);
+    assert!(count_images(&scene) > 0);
+}
+
+fn count_images(scene: &Scene) -> usize {
+    fn walk(group: &Group) -> usize {
+        group
+            .children
+            .iter()
+            .map(|element| match element {
+                Element::Group(group) => walk(group),
+                Element::Image(_) => 1,
+                _ => 0,
+            })
+            .sum()
+    }
+    walk(&scene.root)
+}
+
+#[test]
 fn extracts_glyphs_without_parsable_font() {
     let content = r#"<?xml version="1.0" encoding="UTF-8"?>
 <ofd:Page xmlns:ofd="http://www.ofdspec.org/2016">
