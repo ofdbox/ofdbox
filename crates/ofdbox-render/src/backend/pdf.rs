@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use std::io::Write;
 use std::sync::Arc;
 
-use crate::asset::{AssetId, ImageAsset};
+use crate::asset::{AssetId, FontAsset, ImageAsset};
 use crate::error::RenderError;
 use crate::geometry::{Matrix, Point};
 use crate::paint::{Paint, Rgba};
@@ -83,6 +83,12 @@ struct ShadingResource {
     object: u32,
 }
 
+struct FontResource {
+    name: String,
+    object: u32,
+    embedded: bool,
+}
+
 impl PdfDocument {
     fn collect_images(&self, group: &Group, images: &mut HashMap<AssetId, Arc<ImageAsset>>) {
         for element in &group.children {
@@ -96,6 +102,79 @@ impl PdfDocument {
                 Element::Path(_) | Element::Text(_) => {}
             }
         }
+    }
+
+    fn collect_fonts(&self, group: &Group, fonts: &mut HashMap<AssetId, Arc<FontAsset>>) {
+        for element in &group.children {
+            match element {
+                Element::Group(group) => self.collect_fonts(group, fonts),
+                Element::Text(text) => {
+                    fonts
+                        .entry(text.font.id())
+                        .or_insert_with(|| Arc::clone(&text.font));
+                }
+                Element::Path(_) | Element::Image(_) => {}
+            }
+        }
+    }
+
+    fn embed_font(&mut self, font: &FontAsset, name: String) -> Result<FontResource, RenderError> {
+        if self.options.text_mode == TextMode::Outline || !can_embed_font(font) {
+            return Ok(FontResource {
+                name,
+                object: 0,
+                embedded: false,
+            });
+        }
+        let face = ttf_parser::Face::parse(font.data(), font.face_index())
+            .map_err(|error| RenderError::Unsupported(format!("字体解析失败: {error}")))?;
+        let units = face.units_per_em();
+        if units == 0 {
+            return Ok(FontResource {
+                name,
+                object: 0,
+                embedded: false,
+            });
+        }
+        let scale = 1000.0 / f64::from(units);
+        let file = self.writer.stream(
+            &format!("/Filter /FlateDecode /Length1 {}", font.data().len()),
+            &deflate(font.data())?,
+        );
+        let bbox = face.global_bounding_box();
+        let descriptor = self.writer.add(
+            format!(
+                "<< /Type /FontDescriptor /FontName /{} /Flags 4 /FontBBox [{} {} {} {}] /ItalicAngle 0 /Ascent {} /Descent {} /CapHeight {} /StemV 80 /FontFile2 {file} 0 R >>",
+                name,
+                number(f64::from(bbox.x_min) * scale),
+                number(f64::from(bbox.y_min) * scale),
+                number(f64::from(bbox.x_max) * scale),
+                number(f64::from(bbox.y_max) * scale),
+                number(f64::from(face.ascender()) * scale),
+                number(f64::from(face.descender()) * scale),
+                number(f64::from(face.capital_height().unwrap_or(face.ascender())) * scale)
+            )
+            .into_bytes(),
+        );
+        let cid = self.writer.add(
+            format!(
+                "<< /Type /Font /Subtype /CIDFontType2 /BaseFont /{} /CIDSystemInfo << /Registry (Adobe) /Ordering (Identity) /Supplement 0 >> /FontDescriptor {descriptor} 0 R /CIDToGIDMap /Identity /DW 1000 >>",
+                name
+            )
+            .into_bytes(),
+        );
+        let object = self.writer.add(
+            format!(
+                "<< /Type /Font /Subtype /Type0 /BaseFont /{} /Encoding /Identity-H /DescendantFonts [{cid} 0 R] >>",
+                name
+            )
+            .into_bytes(),
+        );
+        Ok(FontResource {
+            name,
+            object,
+            embedded: true,
+        })
     }
 
     fn collect_gradients(&self, group: &Group, gradients: &mut HashMap<String, Paint>) {
@@ -275,6 +354,20 @@ impl PdfDocument {
             xobjects.push_str(&format!("/{} {} 0 R ", resource.name, resource.object));
             images.insert(id, resource);
         }
+        let mut collected_fonts = HashMap::new();
+        self.collect_fonts(&scene.root, &mut collected_fonts);
+        let mut ordered_fonts = collected_fonts.into_iter().collect::<Vec<_>>();
+        ordered_fonts.sort_by_key(|(id, _)| *id);
+        let mut fonts = HashMap::new();
+        let mut font_resources = String::new();
+        for (index, (id, font)) in ordered_fonts.into_iter().enumerate() {
+            let resource = self.embed_font(&font, format!("F{}", index + 1))?;
+            if resource.embedded {
+                font_resources.push_str(&format!("/{} {} 0 R ", resource.name, resource.object));
+            }
+            fonts.insert(id, resource);
+        }
+
         let mut collected_gradients = HashMap::new();
         self.collect_gradients(&scene.root, &mut collected_gradients);
         let mut ordered_gradients = collected_gradients.into_iter().collect::<Vec<_>>();
@@ -293,9 +386,12 @@ impl PdfDocument {
         if !shadings.is_empty() {
             resources.push(format!("/Shading << {} >>", shadings.trim_end()));
         }
+        if !font_resources.is_empty() {
+            resources.push(format!("/Font << {} >>", font_resources.trim_end()));
+        }
         let resources = resources.join(" ");
 
-        let mut content = ContentBuilder::new(&images, &gradients);
+        let mut content = ContentBuilder::new(&images, &gradients, &fonts);
         content.raw(&format!("q\n{scale} 0 0 -{scale} 0 {height} cm\n"));
         content.group(&scene.root);
         content.raw("Q\n");
@@ -307,6 +403,11 @@ impl PdfDocument {
             resources,
         });
         Ok(())
+    }
+
+    /// 当前页数。
+    pub fn page_count(&self) -> usize {
+        self.pages.len()
     }
 
     /// 完成 PDF 并返回字节。
@@ -373,12 +474,14 @@ struct ContentBuilder<'a> {
     start: Point,
     images: &'a HashMap<AssetId, ImageResource>,
     gradients: &'a HashMap<String, ShadingResource>,
+    fonts: &'a HashMap<AssetId, FontResource>,
 }
 
 impl<'a> ContentBuilder<'a> {
     fn new(
         images: &'a HashMap<AssetId, ImageResource>,
         gradients: &'a HashMap<String, ShadingResource>,
+        fonts: &'a HashMap<AssetId, FontResource>,
     ) -> Self {
         Self {
             content: String::new(),
@@ -386,6 +489,7 @@ impl<'a> ContentBuilder<'a> {
             start: Point::default(),
             images,
             gradients,
+            fonts,
         }
     }
 
@@ -466,6 +570,43 @@ impl<'a> ContentBuilder<'a> {
     }
 
     fn text_element(&mut self, element: &TextElement) {
+        if element.stroke.is_none()
+            && let Some(resource) = self.fonts.get(&element.font.id())
+            && resource.embedded
+            && let Some(color) = element.fill.as_ref().and_then(solid_paint)
+        {
+            self.embedded_text(element, resource, color);
+            return;
+        }
+        self.outline_text(element);
+    }
+
+    fn embedded_text(&mut self, element: &TextElement, resource: &FontResource, color: Rgba) {
+        self.set_fill_color(color);
+        self.raw("BT\n");
+        self.raw(&format!("/{} {} Tf\n", resource.name, number(element.size)));
+        for glyph in &element.glyphs {
+            let Ok(glyph_id) = u16::try_from(glyph.id) else {
+                continue;
+            };
+            let transform = Matrix::scale(1.0, -1.0)
+                .then(Matrix::translate(f64::from(glyph.x), f64::from(glyph.y)))
+                .then(element.transform);
+            self.raw(&format!(
+                "{} {} {} {} {} {} Tm\n",
+                number(transform.a),
+                number(transform.b),
+                number(transform.c),
+                number(transform.d),
+                number(transform.e),
+                number(transform.f)
+            ));
+            self.raw(&format!("<{glyph_id:04X}> Tj\n"));
+        }
+        self.raw("ET\n");
+    }
+
+    fn outline_text(&mut self, element: &TextElement) {
         let Ok(face) = ttf_parser::Face::parse(element.font.data(), element.font.face_index())
         else {
             return;
@@ -705,6 +846,22 @@ impl ttf_parser::OutlineBuilder for GlyphPathBuilder {
     }
 }
 
+fn can_embed_font(font: &FontAsset) -> bool {
+    if font.data().starts_with(b"ttcf") {
+        return false;
+    }
+    let Ok(face) = ttf_parser::Face::parse(font.data(), font.face_index()) else {
+        return false;
+    };
+    [b"head", b"hhea", b"hmtx", b"maxp", b"glyf", b"loca"]
+        .iter()
+        .all(|tag| {
+            face.raw_face()
+                .table(ttf_parser::Tag::from_bytes(tag))
+                .is_some()
+        })
+}
+
 fn solid_paint(paint: &Paint) -> Option<Rgba> {
     match paint {
         Paint::Solid(color) => Some(*color),
@@ -829,6 +986,17 @@ mod tests {
     }
 
     #[test]
+    fn writes_multiple_pages() {
+        let mut document = PdfDocument::new(PdfOptions::default());
+        document.add_page(&scene()).expect("page 1");
+        document.add_page(&scene()).expect("page 2");
+        assert_eq!(document.page_count(), 2);
+        let pdf = document.finish().expect("pdf");
+        let text = String::from_utf8_lossy(&pdf);
+        assert!(text.contains("/Count 2"));
+        assert_eq!(text.matches("/MediaBox").count(), 2);
+    }
+    #[test]
     fn writes_path_commands() {
         let mut path = Path::new();
         path.move_to(Point::new(10.0, 10.0));
@@ -940,7 +1108,7 @@ mod tests {
 
     #[cfg(windows)]
     #[test]
-    fn writes_text_outlines_when_font_available() {
+    fn embeds_text_when_font_available() {
         let Ok(bytes) = std::fs::read("C:/Windows/Fonts/arial.ttf") else {
             return;
         };
@@ -975,8 +1143,8 @@ mod tests {
         let pdf = document.finish().expect("pdf");
         let text = String::from_utf8_lossy(&pdf);
         assert!(text.contains("q\n"));
-        assert!(text.contains(" m\n"));
-        assert!(text.contains("f\nQ\n"));
+        assert!(text.contains("/Type0"));
+        assert!(text.contains(" Tj\n"));
     }
 
     #[test]
