@@ -640,6 +640,7 @@ version = "0.1.0"
 dependencies = [
  "bmp",
  "dotenvy",
+ "flate2",
  "jpeg-decoder",
  "justbig2",
  "ofdbox-core",

@@ -3,11 +3,16 @@
 //! 当前阶段把 [`Scene`] 写成矢量 PDF：页面坐标、路径、图片、裁剪、
 //! 渐变和文字。文字优先嵌入字体，字体不可用时退化为字形轮廓。
 
+use std::collections::HashMap;
+use std::io::Write;
+use std::sync::Arc;
+
+use crate::asset::{AssetId, ImageAsset};
 use crate::error::RenderError;
 use crate::geometry::{Matrix, Point};
 use crate::paint::{Paint, Rgba};
 use crate::path::{FillRule, LineCap, LineJoin, Path, PathSegment};
-use crate::scene::{Element, Group, PathElement, Scene};
+use crate::scene::{Element, Group, ImageElement, PathElement, Scene};
 
 /// PDF 版本。
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
@@ -45,6 +50,8 @@ pub struct PdfOptions {
     pub version: PdfVersion,
     /// 文字输出方式。
     pub text_mode: TextMode,
+    /// 单张图片允许的最大像素数。
+    pub max_image_pixels: u64,
 }
 
 impl Default for PdfOptions {
@@ -52,6 +59,7 @@ impl Default for PdfOptions {
         Self {
             version: PdfVersion::V17,
             text_mode: TextMode::EmbedThenOutline,
+            max_image_pixels: 64 * 1024 * 1024,
         }
     }
 }
@@ -63,8 +71,69 @@ struct PdfPage {
     resources: String,
 }
 
+struct ImageResource {
+    name: String,
+    object: u32,
+    width: u32,
+    height: u32,
+}
+
+impl PdfDocument {
+    fn collect_images(&self, group: &Group, images: &mut HashMap<AssetId, Arc<ImageAsset>>) {
+        for element in &group.children {
+            match element {
+                Element::Group(group) => self.collect_images(group, images),
+                Element::Image(image) => {
+                    images
+                        .entry(image.image.id())
+                        .or_insert_with(|| Arc::clone(&image.image));
+                }
+                Element::Path(_) | Element::Text(_) => {}
+            }
+        }
+    }
+
+    fn embed_image(
+        &mut self,
+        image: &ImageAsset,
+        name: String,
+    ) -> Result<ImageResource, RenderError> {
+        let decoded = image.decoded(self.options.max_image_pixels)?;
+        let mut rgb = Vec::with_capacity(decoded.rgba.len() / 4 * 3);
+        let mut alpha = Vec::with_capacity(decoded.rgba.len() / 4);
+        let mut has_alpha = false;
+        for pixel in decoded.rgba.as_chunks::<4>().0 {
+            rgb.extend_from_slice(&pixel[..3]);
+            alpha.push(pixel[3]);
+            has_alpha |= pixel[3] != 255;
+        }
+        let mut dict = format!(
+            "/Type /XObject /Subtype /Image /Width {} /Height {} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /FlateDecode",
+            decoded.width, decoded.height
+        );
+        if has_alpha {
+            let mask = self.writer.stream(
+                &format!(
+                    "/Type /XObject /Subtype /Image /Width {} /Height {} /ColorSpace /DeviceGray /BitsPerComponent 8 /Filter /FlateDecode",
+                    decoded.width, decoded.height
+                ),
+                &deflate(&alpha)?,
+            );
+            dict.push_str(&format!(" /SMask {mask} 0 R"));
+        }
+        let object = self.writer.stream(&dict, &deflate(&rgb)?);
+        Ok(ImageResource {
+            name,
+            object,
+            width: decoded.width,
+            height: decoded.height,
+        })
+    }
+}
+
 /// 多页 PDF 文档。
 pub struct PdfDocument {
+    options: PdfOptions,
     writer: PdfWriter,
     pages: Vec<PdfPage>,
 }
@@ -74,6 +143,7 @@ impl PdfDocument {
     pub fn new(options: PdfOptions) -> Self {
         Self {
             writer: PdfWriter::new(options.version),
+            options,
             pages: Vec::new(),
         }
     }
@@ -86,7 +156,25 @@ impl PdfDocument {
         if !(width.is_finite() && width > 0.0 && height.is_finite() && height > 0.0) {
             return Err(RenderError::InvalidPage);
         }
-        let mut content = ContentBuilder::new();
+        let mut collected = HashMap::new();
+        self.collect_images(&scene.root, &mut collected);
+        let mut ordered = collected.into_iter().collect::<Vec<_>>();
+        ordered.sort_by_key(|(id, _)| *id);
+        let mut images = HashMap::new();
+        let mut xobjects = String::new();
+        for (index, (id, image)) in ordered.into_iter().enumerate() {
+            let name = format!("Im{}", index + 1);
+            let resource = self.embed_image(&image, name)?;
+            xobjects.push_str(&format!("/{} {} 0 R ", resource.name, resource.object));
+            images.insert(id, resource);
+        }
+        let resources = if xobjects.is_empty() {
+            String::new()
+        } else {
+            format!("/XObject << {} >>", xobjects.trim_end())
+        };
+
+        let mut content = ContentBuilder::new(&images);
         content.raw(&format!("q\n{scale} 0 0 -{scale} 0 {height} cm\n"));
         content.group(&scene.root);
         content.raw("Q\n");
@@ -95,7 +183,7 @@ impl PdfDocument {
             width,
             height,
             content,
-            resources: String::new(),
+            resources,
         });
         Ok(())
     }
@@ -158,16 +246,21 @@ impl PdfBackend {
     }
 }
 
-#[derive(Default)]
-struct ContentBuilder {
+struct ContentBuilder<'a> {
     content: String,
     current: Point,
     start: Point,
+    images: &'a HashMap<AssetId, ImageResource>,
 }
 
-impl ContentBuilder {
-    fn new() -> Self {
-        Self::default()
+impl<'a> ContentBuilder<'a> {
+    fn new(images: &'a HashMap<AssetId, ImageResource>) -> Self {
+        Self {
+            content: String::new(),
+            current: Point::default(),
+            start: Point::default(),
+            images,
+        }
     }
 
     fn raw(&mut self, text: &str) {
@@ -192,7 +285,8 @@ impl ContentBuilder {
             match child {
                 Element::Group(child) => self.group(child),
                 Element::Path(path) => self.path_element(path),
-                Element::Text(_) | Element::Image(_) => {}
+                Element::Image(image) => self.image_element(image),
+                Element::Text(_) => {}
             }
         }
         self.raw("Q\n");
@@ -221,6 +315,22 @@ impl ContentBuilder {
             (false, true) => self.raw("S\n"),
             (false, false) => self.raw("n\n"),
         }
+    }
+
+    fn image_element(&mut self, element: &ImageElement) {
+        let Some(resource) = self.images.get(&element.image.id()) else {
+            return;
+        };
+        self.raw("q\n");
+        let flip = Matrix::scale(1.0, -1.0).then(Matrix::translate(0.0, 1.0));
+        let transform = flip
+            .then(Matrix::scale(
+                f64::from(resource.width.max(1)),
+                f64::from(resource.height.max(1)),
+            ))
+            .then(element.transform);
+        self.matrix(transform);
+        self.raw(&format!("/{} Do\nQ\n", resource.name));
     }
 
     fn set_fill_color(&mut self, color: Rgba) {
@@ -438,6 +548,16 @@ impl PdfWriter {
     }
 }
 
+fn deflate(data: &[u8]) -> Result<Vec<u8>, RenderError> {
+    let mut encoder = flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::fast());
+    encoder
+        .write_all(data)
+        .map_err(|error| RenderError::Image(error.to_string()))?;
+    encoder
+        .finish()
+        .map_err(|error| RenderError::Image(error.to_string()))
+}
+
 fn number(value: f64) -> String {
     let mut text = format!("{value:.4}");
     while text.ends_with('0') {
@@ -452,10 +572,12 @@ fn number(value: f64) -> String {
 #[cfg(test)]
 mod tests {
     use super::{PdfBackend, PdfDocument, PdfOptions};
-    use crate::geometry::{Point, Size};
+    use crate::geometry::{Matrix, Point, Size};
+    use crate::image::ImageFormat;
     use crate::paint::{Paint, Rgba};
     use crate::path::{FillRule, Path};
-    use crate::scene::{Element, Group, PathElement, Scene};
+    use crate::resource::{PoolBudget, ResourcePool};
+    use crate::scene::{Element, Group, ImageElement, PathElement, Scene};
 
     fn scene() -> Scene {
         Scene {
@@ -503,6 +625,45 @@ mod tests {
         assert!(text.contains("90 90 l"));
         assert!(text.contains("1 0 0 rg"));
         assert!(text.contains("f\n"));
+    }
+
+    #[test]
+    fn writes_image_xobject() {
+        let mut cursor = std::io::Cursor::new(Vec::new());
+        {
+            let mut encoder = png::Encoder::new(&mut cursor, 2, 2);
+            encoder.set_color(png::ColorType::Rgba);
+            encoder.set_depth(png::BitDepth::Eight);
+            let mut writer = encoder.write_header().expect("png header");
+            writer
+                .write_image_data(&[
+                    0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255, 255,
+                ])
+                .expect("png data");
+            writer.finish().expect("png finish");
+        }
+        let pool = ResourcePool::new(PoolBudget::default());
+        let image = pool
+            .embedded_image(ImageFormat::Png, &cursor.into_inner(), None)
+            .expect("image");
+        let mut root = Group::default();
+        root.children.push(Element::Image(ImageElement {
+            image,
+            transform: Matrix::scale(0.5, 0.5),
+            alpha: 1.0,
+        }));
+        let scene = Scene {
+            size: Size::new(20.0, 20.0),
+            root,
+            diagnostics: Vec::new(),
+        };
+        let mut document = PdfDocument::new(PdfOptions::default());
+        document.add_page(&scene).expect("page");
+        let pdf = document.finish().expect("pdf");
+        let text = String::from_utf8_lossy(&pdf);
+        assert!(text.contains("/XObject"));
+        assert!(text.contains("/Im1"));
+        assert!(text.contains("/Im1 Do"));
     }
 
     #[test]

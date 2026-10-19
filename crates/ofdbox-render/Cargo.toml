@@ -1,4 +1,4 @@
-[package]
+﻿[package]
 name = "ofdbox-render"
 version.workspace = true
 edition.workspace = true
@@ -9,6 +9,7 @@ publish = false
 
 [dependencies]
 bmp = "0.5"
+flate2 = "1"
 jpeg-decoder = "0.3"
 justbig2 = "0.2"
 ofdbox-core = { path = "../ofdbox-core" }
