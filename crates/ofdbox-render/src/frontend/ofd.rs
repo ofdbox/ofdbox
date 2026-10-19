@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use ofdbox_core::{
     ColorView, CompositeGraphicUnitView, DrawParamView, GraphicObjectKind, GraphicObjectView,
-    OfdError, OfdPackage, PageView, ResView, TextCodeView,
+    OfdError, OfdPackage, PageView, ResView, TemplateView, TextCodeView,
 };
 
 use crate::error::RenderError;
@@ -102,13 +102,54 @@ fn build_scene(
     let page_entry = resolve_existing(package, &document_dir, page_loc)
         .ok_or_else(|| OfdError::MissingEntry(page_loc.to_owned()))?;
     let page_content = package.parse_page(&page_entry)?;
+
+    let mut templates = HashMap::new();
+    if let Some(common) = document.common_data() {
+        for template in common.template_pages() {
+            let Some(id) = template.id().map(str::to_owned) else {
+                continue;
+            };
+            let Some(loc) = template.base_loc() else {
+                continue;
+            };
+            let Some(entry) = resolve_existing(package, &document_dir, loc) else {
+                continue;
+            };
+            let Ok(content) = package.parse_page(&entry) else {
+                continue;
+            };
+            templates.insert(
+                id.clone(),
+                TemplateEntry {
+                    id,
+                    z_order: template.z_order().unwrap_or("Background").to_owned(),
+                    entry,
+                    content,
+                },
+            );
+        }
+    }
+
     let mut resources = ResourceSet::default();
     resources.collect_document(package, &document);
+    for template in templates.values() {
+        resources.collect_page(package, &template.entry, &template.content);
+    }
     resources.collect_page(package, &page_entry, &page_content);
 
     let physical = page_content
         .area()
         .and_then(|area| area.physical_box().and_then(parse_rect))
+        .or_else(|| {
+            page_content.templates().find_map(|reference| {
+                let id = reference.template_id()?;
+                templates
+                    .get(id)?
+                    .content
+                    .area()
+                    .and_then(|area| area.physical_box().and_then(parse_rect))
+            })
+        })
         .or_else(|| {
             document
                 .common_data()
@@ -121,6 +162,7 @@ fn build_scene(
         pool,
         options,
         resources,
+        templates,
         font_provider,
         font_cache,
         diagnostics: Vec::new(),
@@ -140,6 +182,20 @@ fn build_scene(
             "页面未声明尺寸，使用 A4 默认值",
         );
     }
+    let template_refs = page_content.templates().collect::<Vec<_>>();
+    let mut visited_templates = HashSet::new();
+    builder.render_templates(
+        &template_refs,
+        TemplateOrder::Background,
+        &mut children,
+        &mut visited_templates,
+    );
+    builder.render_templates(
+        &template_refs,
+        TemplateOrder::Body,
+        &mut children,
+        &mut visited_templates,
+    );
     if let Some(content) = page_content.content() {
         for layer in content.layers() {
             for object in layer.objects() {
@@ -147,6 +203,12 @@ fn build_scene(
             }
         }
     }
+    builder.render_templates(
+        &template_refs,
+        TemplateOrder::Foreground,
+        &mut children,
+        &mut visited_templates,
+    );
     if options.draw_annotations {
         builder.render_annotations(&document, page, &mut children);
     }
@@ -322,6 +384,7 @@ struct Builder<'a> {
     pool: &'a ResourcePool,
     options: &'a RenderOptions,
     resources: ResourceSet,
+    templates: HashMap<String, TemplateEntry>,
     font_provider: &'a mut Option<Box<dyn FontProvider>>,
     font_cache: &'a mut HashMap<String, Option<Arc<crate::asset::FontAsset>>>,
     diagnostics: Vec<crate::scene::RenderDiagnostic>,
@@ -340,6 +403,14 @@ impl Builder<'_> {
                 object.id(),
                 "对象嵌套过深",
             );
+            return;
+        }
+        if object.kind() == GraphicObjectKind::PageBlock {
+            self.depth += 1;
+            for child in object.children() {
+                self.render_object(&child, output);
+            }
+            self.depth -= 1;
             return;
         }
         let Some(boundary) = object.boundary().and_then(parse_rect) else {
@@ -380,13 +451,7 @@ impl Builder<'_> {
             GraphicObjectKind::Composite => {
                 elements.extend(self.build_composite(object, &boundary));
             }
-            GraphicObjectKind::PageBlock => {
-                self.diagnostic(
-                    DiagnosticCode::UnsupportedObject,
-                    object.id(),
-                    "PageBlock 暂未实现",
-                );
-            }
+            GraphicObjectKind::PageBlock => {}
             GraphicObjectKind::Other(ref kind) => {
                 self.diagnostic(
                     DiagnosticCode::UnsupportedObject,
@@ -789,6 +854,60 @@ impl Builder<'_> {
                 }
             }
         }
+    }
+
+    fn render_templates(
+        &mut self,
+        references: &[TemplateView],
+        order: TemplateOrder,
+        output: &mut Vec<Element>,
+        visited: &mut HashSet<String>,
+    ) {
+        for reference in references {
+            let Some(id) = reference.template_id() else {
+                continue;
+            };
+            let Some(template) = self.templates.get(id).cloned() else {
+                self.diagnostic(
+                    DiagnosticCode::UnsupportedObject,
+                    reference.template_id(),
+                    format!("模板页缺失: {id}"),
+                );
+                continue;
+            };
+            let z_order = reference.z_order().unwrap_or(&template.z_order);
+            if template_order(z_order) == order {
+                self.render_template(&template, output, visited);
+            }
+        }
+    }
+
+    fn render_template(
+        &mut self,
+        template: &TemplateEntry,
+        output: &mut Vec<Element>,
+        visited: &mut HashSet<String>,
+    ) {
+        if !visited.insert(template.id.clone()) {
+            self.diagnostic(
+                DiagnosticCode::UnsupportedObject,
+                Some(&template.id),
+                "模板页存在循环引用",
+            );
+            return;
+        }
+        let references = template.content.templates().collect::<Vec<_>>();
+        self.render_templates(&references, TemplateOrder::Background, output, visited);
+        self.render_templates(&references, TemplateOrder::Body, output, visited);
+        if let Some(content) = template.content.content() {
+            for layer in content.layers() {
+                for object in layer.objects() {
+                    self.render_object(&object, output);
+                }
+            }
+        }
+        self.render_templates(&references, TemplateOrder::Foreground, output, visited);
+        visited.remove(&template.id);
     }
 
     fn font(&mut self, id: &str) -> Option<Arc<crate::asset::FontAsset>> {
@@ -1338,4 +1457,29 @@ fn read_resource(
         }
     }
     Err(OfdError::MissingEntry(file.to_owned()))
+}
+
+#[derive(Clone)]
+struct TemplateEntry {
+    id: String,
+    z_order: String,
+    entry: String,
+    content: ofdbox_core::PageContentView,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum TemplateOrder {
+    Background,
+    Body,
+    Foreground,
+}
+
+fn template_order(value: &str) -> TemplateOrder {
+    if value.eq_ignore_ascii_case("Foreground") {
+        TemplateOrder::Foreground
+    } else if value.eq_ignore_ascii_case("Body") {
+        TemplateOrder::Body
+    } else {
+        TemplateOrder::Background
+    }
 }

@@ -205,3 +205,70 @@ fn placeholders_report_unsupported() {
     assert!(WgpuBackend::new().draw(&scene).is_err());
     assert!(PdfFrontend::new().build_scene().is_err());
 }
+
+#[test]
+fn renders_page_block_and_template() {
+    const DOCUMENT: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<ofd:Document xmlns:ofd="http://www.ofdspec.org/2016">
+  <ofd:CommonData>
+    <ofd:PublicRes>PublicRes.xml</ofd:PublicRes>
+    <ofd:TemplatePage ID="T1" BaseLoc="Templates/T1.xml" ZOrder="Background"/>
+  </ofd:CommonData>
+  <ofd:Pages><ofd:Page ID="1" BaseLoc="Pages/Page_0/Content.xml"/></ofd:Pages>
+</ofd:Document>"#;
+    const TEMPLATE: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<ofd:Page xmlns:ofd="http://www.ofdspec.org/2016">
+  <ofd:Area><ofd:PhysicalBox>0 0 100 100</ofd:PhysicalBox></ofd:Area>
+  <ofd:Content><ofd:Layer ID="1">
+    <ofd:PathObject ID="t1" Boundary="0 0 100 100" Fill="true" Stroke="false">
+      <ofd:FillColor ColorSpace="1" Value="0 255 0"/>
+      <ofd:AbbreviatedData>M 0 0 L 100 0 L 100 100 L 0 100 C</ofd:AbbreviatedData>
+    </ofd:PathObject>
+  </ofd:Layer></ofd:Content>
+</ofd:Page>"#;
+    const CONTENT: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<ofd:Page xmlns:ofd="http://www.ofdspec.org/2016">
+  <ofd:Template TemplateID="T1"/>
+  <ofd:Content><ofd:Layer ID="1">
+    <ofd:PageBlock ID="pb">
+      <ofd:PathObject ID="p1" Boundary="20 20 20 20" Fill="true" Stroke="false">
+        <ofd:FillColor ColorSpace="1" Value="255 0 0"/>
+        <ofd:AbbreviatedData>M 0 0 L 20 0 L 20 20 L 0 20 C</ofd:AbbreviatedData>
+      </ofd:PathObject>
+    </ofd:PageBlock>
+  </ofd:Layer></ofd:Content>
+</ofd:Page>"#;
+    let bytes = zip(&[
+        ("OFD.xml", OFD_XML.as_bytes()),
+        ("Doc_0/Document.xml", DOCUMENT.as_bytes()),
+        ("Doc_0/PublicRes.xml", PUBLIC_RES_XML.as_bytes()),
+        ("Doc_0/Templates/T1.xml", TEMPLATE.as_bytes()),
+        ("Doc_0/Pages/Page_0/Content.xml", CONTENT.as_bytes()),
+    ]);
+    let mut package = open(bytes);
+    let document = package.parse_document().expect("document");
+    let page = document
+        .pages()
+        .expect("pages")
+        .pages()
+        .next()
+        .expect("page");
+    let pool = ResourcePool::new(PoolBudget::default());
+    let options = RenderOptions {
+        dpi: 25.4,
+        ..Default::default()
+    };
+    let scene = OfdFrontend::new(&mut package, &pool, options)
+        .build_page(&page)
+        .expect("scene");
+    assert_eq!(scene.size, Size::new(100.0, 100.0));
+
+    let mut target = RasterTarget::from_size(scene.size, 25.4).expect("target");
+    let mut backend = VelloCpuBackend::with_defaults();
+    let mut frame = backend.begin_frame((), &mut target).expect("frame");
+    frame.draw(&scene).expect("draw");
+    frame.finish().expect("finish");
+
+    assert_eq!(pixel(&target, 30, 30), [255, 0, 0, 255]);
+    assert_eq!(pixel(&target, 75, 75), [0, 255, 0, 255]);
+}
