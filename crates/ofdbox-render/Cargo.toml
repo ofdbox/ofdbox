@@ -1,0 +1,22 @@
+[package]
+name = "ofdbox-render"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "OFD 页面渲染：统一场景、共享资源池与 CPU 后端。"
+publish = false
+
+[dependencies]
+jpeg-decoder = "0.3"
+ofdbox-core = { path = "../ofdbox-core" }
+png = "0.18"
+skrifa = "0.44"
+sm3.workspace = true
+thiserror.workspace = true
+ttf-parser = "0.25"
+vello_cpu = "0.3.0"
+
+[dev-dependencies]
+dotenvy.workspace = true
+zip.workspace = true

@@ -2,7 +2,7 @@
 
 OFDBox 是一个用 Rust 实现的 OFD 文档处理库。项目目标是覆盖 OFD 的结构读写、密码应用、签章验签、渲染、格式转换和文档生成。
 
-当前仓库已实现 GB/T 33190—2016 的结构读写、GM/T 0099—2020 的签名扩展和加密描述结构，以及 `ofdbox-crypto` 中的 SM2/SM3/SM4 密码原语、口令/证书密钥处理和单层文档解密。签名值的完整验签、多重加密、渲染、转换和生成尚未实现。
+当前仓库已实现 GB/T 33190—2016 的结构读写、GM/T 0099—2020 的加密解密与签名结构、`ofdbox-crypto` 中的 SM2/SM3/SM4 密码原语、`ofdbox-seal` 的印章识别与验签，以及 `ofdbox-render` 的 OFD 场景前端与 CPU 位图后端。PDF/wgpu 后端、渲染能力补全、格式转换和文档生成尚未实现。
 
 ## 目标范围
 
@@ -12,7 +12,7 @@ OFDBox 是一个用 Rust 实现的 OFD 文档处理库。项目目标是覆盖 O
 | GM/T 0099 描述结构 | 已完成 | 签名扩展、`Encryptions.xml`、`DecryptSeed`、`EncryptedEntries`、`OFDEntries.xml` 已解析/写出 |
 | 文档加密/解密 | 已完成（结构层） | 口令/证书、单层与多重懒解密、加密写出、流式解密；密钥内存在 drop 时擦除 |
 | 签章/验签 | 已完成（结构层） | 签名结构、References 摘要校验、SM2DSA、GB/T 35275 SignedData 默认验签和自定义验签注入 |
-| 文档渲染 | 未开始 | 页面、图元、字体和颜色尚未绘制到输出设备 |
+| 文档渲染 | 部分完成 | OFD 前端 + `vello_cpu` 位图后端；PDF/wgpu 后端为占位 |
 | 格式转换 | 未开始 | 规划 OFD ↔ PDF、OFD ↔ 图片 |
 | 文档生成 | 未开始 | 规划由结构化数据自动排版生成 OFD/PDF |
 
@@ -42,7 +42,9 @@ OFDBox 是一个用 Rust 实现的 OFD 文档处理库。项目目标是覆盖 O
 | --- | --- | --- |
 | `ofdbox-core` | 已实现 | 容器、XML 语法树、类型化视图、严格写出、缓存、透明解密会话 |
 | `ofdbox-crypto` | 已实现 | SM3-KDF、SM4-CBC、SM2 加解密/签名、口令/证书后端、方案注册表、加密写出、SignedData 验签 |
-| `ofdbox-render` | 规划 | 页面布局与绘制、图片/PDF 输出后端 |
+| `ofdbox-seal` | 已实现 | 电子印章结构识别、图片提取、印章验签、证书链与有效期验证 |
+| `ofdbox-render` | 已实现（首期） | 统一场景 IR、共享资源池、OFD 前端、`vello_cpu` 位图后端 |
+| `ofdbox-convert` | 规划 | OFD ↔ PDF、OFD ↔ 图片 |
 | `ofdbox-convert` | 规划 | OFD ↔ PDF、OFD ↔ 图片 |
 | `ofdbox-generate` | 规划 | 结构化数据 → 布局 → OFD/PDF |
 | `ofdbox-cli` | 规划 | 命令行工具 |
@@ -123,7 +125,7 @@ cargo test
 | --- | --- | --- |
 | M0 | 2016 结构读写、0099 描述结构、缓存、WASM 编译 | 已完成 |
 | M1 | SM2/SM3/SM4、解密、加密写出、References 校验、SignedData 验签 | 已完成（合成 SignedData 验证） |
-| M2 | 页面渲染、图片导出、PDF 导出 | 规划 |
+| M2 | 页面渲染、图片导出、PDF 导出 | 进行中（OFD 前端与位图后端已完成） |
 | M3 | OFD ↔ PDF、OFD ↔ 图片转换 | 规划 |
 | M4 | 结构化数据布局与 OFD/PDF 生成 | 规划 |
 

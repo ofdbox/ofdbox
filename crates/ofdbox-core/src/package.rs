@@ -602,6 +602,32 @@ impl OfdPackage {
         Ok(view)
     }
 
+    /// 返回已定位的 `Document.xml` entry。
+    pub fn document_entry_name(&self) -> Option<&str> {
+        self.document_entry.as_deref()
+    }
+
+    /// 返回页面 `BaseLoc` 对应的包内 entry。
+    pub fn page_entry_name(&mut self, page: &PageView) -> Result<String, OfdError> {
+        if self.document_entry.is_none() {
+            self.parse_document()?;
+        }
+        let loc = page
+            .base_loc()
+            .ok_or_else(|| OfdError::InvalidStructure("Page 缺少 BaseLoc".to_owned()))?;
+        let base = self
+            .document_entry
+            .as_deref()
+            .and_then(parent_dir)
+            .ok_or_else(|| OfdError::InvalidStructure("尚未定位 Document.xml".to_owned()))?;
+        resolve_loc(base, loc)
+    }
+
+    /// 按包内路径规则解析相对引用。
+    pub fn resolve_entry(&self, base: &str, loc: &str) -> Result<String, OfdError> {
+        resolve_loc(base, loc)
+    }
+
     /// 按包根路径直接解析签名描述文件。
     pub fn parse_signature_file(&mut self, loc: &str) -> Result<SignatureView, OfdError> {
         let entry = resolve_loc("", loc)?;
