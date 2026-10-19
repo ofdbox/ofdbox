@@ -710,6 +710,22 @@ fn inherits_draw_param_and_layer_param() {
 }
 
 #[test]
+fn empty_fill_color_defaults_to_black() {
+    const CONTENT: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<ofd:Page xmlns:ofd="http://www.ofdspec.org/2016">
+  <ofd:Area><ofd:PhysicalBox>0 0 100 40</ofd:PhysicalBox></ofd:Area>
+  <ofd:Content><ofd:Layer ID="1">
+    <ofd:PathObject ID="p1" Boundary="0 0 100 40" Fill="true" Stroke="false">
+      <ofd:FillColor/>
+      <ofd:AbbreviatedData>M 0 0 L 100 0 L 100 40 L 0 40 C</ofd:AbbreviatedData>
+    </ofd:PathObject>
+  </ofd:Layer></ofd:Content>
+</ofd:Page>"#;
+    let target = render_content(CONTENT);
+    assert_eq!(pixel(&target, 50, 20), [0, 0, 0, 255]);
+}
+
+#[test]
 fn clip_areas_are_united() {
     const CONTENT: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
 <ofd:Page xmlns:ofd="http://www.ofdspec.org/2016">

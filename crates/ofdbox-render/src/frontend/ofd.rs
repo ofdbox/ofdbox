@@ -1612,13 +1612,21 @@ impl Builder<'_> {
                     .and_then(|id| self.resources.colors.get(id))
             });
         let bits = space.map_or(8, |space| space.bits);
+        let default_value = match space
+            .map(|space| space.kind.to_ascii_uppercase())
+            .as_deref()
+        {
+            Some("GRAY") => "0",
+            Some("CMYK") => "0 0 0 0",
+            _ => "0 0 0",
+        };
         let value = if let Some(index) = color.index() {
             if index < 0 {
                 return None;
             }
             space?.palette.get(index as usize)?.clone()
         } else {
-            color.value()?.to_owned()
+            color.value().unwrap_or(default_value).to_owned()
         };
         let components = parse_color_components(&value, bits);
         let kind = space.map_or("", |space| space.kind.as_str());
