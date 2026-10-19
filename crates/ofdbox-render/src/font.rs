@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use crate::error::RenderError;
 
 /// 字体加载请求。
@@ -20,5 +22,5 @@ pub struct FontRequest<'a> {
 /// 库不内置系统字体；没有嵌入字体的 OFD 需要调用方提供匹配逻辑。
 pub trait FontProvider {
     /// 返回字体文件字节，未找到时返回 `None`。
-    fn load(&mut self, request: &FontRequest<'_>) -> Result<Option<Vec<u8>>, RenderError>;
+    fn load(&mut self, request: &FontRequest<'_>) -> Result<Option<Arc<[u8]>>, RenderError>;
 }

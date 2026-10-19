@@ -120,8 +120,17 @@ impl ResourcePool {
         data: &[u8],
         face_index: u32,
     ) -> Result<Arc<FontAsset>, RenderError> {
+        self.embedded_font_shared(Arc::from(data), face_index)
+    }
+
+    /// 使用已共享的字体字节加载字体，避免额外复制。
+    pub fn embedded_font_shared(
+        &self,
+        data: Arc<[u8]>,
+        face_index: u32,
+    ) -> Result<Arc<FontAsset>, RenderError> {
         let key = FontKey {
-            digest: ContentDigest(sm3(data)),
+            digest: ContentDigest(sm3(&data)),
             face_index,
         };
         let mut inner = self.lock()?;
@@ -129,8 +138,8 @@ impl ResourcePool {
             return Ok(asset);
         }
         let id = inner.allocate_id();
-        let asset = Arc::new(FontAsset::new(id, Arc::from(data), face_index));
         let weight = data.len();
+        let asset = Arc::new(FontAsset::new(id, data, face_index));
         if weight <= inner.fonts.budget {
             inner.fonts.insert(key, Arc::clone(&asset), weight);
         }
@@ -144,8 +153,19 @@ impl ResourcePool {
         data: &[u8],
         mask: Option<(ImageFormat, &[u8])>,
     ) -> Result<Arc<ImageAsset>, RenderError> {
+        let mask = mask.map(|(format, bytes)| (format, Arc::<[u8]>::from(bytes)));
+        self.embedded_image_shared(format, Arc::from(data), mask)
+    }
+
+    /// 使用已共享的图片字节加载图片，避免额外复制。
+    pub fn embedded_image_shared(
+        &self,
+        format: ImageFormat,
+        data: Arc<[u8]>,
+        mask: Option<(ImageFormat, Arc<[u8]>)>,
+    ) -> Result<Arc<ImageAsset>, RenderError> {
         let key = ImageKey {
-            digest: ContentDigest(sm3(data)),
+            digest: ContentDigest(sm3(&data)),
             format: format.clone(),
         };
         let mut inner = self.lock()?;
@@ -153,9 +173,8 @@ impl ResourcePool {
             return Ok(asset);
         }
         let id = inner.allocate_id();
-        let mask = mask.map(|(format, bytes)| (format, Arc::<[u8]>::from(bytes)));
         let weight = data.len() + mask.as_ref().map_or(0, |(_, bytes)| bytes.len());
-        let asset = Arc::new(ImageAsset::new(id, format, Arc::from(data), mask));
+        let asset = Arc::new(ImageAsset::new(id, format, data, mask));
         if weight <= inner.images.budget {
             inner.images.insert(key, Arc::clone(&asset), weight);
         }

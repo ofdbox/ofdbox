@@ -93,6 +93,15 @@ let document = package.parse_document()?;
 
 解密按需发生：启用时只解出文件密钥和明密文映射表，页面与资源在读取时解密并进入独立明文缓存。`close_decryption()` 会释放会话并清空明文缓存。
 
+## 批量转图
+
+```bash
+cargo run -p ofdbox-render --release --example render_batch -- <输入目录> <输出目录>
+```
+
+递归查找输入目录下的 `.ofd`，每个文档输出到独立子目录，页面命名为 `page_0001.png`。
+无法读取或渲染的文档/页面会跳过，并记录到输出目录的 `_skipped.txt`。
+
 ## 标准覆盖
 
 - **GB/T 33190—2016**：核心结构已覆盖。

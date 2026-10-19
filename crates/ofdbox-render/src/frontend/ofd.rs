@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use ofdbox_core::{
     ColorView, CompositeGraphicUnitView, DrawParamView, GraphicObjectKind, GraphicObjectView,
-    OfdPackage, PageView, ResView, TextCodeView,
+    OfdError, OfdPackage, PageView, ResView, TextCodeView,
 };
 
 use crate::error::RenderError;
@@ -27,6 +27,7 @@ pub struct OfdFrontend<'a> {
     pool: &'a ResourcePool,
     options: RenderOptions,
     font_provider: Option<Box<dyn FontProvider>>,
+    font_cache: HashMap<String, Option<Arc<crate::asset::FontAsset>>>,
 }
 
 impl<'a> OfdFrontend<'a> {
@@ -41,6 +42,7 @@ impl<'a> OfdFrontend<'a> {
             pool,
             options,
             font_provider: None,
+            font_cache: HashMap::new(),
         }
     }
 
@@ -53,7 +55,14 @@ impl<'a> OfdFrontend<'a> {
     /// 构建页面场景。
     pub fn build_page(&mut self, page: &PageView) -> Result<Scene, RenderError> {
         let provider = &mut self.font_provider;
-        build_scene(self.package, self.pool, &self.options, provider, page)
+        build_scene(
+            self.package,
+            self.pool,
+            &self.options,
+            provider,
+            &mut self.font_cache,
+            page,
+        )
     }
 
     /// 构建并缓存页面场景。编辑器修改页面后应传入新的修订号。
@@ -66,7 +75,10 @@ impl<'a> OfdFrontend<'a> {
         let pool = self.pool;
         let options = &self.options;
         let provider = &mut self.font_provider;
-        pool.scene(key, || build_scene(package, pool, options, provider, page))
+        let fonts = &mut self.font_cache;
+        pool.scene(key, || {
+            build_scene(package, pool, options, provider, fonts, page)
+        })
     }
 }
 
@@ -75,14 +87,24 @@ fn build_scene(
     pool: &ResourcePool,
     options: &RenderOptions,
     font_provider: &mut Option<Box<dyn FontProvider>>,
+    font_cache: &mut HashMap<String, Option<Arc<crate::asset::FontAsset>>>,
     page: &PageView,
 ) -> Result<Scene, RenderError> {
-    let page_entry = package.page_entry_name(page)?;
     let document = package.parse_document()?;
-    let page_content = package.parse_page_for(page)?;
+    let document_dir = package
+        .document_entry_name()
+        .map(parent_dir)
+        .unwrap_or("")
+        .to_owned();
+    let page_loc = page
+        .base_loc()
+        .ok_or_else(|| OfdError::InvalidStructure("Page 缺少 BaseLoc".to_owned()))?;
+    let page_entry = resolve_existing(package, &document_dir, page_loc)
+        .ok_or_else(|| OfdError::MissingEntry(page_loc.to_owned()))?;
+    let page_content = package.parse_page(&page_entry)?;
     let mut resources = ResourceSet::default();
-    resources.collect_document(package, &document)?;
-    resources.collect_page(package, &page_entry, &page_content)?;
+    resources.collect_document(package, &document);
+    resources.collect_page(package, &page_entry, &page_content);
 
     let physical = page_content
         .area()
@@ -100,6 +122,7 @@ fn build_scene(
         options,
         resources,
         font_provider,
+        font_cache,
         diagnostics: Vec::new(),
         depth: 0,
         composites: HashSet::new(),
@@ -154,6 +177,7 @@ struct ResourceSet {
 struct FontResource {
     file: Option<String>,
     dir: String,
+    base: Option<String>,
     name: Option<String>,
     family: Option<String>,
     charset: Option<String>,
@@ -166,6 +190,7 @@ struct MediaResource {
     format: ImageFormat,
     file: String,
     dir: String,
+    base: Option<String>,
 }
 
 struct ColorSpaceResource {
@@ -183,13 +208,9 @@ struct DrawParamResource {
 }
 
 impl ResourceSet {
-    fn collect_document(
-        &mut self,
-        package: &mut OfdPackage,
-        document: &ofdbox_core::DocumentView,
-    ) -> Result<(), RenderError> {
+    fn collect_document(&mut self, package: &mut OfdPackage, document: &ofdbox_core::DocumentView) {
         let Some(common) = document.common_data() else {
-            return Ok(());
+            return;
         };
         let document_dir = package
             .document_entry_name()
@@ -198,10 +219,10 @@ impl ResourceSet {
             .to_owned();
         for loc in common.public_res().chain(common.document_res()) {
             let loc = loc.to_owned();
-            let entry = package.resolve_entry(&document_dir, &loc)?;
-            self.collect_res(package, &entry)?;
+            if let Some(entry) = resolve_existing(package, &document_dir, &loc) {
+                let _ = self.collect_res(package, &entry);
+            }
         }
-        Ok(())
     }
 
     fn collect_page(
@@ -209,27 +230,25 @@ impl ResourceSet {
         package: &mut OfdPackage,
         page_entry: &str,
         page: &ofdbox_core::PageContentView,
-    ) -> Result<(), RenderError> {
+    ) {
         let page_dir = parent_dir(page_entry).to_owned();
         for loc in page.page_res() {
             let loc = loc.to_owned();
-            let entry = package.resolve_entry(&page_dir, &loc)?;
-            self.collect_res(package, &entry)?;
+            if let Some(entry) = resolve_existing(package, &page_dir, &loc) {
+                let _ = self.collect_res(package, &entry);
+            }
         }
-        Ok(())
     }
 
     fn collect_res(&mut self, package: &mut OfdPackage, entry: &str) -> Result<(), RenderError> {
         let res = package.parse_res(entry)?;
-        let mut dir = parent_dir(entry).to_owned();
-        if let Some(base) = res.base_loc().map(str::to_owned) {
-            dir = package.resolve_entry(&dir, &base)?;
-        }
-        self.collect_from_res(&res, dir);
+        let dir = parent_dir(entry).to_owned();
+        let base = res.base_loc().map(str::to_owned);
+        self.collect_from_res(&res, dir, base);
         Ok(())
     }
 
-    fn collect_from_res(&mut self, res: &ResView, dir: String) {
+    fn collect_from_res(&mut self, res: &ResView, dir: String, base: Option<String>) {
         for font in res.fonts() {
             if let Some(id) = font.id() {
                 self.fonts.insert(
@@ -237,6 +256,7 @@ impl ResourceSet {
                     FontResource {
                         file: font.font_file().map(str::to_owned),
                         dir: dir.clone(),
+                        base: base.clone(),
                         name: font.font_name().map(str::to_owned),
                         family: font.family_name().map(str::to_owned),
                         charset: font.charset().map(str::to_owned),
@@ -260,6 +280,7 @@ impl ResourceSet {
                     format: ImageFormat::from_media_format(format),
                     file: file.to_owned(),
                     dir: dir.clone(),
+                    base: base.clone(),
                 },
             );
         }
@@ -302,6 +323,7 @@ struct Builder<'a> {
     options: &'a RenderOptions,
     resources: ResourceSet,
     font_provider: &'a mut Option<Box<dyn FontProvider>>,
+    font_cache: &'a mut HashMap<String, Option<Arc<crate::asset::FontAsset>>>,
     diagnostics: Vec<crate::scene::RenderDiagnostic>,
     depth: usize,
     composites: HashSet<String>,
@@ -614,10 +636,7 @@ impl Builder<'_> {
             .attribute("ResourceID")
             .or_else(|| object.attribute("ResouceID"))?;
         let media = self.resources.images.get(resource_id).cloned()?;
-        let file = match self
-            .package
-            .resolve_entry(&media.dir, &media.file)
-            .and_then(|entry| self.package.read_entry(&entry))
+        let file = match read_resource(self.package, &media.dir, media.base.as_deref(), &media.file)
         {
             Ok(bytes) => bytes,
             Err(error) => {
@@ -633,8 +652,9 @@ impl Builder<'_> {
             .attribute("ImageMask")
             .and_then(|id| self.resources.images.get(id).cloned())
             .and_then(|mask| {
-                let entry = self.package.resolve_entry(&mask.dir, &mask.file).ok()?;
-                let bytes = self.package.read_entry(&entry).ok()?;
+                let bytes =
+                    read_resource(self.package, &mask.dir, mask.base.as_deref(), &mask.file)
+                        .ok()?;
                 Some((mask.format, bytes))
             });
         let mask = mask
@@ -773,9 +793,12 @@ impl Builder<'_> {
 
     fn font(&mut self, id: &str) -> Option<Arc<crate::asset::FontAsset>> {
         let resource = self.resources.fonts.get(id).cloned()?;
-        let bytes = if let Some(file) = resource.file.as_deref() {
-            let entry = self.package.resolve_entry(&resource.dir, file).ok()?;
-            self.package.read_entry(&entry).ok()?.to_vec()
+        let key = format!("{}/{id}", resource.dir);
+        if let Some(cached) = self.font_cache.get(&key) {
+            return cached.clone();
+        }
+        let data = if let Some(file) = resource.file.as_deref() {
+            read_resource(self.package, &resource.dir, resource.base.as_deref(), file).ok()
         } else {
             let provider = self.font_provider.as_mut()?;
             let request = FontRequest {
@@ -785,12 +808,13 @@ impl Builder<'_> {
                 bold: resource.bold,
                 italic: resource.italic,
             };
-            provider.load(&request).ok()??
+            provider.load(&request).ok()?
         };
-        if bytes.is_empty() {
-            return None;
-        }
-        self.pool.embedded_font(&bytes, 0).ok()
+        let asset = data
+            .filter(|bytes| !bytes.is_empty())
+            .and_then(|bytes| self.pool.embedded_font_shared(bytes, 0).ok());
+        self.font_cache.insert(key, asset.clone());
+        asset
     }
 
     fn stroke_style(&mut self, object: &GraphicObjectView) -> StrokeStyle {
@@ -1270,4 +1294,47 @@ fn distance(a: Point, b: Point) -> f64 {
 
 fn parent_dir(path: &str) -> &str {
     path.rfind('/').map(|index| &path[..index]).unwrap_or("")
+}
+
+/// 真实文件既有相对 Document.xml 的路径，也有已经包含 `Doc_0/` 的根相对路径。
+fn resolve_existing(package: &OfdPackage, base: &str, loc: &str) -> Option<String> {
+    let primary = package.resolve_entry(base, loc).ok()?;
+    if package.contains(&primary) {
+        return Some(primary);
+    }
+    let root = package.resolve_entry("", loc).ok()?;
+    if package.contains(&root) {
+        return Some(root);
+    }
+    None
+}
+
+fn read_resource(
+    package: &mut OfdPackage,
+    dir: &str,
+    base: Option<&str>,
+    file: &str,
+) -> Result<Arc<[u8]>, OfdError> {
+    let mut candidates = Vec::new();
+    if let Some(base) = base {
+        let base = base.trim_end_matches('/');
+        if let Ok(entry) = package.resolve_entry(dir, &format!("{base}/{file}")) {
+            candidates.push(entry);
+        }
+        if let Ok(entry) = package.resolve_entry("", &format!("{base}/{file}")) {
+            candidates.push(entry);
+        }
+    }
+    if let Ok(entry) = package.resolve_entry(dir, file) {
+        candidates.push(entry);
+    }
+    if let Ok(entry) = package.resolve_entry("", file) {
+        candidates.push(entry);
+    }
+    for entry in candidates {
+        if package.contains(&entry) {
+            return package.read_entry(&entry);
+        }
+    }
+    Err(OfdError::MissingEntry(file.to_owned()))
 }
