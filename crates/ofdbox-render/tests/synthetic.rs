@@ -329,6 +329,60 @@ fn hscale_scales_glyph_and_advance() {
 }
 
 #[test]
+fn cgtransform_one_to_many() {
+    let content = r#"<?xml version="1.0" encoding="UTF-8"?>
+<ofd:Page xmlns:ofd="http://www.ofdspec.org/2016">
+  <ofd:Area><ofd:PhysicalBox>0 0 100 100</ofd:PhysicalBox></ofd:Area>
+  <ofd:Content><ofd:Layer ID="1">
+    <ofd:TextObject ID="t1" Boundary="0 0 100 100" Font="3" Size="10">
+      <ofd:CGTransform CodePosition="0" CodeCount="1" GlyphCount="2"><ofd:Glyphs>5 6</ofd:Glyphs></ofd:CGTransform>
+      <ofd:TextCode X="0" Y="0">A</ofd:TextCode>
+    </ofd:TextObject>
+  </ofd:Layer></ofd:Content>
+</ofd:Page>"#;
+    let scene = render_text(content);
+    assert_eq!(
+        collect_text(&scene),
+        vec![vec![(5, 0.0, 0.0), (6, 10.0, 0.0)]]
+    );
+}
+
+#[test]
+fn cgtransform_many_to_one() {
+    let content = r#"<?xml version="1.0" encoding="UTF-8"?>
+<ofd:Page xmlns:ofd="http://www.ofdspec.org/2016">
+  <ofd:Area><ofd:PhysicalBox>0 0 100 100</ofd:PhysicalBox></ofd:Area>
+  <ofd:Content><ofd:Layer ID="1">
+    <ofd:TextObject ID="t1" Boundary="0 0 100 100" Font="3" Size="10">
+      <ofd:CGTransform CodePosition="0" CodeCount="2" GlyphCount="1"><ofd:Glyphs>5</ofd:Glyphs></ofd:CGTransform>
+      <ofd:TextCode X="0" Y="0">AB</ofd:TextCode>
+    </ofd:TextObject>
+  </ofd:Layer></ofd:Content>
+</ofd:Page>"#;
+    let scene = render_text(content);
+    assert_eq!(collect_text(&scene), vec![vec![(5, 0.0, 0.0)]]);
+}
+
+#[test]
+fn cgtransform_many_to_many() {
+    let content = r#"<?xml version="1.0" encoding="UTF-8"?>
+<ofd:Page xmlns:ofd="http://www.ofdspec.org/2016">
+  <ofd:Area><ofd:PhysicalBox>0 0 100 100</ofd:PhysicalBox></ofd:Area>
+  <ofd:Content><ofd:Layer ID="1">
+    <ofd:TextObject ID="t1" Boundary="0 0 100 100" Font="3" Size="10">
+      <ofd:CGTransform CodePosition="0" CodeCount="2" GlyphCount="3"><ofd:Glyphs>5 6 7</ofd:Glyphs></ofd:CGTransform>
+      <ofd:TextCode X="0" Y="0">AB</ofd:TextCode>
+    </ofd:TextObject>
+  </ofd:Layer></ofd:Content>
+</ofd:Page>"#;
+    let scene = render_text(content);
+    assert_eq!(
+        collect_text(&scene),
+        vec![vec![(5, 0.0, 0.0), (6, 10.0, 0.0), (7, 20.0, 0.0)]]
+    );
+}
+
+#[test]
 fn placeholders_report_unsupported() {
     let scene = Scene {
         size: Size::new(1.0, 1.0),

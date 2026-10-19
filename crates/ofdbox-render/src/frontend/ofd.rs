@@ -1010,46 +1010,67 @@ impl Builder<'_> {
             let mut glyphs = Vec::with_capacity(run.chars.len());
             for (index, character) in run.chars.iter().enumerate() {
                 let slot = offset + index;
-                let glyph_id = slots.get(slot).copied().flatten().or_else(|| {
-                    face.as_ref()
+                let covered = matches!(slots.get(slot), Some(Some(_)));
+                let slot_glyphs = match slots.get(slot) {
+                    Some(Some(glyphs)) => glyphs.clone(),
+                    Some(None) | None => face
+                        .as_ref()
                         .and_then(|face| face.glyph_index(*character))
-                        .map(|id| u32::from(id.0))
-                });
-                let Some(glyph_id) = glyph_id else {
-                    continue;
+                        .map(|id| vec![u32::from(id.0)])
+                        .unwrap_or_default(),
                 };
-                let advance = glyph_advance(face.as_ref(), glyph_id, size);
-                if rotate_glyphs || scale_glyphs {
-                    let transform = Matrix::scale(h_scale.max(0.0), 1.0)
-                        .then(Matrix::rotate(f64::from(char_direction).to_radians()))
-                        .then(Matrix::translate(x, y));
-                    elements.push(Element::Text(TextElement {
-                        font: Arc::clone(&font),
-                        size,
-                        transform,
-                        glyphs: vec![PositionedGlyph {
+                let continuation = covered && slot_glyphs.is_empty();
+                let mut cluster_x = x;
+                let mut cluster_y = y;
+                let mut advance_sum = 0.0;
+                for glyph_id in slot_glyphs.iter().copied() {
+                    let advance = glyph_advance(face.as_ref(), glyph_id, size);
+                    if rotate_glyphs || scale_glyphs {
+                        let transform = Matrix::scale(h_scale.max(0.0), 1.0)
+                            .then(Matrix::rotate(f64::from(char_direction).to_radians()))
+                            .then(Matrix::translate(cluster_x, cluster_y));
+                        elements.push(Element::Text(TextElement {
+                            font: Arc::clone(&font),
+                            size,
+                            transform,
+                            glyphs: vec![PositionedGlyph {
+                                id: glyph_id,
+                                x: 0.0,
+                                y: 0.0,
+                            }],
+                            fill: fill_paint.clone(),
+                            stroke: stroke_paint.clone(),
+                        }));
+                    } else {
+                        glyphs.push(PositionedGlyph {
                             id: glyph_id,
-                            x: 0.0,
-                            y: 0.0,
-                        }],
-                        fill: fill_paint.clone(),
-                        stroke: stroke_paint.clone(),
-                    }));
-                } else {
-                    glyphs.push(PositionedGlyph {
-                        id: glyph_id,
-                        x: x as f32,
-                        y: y as f32,
-                    });
+                            x: cluster_x as f32,
+                            y: cluster_y as f32,
+                        });
+                    }
+                    advance_sum += advance;
+                    match read_direction {
+                        180 => cluster_x -= advance * h_scale.max(0.0),
+                        90 => cluster_y += advance,
+                        270 => cluster_y -= advance,
+                        _ => cluster_x += advance * h_scale.max(0.0),
+                    }
                 }
+                let fallback_advance = if continuation {
+                    0.0
+                } else if slot_glyphs.is_empty() {
+                    size
+                } else {
+                    advance_sum
+                };
                 let delta_x = run.delta_x.get(index).copied();
                 let delta_y = run.delta_y.get(index).copied();
                 if let Some(delta) = delta_x {
                     x += delta;
                 } else {
                     match read_direction {
-                        0 => x += advance * h_scale.max(0.0),
-                        180 => x -= advance * h_scale.max(0.0),
+                        0 => x += fallback_advance * h_scale.max(0.0),
+                        180 => x -= fallback_advance * h_scale.max(0.0),
                         _ => {}
                     }
                 }
@@ -1057,8 +1078,8 @@ impl Builder<'_> {
                     y += delta;
                 } else {
                     match read_direction {
-                        90 => y += advance,
-                        270 => y -= advance,
+                        90 => y += fallback_advance,
+                        270 => y -= fallback_advance,
                         _ => {}
                     }
                 }
@@ -1517,25 +1538,45 @@ fn collect_code_runs(object: &GraphicObjectView) -> Vec<CodeRun> {
     runs
 }
 
-fn glyph_slots(object: &GraphicObjectView, count: usize) -> Vec<Option<u32>> {
+/// 每个字符位置的显式字形。
+///
+/// - `None`：没有 CGTransform，按字符 CMAP 取字形；
+/// - `Some(vec![])`：被簇覆盖但不产生字形（多对一的后续字符）；
+/// - `Some(glyphs)`：一个或多个字形，整个簇锚定在该编码位置。
+fn glyph_slots(object: &GraphicObjectView, count: usize) -> Vec<Option<Vec<u32>>> {
     let mut slots = vec![None; count];
     for transform in object.cg_transforms() {
         let glyphs = transform.glyphs().map(parse_u32s).unwrap_or_default();
+        if glyphs.is_empty() {
+            continue;
+        }
         let position = transform.code_position().unwrap_or(0).max(0) as usize;
+        if position >= count {
+            continue;
+        }
         let code_count = transform
             .code_count()
-            .map(|value| value.max(0) as usize)
-            .unwrap_or(glyphs.len());
-        if glyphs.len() == code_count {
+            .map(|value| value.max(1) as usize)
+            .unwrap_or(1);
+        let glyph_count = transform
+            .glyph_count()
+            .map(|value| value.max(1) as usize)
+            .unwrap_or(1);
+        if code_count == glyph_count && glyphs.len() == code_count {
             for (index, glyph) in glyphs.into_iter().enumerate() {
                 if let Some(slot) = slots.get_mut(position + index) {
-                    *slot = Some(glyph);
+                    *slot = Some(vec![glyph]);
                 }
             }
-        } else if let Some(glyph) = glyphs.first()
-            && let Some(slot) = slots.get_mut(position)
-        {
-            *slot = Some(*glyph);
+        } else {
+            if let Some(slot) = slots.get_mut(position) {
+                *slot = Some(glyphs);
+            }
+            for index in 1..code_count {
+                if let Some(slot) = slots.get_mut(position + index) {
+                    *slot = Some(Vec::new());
+                }
+            }
         }
     }
     slots
