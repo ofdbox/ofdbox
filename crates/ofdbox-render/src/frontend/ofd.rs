@@ -1187,19 +1187,19 @@ impl Builder<'_> {
         let resource_id = object
             .attribute("ResourceID")
             .or_else(|| object.attribute("ResouceID"))?;
-        let media = self.resources.images.get(resource_id).cloned()?;
-        let file = match read_resource(self.package, &media.dir, media.base.as_deref(), &media.file)
+        let mut candidates = Vec::new();
+        if let Some(substitution) = object
+            .attribute("Substitution")
+            .and_then(|id| self.resources.images.get(id).cloned())
         {
-            Ok(bytes) => bytes,
-            Err(error) => {
-                self.diagnostic(
-                    DiagnosticCode::Image,
-                    object.id(),
-                    format!("读取图片失败: {error}"),
-                );
-                return None;
-            }
-        };
+            candidates.push(substitution);
+        }
+        if let Some(primary) = self.resources.images.get(resource_id).cloned() {
+            candidates.push(primary);
+        }
+        if candidates.is_empty() {
+            return None;
+        }
         let mask = object
             .attribute("ImageMask")
             .and_then(|id| self.resources.images.get(id).cloned())
@@ -1213,28 +1213,43 @@ impl Builder<'_> {
         let mask = mask
             .as_ref()
             .map(|(format, bytes)| (format.clone(), &bytes[..]));
-        let format = ImageFormat::detect(&file).unwrap_or_else(|| media.format.clone());
-        let image = match self.pool.embedded_image(format, &file, mask) {
-            Ok(image) => image,
-            Err(error) => {
-                self.diagnostic(
-                    DiagnosticCode::Image,
-                    object.id(),
-                    format!("图片资源无效: {error}"),
-                );
-                return None;
+
+        let mut loaded = None;
+        let mut last_error = None;
+        for media in candidates {
+            let file =
+                match read_resource(self.package, &media.dir, media.base.as_deref(), &media.file) {
+                    Ok(bytes) => bytes,
+                    Err(error) => {
+                        last_error = Some(format!("读取图片失败: {error}"));
+                        continue;
+                    }
+                };
+            let format = ImageFormat::detect(&file).unwrap_or(media.format);
+            let image = match self.pool.embedded_image(format, &file, mask.clone()) {
+                Ok(image) => image,
+                Err(error) => {
+                    last_error = Some(format!("图片资源无效: {error}"));
+                    continue;
+                }
+            };
+            match image.decoded(self.options.max_image_pixels) {
+                Ok(decoded) => {
+                    loaded = Some((image, decoded));
+                    break;
+                }
+                Err(error) => {
+                    last_error = Some(format!("图片解码失败: {error}"));
+                }
             }
-        };
-        let decoded = match image.decoded(self.options.max_image_pixels) {
-            Ok(decoded) => decoded,
-            Err(error) => {
-                self.diagnostic(
-                    DiagnosticCode::Image,
-                    object.id(),
-                    format!("图片解码失败: {error}"),
-                );
-                return None;
-            }
+        }
+        let Some((image, decoded)) = loaded else {
+            self.diagnostic(
+                DiagnosticCode::Image,
+                object.id(),
+                last_error.unwrap_or_else(|| "图片资源缺失".to_owned()),
+            );
+            return None;
         };
         let scale_x = 1.0 / f64::from(decoded.width.max(1));
         let scale_y = 1.0 / f64::from(decoded.height.max(1));

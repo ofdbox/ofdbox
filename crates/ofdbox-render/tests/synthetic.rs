@@ -42,6 +42,10 @@ const PUBLIC_RES_XML: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
 </ofd:Res>"#;
 
 fn blue_png() -> Vec<u8> {
+    solid_png(0, 0, 255)
+}
+
+fn solid_png(red: u8, green: u8, blue: u8) -> Vec<u8> {
     #[derive(Clone, Default)]
     struct SharedWriter(Arc<Mutex<Vec<u8>>>);
     impl Write for SharedWriter {
@@ -59,10 +63,9 @@ fn blue_png() -> Vec<u8> {
     encoder.set_color(png::ColorType::Rgba);
     encoder.set_depth(png::BitDepth::Eight);
     let mut writer = encoder.write_header().expect("png header");
+    let pixel = [red, green, blue, 255];
     writer
-        .write_image_data(&[
-            0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255, 255,
-        ])
+        .write_image_data(&[pixel, pixel, pixel, pixel].concat())
         .expect("png data");
     writer.finish().expect("png finish");
     output.0.lock().expect("lock").clone()
@@ -132,6 +135,57 @@ fn pixel(target: &RasterTarget, x: u16, y: u16) -> [u8; 4] {
     target.data()[index..index + 4]
         .try_into()
         .expect("rgba pixel")
+}
+
+#[test]
+fn uses_substitution_image() {
+    const RES: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<ofd:Res xmlns:ofd="http://www.ofdspec.org/2016">
+  <ofd:ColorSpaces><ofd:ColorSpace ID="1" Type="RGB"/></ofd:ColorSpaces>
+  <ofd:MultiMedias>
+    <ofd:MultiMedia ID="2" Type="Image" Format="PNG"><ofd:MediaFile>Images/primary.png</ofd:MediaFile></ofd:MultiMedia>
+    <ofd:MultiMedia ID="3" Type="Image" Format="PNG"><ofd:MediaFile>Images/substitution.png</ofd:MediaFile></ofd:MultiMedia>
+  </ofd:MultiMedias>
+</ofd:Res>"#;
+    const CONTENT: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<ofd:Page xmlns:ofd="http://www.ofdspec.org/2016">
+  <ofd:Area><ofd:PhysicalBox>0 0 100 100</ofd:PhysicalBox></ofd:Area>
+  <ofd:Content><ofd:Layer ID="1">
+    <ofd:ImageObject ID="i1" Boundary="0 0 20 20" CTM="20 0 0 20 0 0" ResourceID="2" Substitution="3"/>
+  </ofd:Layer></ofd:Content>
+</ofd:Page>"#;
+    let primary = solid_png(0, 0, 255);
+    let substitution = solid_png(0, 255, 0);
+    let bytes = zip(&[
+        ("OFD.xml", OFD_XML.as_bytes()),
+        ("Doc_0/Document.xml", DOCUMENT_XML.as_bytes()),
+        ("Doc_0/PublicRes.xml", RES.as_bytes()),
+        ("Doc_0/Images/primary.png", &primary),
+        ("Doc_0/Images/substitution.png", &substitution),
+        ("Doc_0/Pages/Page_0/Content.xml", CONTENT.as_bytes()),
+    ]);
+    let mut package = open(bytes);
+    let document = package.parse_document().expect("document");
+    let page = document
+        .pages()
+        .expect("pages")
+        .pages()
+        .next()
+        .expect("page");
+    let pool = ResourcePool::new(PoolBudget::default());
+    let options = RenderOptions {
+        dpi: 25.4,
+        ..Default::default()
+    };
+    let scene = OfdFrontend::new(&mut package, &pool, options)
+        .build_page(&page)
+        .expect("scene");
+    let mut target = RasterTarget::from_size(scene.size, 25.4).expect("target");
+    let mut backend = VelloCpuBackend::with_defaults();
+    let mut frame = backend.begin_frame((), &mut target).expect("frame");
+    frame.draw(&scene).expect("draw");
+    frame.finish().expect("finish");
+    assert_eq!(pixel(&target, 10, 10), [0, 255, 0, 255]);
 }
 
 #[test]
