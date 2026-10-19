@@ -244,7 +244,7 @@ impl VelloCpuFrame<'_> {
         for element in &group.children {
             match element {
                 Element::Group(child) => self.draw_group(child, transform)?,
-                Element::Path(path) => self.draw_path(path)?,
+                Element::Path(path) => self.draw_path(path, transform)?,
                 Element::Text(text) => self.draw_text(text, transform)?,
                 Element::Image(image) => self.draw_image(image, transform)?,
             }
@@ -255,14 +255,32 @@ impl VelloCpuFrame<'_> {
         Ok(())
     }
 
-    fn draw_path(&mut self, element: &PathElement) -> Result<(), RenderError> {
+    fn draw_path(&mut self, element: &PathElement, parent: Matrix) -> Result<(), RenderError> {
         let path = to_bez_path(&element.path);
         if let Some(paint) = &element.fill {
-            self.context.set_fill_rule(rule(element.fill_rule));
-            self.context.set_paint(brush(paint));
-            self.context.fill_path(&path);
+            // 椭圆径向渐变通过“把路径逆变换到圆空间、再用椭圆变换绘制”实现。
+            if let Paint::Radial(radial) = paint
+                && let Some(ellipse) = ellipse_transform(radial)
+                && let Some(inverse) = ellipse.invert()
+            {
+                let mut ellipse_path = path.clone();
+                ellipse_path.apply_affine(affine(inverse));
+                self.context.set_transform(affine(ellipse.then(parent)));
+                self.context.set_fill_rule(rule(element.fill_rule));
+                self.context
+                    .set_paint(Brush::Gradient(gradient_radial_transformed(
+                        radial, inverse,
+                    )));
+                self.context.fill_path(&ellipse_path);
+                self.context.set_transform(affine(parent));
+            } else {
+                self.context.set_fill_rule(rule(element.fill_rule));
+                self.context.set_paint(brush(paint));
+                self.context.fill_path(&path);
+            }
         }
         if let Some(stroke) = &element.stroke {
+            self.context.set_transform(affine(parent));
             self.context.set_paint(brush(&stroke.paint));
             self.context.set_stroke(kurbo_stroke(&stroke.style));
             self.context.stroke_path(&path);
@@ -391,15 +409,35 @@ fn brush(paint: &Paint) -> PaintType {
 }
 
 fn gradient_radial(radial: &RadialGradient) -> Gradient {
+    gradient_radial_transformed(radial, Matrix::IDENTITY)
+}
+
+fn gradient_radial_transformed(radial: &RadialGradient, transform: Matrix) -> Gradient {
+    let start = transform.apply(radial.start_center);
+    let end = transform.apply(radial.end_center);
     let mut value = Gradient::new_two_point_radial(
-        Point::new(radial.start_center.x, radial.start_center.y),
+        Point::new(start.x, start.y),
         radial.start_radius as f32,
-        Point::new(radial.end_center.x, radial.end_center.y),
+        Point::new(end.x, end.y),
         radial.end_radius as f32,
     );
     value.extend = extend(radial.extend);
     value.stops = stops(&radial.stops);
     value
+}
+
+/// 圆到椭圆的变换：按长轴倾角旋转，并把短轴按 `sqrt(1 - e²)` 压缩。
+fn ellipse_transform(radial: &RadialGradient) -> Option<Matrix> {
+    let eccentricity = radial.eccentricity;
+    if !(eccentricity.is_finite() && eccentricity > 1e-6) {
+        return None;
+    }
+    let ratio = (1.0 - eccentricity.clamp(0.0, 0.999).powi(2))
+        .max(1e-4)
+        .sqrt();
+    let (sin, cos) = radial.angle.to_radians().sin_cos();
+    let rotation = Matrix::new(cos, sin, -sin, cos, 0.0, 0.0);
+    Some(Matrix::scale(1.0, ratio).then(rotation))
 }
 
 fn stops(stops: &[GradientStop]) -> vello_cpu::peniko::ColorStops {
@@ -485,4 +523,40 @@ fn to_bez_path(path: &Path) -> BezPath {
         }
     }
     output
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ellipse_transform;
+    use crate::geometry::Point;
+    use crate::paint::{GradientExtend, RadialGradient};
+
+    fn radial(eccentricity: f64, angle: f64) -> RadialGradient {
+        RadialGradient {
+            start_center: Point::new(0.0, 0.0),
+            start_radius: 0.0,
+            end_center: Point::new(10.0, 0.0),
+            end_radius: 10.0,
+            stops: Vec::new(),
+            extend: GradientExtend::Pad,
+            eccentricity,
+            angle,
+        }
+    }
+
+    #[test]
+    fn ellipse_transform_compresses_short_axis() {
+        let transform = ellipse_transform(&radial(0.5, 0.0)).expect("ellipse");
+        let major = transform.apply(Point::new(1.0, 0.0));
+        assert!((major.x - 1.0).abs() < 1e-9);
+        assert!(major.y.abs() < 1e-9);
+        let minor = transform.apply(Point::new(0.0, 1.0));
+        assert!(minor.x.abs() < 1e-9);
+        assert!((minor.y - (1.0f64 - 0.25).sqrt()).abs() < 1e-9);
+    }
+
+    #[test]
+    fn zero_eccentricity_has_no_transform() {
+        assert!(ellipse_transform(&radial(0.0, 30.0)).is_none());
+    }
 }

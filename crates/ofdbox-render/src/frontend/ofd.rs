@@ -556,10 +556,20 @@ impl Builder<'_> {
         };
         let fill = parse_bool(object.attribute("Fill")).unwrap_or(false);
         let stroke = parse_bool(object.attribute("Stroke")).unwrap_or(true);
-        let fill_paint = if fill {
-            object
-                .fill_color()
-                .and_then(|color| self.paint(&color, object.id()))
+        let fill_color = if fill { object.fill_color() } else { None };
+        let pattern = fill_color
+            .as_ref()
+            .filter(|color| color.kind() == ofdbox_core::ColorKind::Pattern);
+        let mesh = fill_color.as_ref().filter(|color| {
+            matches!(
+                color.kind(),
+                ofdbox_core::ColorKind::GouraudShd | ofdbox_core::ColorKind::LaGouraudShd
+            )
+        });
+        let fill_paint = if pattern.is_none() && mesh.is_none() {
+            fill_color
+                .as_ref()
+                .and_then(|color| self.paint(color, object.id()))
         } else {
             None
         };
@@ -584,12 +594,329 @@ impl Builder<'_> {
             }
             _ => FillRule::NonZero,
         };
+        if pattern.is_some() || mesh.is_some() {
+            let fill_element = if let Some(color) = pattern {
+                self.build_pattern_fill(object, &path, color, rule)
+            } else if let Some(color) = mesh {
+                self.build_mesh_fill(object, &path, color, rule)
+            } else {
+                None
+            };
+            let mut children = Vec::new();
+            if let Some(element) = fill_element {
+                children.push(element);
+            }
+            if let Some(stroke) = stroke_paint {
+                children.push(Element::Path(PathElement {
+                    path: Arc::new(path),
+                    fill: None,
+                    stroke: Some(stroke),
+                    fill_rule: rule,
+                }));
+            }
+            if children.is_empty() {
+                return None;
+            }
+            let mut group = Group::new(Matrix::IDENTITY);
+            group.children = children;
+            return Some(Element::Group(group));
+        }
+        let gradient_clip = if fill_paint.is_some() {
+            fill_color.as_ref().and_then(gradient_fill_clip)
+        } else {
+            None
+        };
+        if let Some(clip) = gradient_clip {
+            let fill = Element::Path(PathElement {
+                path: Arc::new(path.clone()),
+                fill: fill_paint,
+                stroke: None,
+                fill_rule: rule,
+            });
+            let mut children = vec![Element::Group(clip_group(
+                Arc::new(clip),
+                Matrix::IDENTITY,
+                vec![fill],
+            ))];
+            if let Some(stroke) = stroke_paint {
+                children.push(Element::Path(PathElement {
+                    path: Arc::new(path),
+                    fill: None,
+                    stroke: Some(stroke),
+                    fill_rule: rule,
+                }));
+            }
+            let mut group = Group::new(Matrix::IDENTITY);
+            group.children = children;
+            return Some(Element::Group(group));
+        }
         Some(Element::Path(PathElement {
             path: Arc::new(path),
             fill: fill_paint,
             stroke: stroke_paint,
             fill_rule: rule,
         }))
+    }
+
+    /// 把底纹展开为按 XStep/YStep 排列的单元，再按填充路径裁剪。
+    fn build_pattern_fill(
+        &mut self,
+        object: &GraphicObjectView,
+        path: &Path,
+        color: &ColorView,
+        rule: FillRule,
+    ) -> Option<Element> {
+        let pattern = color.pattern()?;
+        let width = pattern.width()?;
+        let height = pattern.height()?;
+        if !(width > 0.0 && height > 0.0) {
+            self.diagnostic(DiagnosticCode::Paint, object.id(), "底纹尺寸无效");
+            return None;
+        }
+        let boundary = object.boundary().and_then(parse_rect)?;
+        let x_step = pattern.x_step().unwrap_or(width).max(width);
+        let y_step = pattern.y_step().unwrap_or(height).max(height);
+        let relative_to_page = pattern
+            .relative_to()
+            .is_some_and(|value| value.eq_ignore_ascii_case("Page"));
+        let origin_x = if relative_to_page { -boundary.x } else { 0.0 };
+        let origin_y = if relative_to_page { -boundary.y } else { 0.0 };
+        let start_col = ((0.0 - origin_x) / x_step).floor() as i64;
+        let end_col = ((boundary.width - origin_x) / x_step).ceil() as i64;
+        let start_row = ((0.0 - origin_y) / y_step).floor() as i64;
+        let end_row = ((boundary.height - origin_y) / y_step).ceil() as i64;
+        let columns = end_col - start_col + 1;
+        let rows = end_row - start_row + 1;
+        if columns <= 0 || rows <= 0 {
+            return None;
+        }
+        let count = i128::from(columns) * i128::from(rows);
+        if count > 4096 {
+            self.diagnostic(DiagnosticCode::Paint, object.id(), "底纹单元过多");
+            return None;
+        }
+
+        let mut tile = Vec::new();
+        self.depth += 1;
+        for child in pattern.objects() {
+            self.render_object(&child, &mut tile);
+        }
+        self.depth -= 1;
+        if tile.is_empty() {
+            return None;
+        }
+
+        let reflect = pattern.reflect_method().unwrap_or("Normal");
+        let mirror_columns =
+            reflect.eq_ignore_ascii_case("Column") || reflect.eq_ignore_ascii_case("RowAndColumn");
+        let mirror_rows =
+            reflect.eq_ignore_ascii_case("Row") || reflect.eq_ignore_ascii_case("RowAndColumn");
+        // 相邻单元在公共边各自抗锯齿会留下白缝，放大单元并向外扩一点制造重叠。
+        const PATTERN_OVERLAP: f64 = 0.25;
+        let factor_x = (width + PATTERN_OVERLAP * 2.0) / width;
+        let factor_y = (height + PATTERN_OVERLAP * 2.0) / height;
+        let tile_clip = Arc::new(Rect::new(0.0, 0.0, width, height).to_path());
+        let mut cells = Vec::with_capacity(count as usize);
+        for row in start_row..=end_row {
+            for col in start_col..=end_col {
+                let scale_x = if mirror_columns && col.rem_euclid(2) == 1 {
+                    -1.0
+                } else {
+                    1.0
+                };
+                let scale_y = if mirror_rows && row.rem_euclid(2) == 1 {
+                    -1.0
+                } else {
+                    1.0
+                };
+                let x = origin_x + col as f64 * x_step;
+                let y = origin_y + row as f64 * y_step;
+                let translate_x = if scale_x < 0.0 {
+                    x + width + PATTERN_OVERLAP
+                } else {
+                    x - PATTERN_OVERLAP
+                };
+                let translate_y = if scale_y < 0.0 {
+                    y + height + PATTERN_OVERLAP
+                } else {
+                    y - PATTERN_OVERLAP
+                };
+                let transform = Matrix::scale(scale_x * factor_x, scale_y * factor_y)
+                    .then(Matrix::translate(translate_x, translate_y));
+                let mut cell = Group::new(transform);
+                cell.clip = Some(Clip {
+                    path: Arc::clone(&tile_clip),
+                    rule: FillRule::NonZero,
+                });
+                cell.children = tile.clone();
+                cells.push(Element::Group(cell));
+            }
+        }
+
+        let mut arrangement = Group::new(
+            pattern
+                .ctm()
+                .and_then(parse_matrix)
+                .unwrap_or(Matrix::IDENTITY),
+        );
+        arrangement.children = cells;
+        let mut fill = Group::new(Matrix::IDENTITY);
+        fill.clip = Some(Clip {
+            path: Arc::new(path.clone()),
+            rule,
+        });
+        fill.opacity = color
+            .alpha()
+            .map(|alpha| (alpha.clamp(0, 255) as f32) / 255.0)
+            .unwrap_or(1.0);
+        fill.children.push(Element::Group(arrangement));
+        Some(Element::Group(fill))
+    }
+
+    /// 把高洛德/网格高洛德渐变细分并展开为纯色三角形。
+    ///
+    /// vello_cpu/peniko 没有网格渐变画笔，这里按控制点做重心细分，
+    /// 用每个子三角形的平均色近似渐变；网格高洛德按 `VerticesPerRow` 切分四边形。
+    fn build_mesh_fill(
+        &mut self,
+        object: &GraphicObjectView,
+        path: &Path,
+        color: &ColorView,
+        rule: FillRule,
+    ) -> Option<Element> {
+        let alpha = color
+            .alpha()
+            .map(|value| (value.clamp(0, 255) as f32) / 255.0)
+            .unwrap_or(1.0);
+        let (points, vertices_per_row, back_color, extend) = match color.kind() {
+            ofdbox_core::ColorKind::GouraudShd => {
+                let shd = color.gouraud_shd()?;
+                let points = shd
+                    .points()
+                    .filter_map(|point| self.mesh_point(&point, alpha))
+                    .collect::<Vec<_>>();
+                let back = shd.back_color();
+                let back_color = back.as_ref().and_then(|back| match self.solid_paint(back) {
+                    Some(Paint::Solid(mut value)) => {
+                        value.a *= alpha;
+                        Some(value)
+                    }
+                    _ => None,
+                });
+                (points, None, back_color, shd.extend().unwrap_or(0) != 0)
+            }
+            ofdbox_core::ColorKind::LaGouraudShd => {
+                let shd = color.la_gouraud_shd()?;
+                let points = shd
+                    .points()
+                    .filter_map(|point| self.mesh_point(&point, alpha))
+                    .collect::<Vec<_>>();
+                let back = shd.back_color();
+                let back_color = back.as_ref().and_then(|back| match self.solid_paint(back) {
+                    Some(Paint::Solid(mut value)) => {
+                        value.a *= alpha;
+                        Some(value)
+                    }
+                    _ => None,
+                });
+                let per_row = shd
+                    .vertices_per_row()
+                    .and_then(|value| usize::try_from(value).ok());
+                (points, per_row, back_color, shd.extend().unwrap_or(0) != 0)
+            }
+            _ => return None,
+        };
+
+        let mut triangles = Vec::new();
+        match vertices_per_row {
+            Some(per_row) if per_row >= 2 && points.len() >= per_row * 2 => {
+                let rows = points.len() / per_row;
+                for row in 0..rows - 1 {
+                    for column in 0..per_row - 1 {
+                        let index = row * per_row + column;
+                        let a = points[index];
+                        let b = points[index + 1];
+                        let c = points[index + per_row];
+                        let d = points[index + per_row + 1];
+                        triangles.push([a, b, d]);
+                        triangles.push([a, d, c]);
+                    }
+                }
+            }
+            _ => {
+                if points.len() < 3 {
+                    self.diagnostic(DiagnosticCode::Paint, object.id(), "网格渐变控制点不足");
+                    return None;
+                }
+                for index in 1..points.len() - 1 {
+                    triangles.push([points[0], points[index], points[index + 1]]);
+                }
+            }
+        }
+        if triangles.is_empty() {
+            return None;
+        }
+        const MAX_TRIANGLES: usize = 8192;
+        if triangles.len() > MAX_TRIANGLES {
+            self.diagnostic(DiagnosticCode::Paint, object.id(), "网格渐变单元过多");
+            triangles.truncate(MAX_TRIANGLES);
+        }
+        let mut depth = 3u8;
+        while depth > 0
+            && triangles.len().saturating_mul(4usize.pow(u32::from(depth))) > MAX_TRIANGLES
+        {
+            depth -= 1;
+        }
+        let mut output = Vec::new();
+        for triangle in &triangles {
+            subdivide_mesh(*triangle, depth, &mut output);
+        }
+
+        let mut fill = Group::new(Matrix::IDENTITY);
+        fill.clip = Some(Clip {
+            path: Arc::new(path.clone()),
+            rule,
+        });
+        if extend && let Some(back) = back_color {
+            fill.children.push(Element::Path(PathElement {
+                path: Arc::new(path.clone()),
+                fill: Some(Paint::Solid(back)),
+                stroke: None,
+                fill_rule: rule,
+            }));
+        }
+        // 先铺一层原始三角形的平均色，细分块之间的抗锯齿缝隙不会再露出背景色。
+        for triangle in &triangles {
+            fill.children.push(Element::Path(PathElement {
+                path: Arc::new(triangle_path(triangle)),
+                fill: Some(Paint::Solid(average_color(triangle))),
+                stroke: None,
+                fill_rule: FillRule::NonZero,
+            }));
+        }
+        for triangle in output {
+            fill.children.push(Element::Path(PathElement {
+                path: Arc::new(triangle_path(&triangle)),
+                fill: Some(Paint::Solid(average_color(&triangle))),
+                stroke: None,
+                fill_rule: FillRule::NonZero,
+            }));
+        }
+        Some(Element::Group(fill))
+    }
+
+    fn mesh_point(&self, point: &ofdbox_core::PointView, alpha: f32) -> Option<MeshPoint> {
+        let position = Point::new(point.x()?, point.y()?);
+        let color = point.color()?;
+        let mut value = match self.solid_paint(&color)? {
+            Paint::Solid(value) => value,
+            _ => return None,
+        };
+        value.a *= alpha;
+        Some(MeshPoint {
+            position,
+            color: value,
+        })
     }
 
     fn build_text(&mut self, object: &GraphicObjectView) -> Vec<Element> {
@@ -1001,11 +1328,12 @@ impl Builder<'_> {
                 let shd = color.axial_shd()?;
                 let start = shd.start_point().and_then(parse_point)?;
                 let end = shd.end_point().and_then(parse_point)?;
+                let (start, end) = gradient_axis(start, end, shd.map_type(), shd.map_unit());
                 Some(Paint::Linear(LinearGradient {
                     start,
                     end,
                     stops: self.gradient_stops(shd.segments(), color.alpha()),
-                    extend: gradient_extend(shd.extend(), shd.map_type()),
+                    extend: gradient_extend(shd.map_type()),
                 }))
             }
             ofdbox_core::ColorKind::RadialShd => {
@@ -1016,13 +1344,17 @@ impl Builder<'_> {
                 let end_radius = shd
                     .end_radius()
                     .unwrap_or_else(|| distance(start_center, end_center));
+                let (start_center, end_center) =
+                    gradient_axis(start_center, end_center, shd.map_type(), shd.map_unit());
                 Some(Paint::Radial(RadialGradient {
                     start_center,
                     start_radius,
                     end_center,
                     end_radius,
                     stops: self.gradient_stops(shd.segments(), color.alpha()),
-                    extend: gradient_extend(shd.extend(), shd.map_type()),
+                    extend: gradient_extend(shd.map_type()),
+                    eccentricity: shd.eccentricity().unwrap_or(0.0),
+                    angle: shd.angle().unwrap_or(0.0),
                 }))
             }
             other => {
@@ -1468,19 +1800,199 @@ fn components_to_rgba(components: &[f64], kind: &str, alpha: f32) -> Option<Rgba
     Some(Rgba::new(r, g, b, alpha))
 }
 
-fn gradient_extend(extend: Option<i32>, map_type: Option<&str>) -> GradientExtend {
-    if let Some(extend) = extend {
-        return match extend {
-            1 => GradientExtend::Repeat,
-            2 => GradientExtend::Reflect,
-            _ => GradientExtend::Pad,
-        };
-    }
+/// `MapType` 决定渐变区间内如何重复；`Extend` 的 0/1/2/3 是端点延伸，
+/// 后端只有 Pad/Repeat/Reflect 三种模式，这里对 Direct 统一用 Pad 近似。
+fn gradient_extend(map_type: Option<&str>) -> GradientExtend {
     match map_type {
         Some(value) if value.eq_ignore_ascii_case("Repeat") => GradientExtend::Repeat,
         Some(value) if value.eq_ignore_ascii_case("Reflect") => GradientExtend::Reflect,
         _ => GradientExtend::Pad,
     }
+}
+
+/// 非 Direct 时，一个渐变区间的长度由 `MapUnit` 决定（默认轴线长度），
+/// 因此把终点缩放到距起点 `MapUnit` 的位置，再交给后端的 Repeat/Reflect。
+fn gradient_axis(
+    start: Point,
+    end: Point,
+    map_type: Option<&str>,
+    map_unit: Option<f64>,
+) -> (Point, Point) {
+    let repeating = map_type.is_some_and(|value| {
+        value.eq_ignore_ascii_case("Repeat") || value.eq_ignore_ascii_case("Reflect")
+    });
+    if !repeating {
+        return (start, end);
+    }
+    let length = distance(start, end);
+    let unit = map_unit
+        .filter(|value| value.is_finite() && *value > 0.0)
+        .unwrap_or(length);
+    if length <= f64::EPSILON || !unit.is_finite() || unit <= 0.0 {
+        return (start, end);
+    }
+    let dx = (end.x - start.x) / length;
+    let dy = (end.y - start.y) / length;
+    (start, Point::new(start.x + dx * unit, start.y + dy * unit))
+}
+
+/// Direct 渐变在 `Extend` 不允许延伸的方向上不应继续绘制。
+/// 返回一个裁剪路径，用于把填充限制在渐变实际覆盖的区域内。
+fn gradient_fill_clip(color: &ColorView) -> Option<Path> {
+    match color.kind() {
+        ofdbox_core::ColorKind::AxialShd => {
+            let shd = color.axial_shd()?;
+            if !is_direct(shd.map_type()) {
+                return None;
+            }
+            let extend = shd.extend().unwrap_or(0);
+            if extend == 3 {
+                return None;
+            }
+            let start = shd.start_point().and_then(parse_point)?;
+            let end = shd.end_point().and_then(parse_point)?;
+            axial_clip_path(start, end, extend)
+        }
+        ofdbox_core::ColorKind::RadialShd => {
+            let shd = color.radial_shd()?;
+            if !is_direct(shd.map_type()) {
+                return None;
+            }
+            let extend = shd.extend().unwrap_or(0);
+            if extend == 3 {
+                return None;
+            }
+            let start = shd.start_point().and_then(parse_point)?;
+            let end = shd.end_point().and_then(parse_point)?;
+            let start_radius = shd.start_radius().unwrap_or(0.0);
+            let end_radius = shd.end_radius().unwrap_or_else(|| distance(start, end));
+            let eccentricity = shd.eccentricity().unwrap_or(0.0).clamp(0.0, 0.999);
+            let ratio = (1.0 - eccentricity * eccentricity).max(1e-4).sqrt();
+            let angle = shd.angle().unwrap_or(0.0);
+            radial_clip_path(start, start_radius, end, end_radius, ratio, angle, extend)
+        }
+        _ => None,
+    }
+}
+
+fn is_direct(map_type: Option<&str>) -> bool {
+    map_type.is_none_or(|value| value.eq_ignore_ascii_case("Direct"))
+}
+
+fn axial_clip_path(start: Point, end: Point, extend: i32) -> Option<Path> {
+    let dx = end.x - start.x;
+    let dy = end.y - start.y;
+    let length = (dx * dx + dy * dy).sqrt();
+    if length <= f64::EPSILON {
+        return None;
+    }
+    let unit_x = dx / length;
+    let unit_y = dy / length;
+    let normal_x = -unit_y;
+    let normal_y = unit_x;
+    const BIG: f64 = 1.0e5;
+    let along = |origin: Point, distance: f64| {
+        Point::new(origin.x + unit_x * distance, origin.y + unit_y * distance)
+    };
+    let offset = |origin: Point, distance: f64| {
+        Point::new(
+            origin.x + normal_x * distance,
+            origin.y + normal_y * distance,
+        )
+    };
+    let (from, to) = match extend {
+        0 => (start, end),
+        1 => (along(start, -BIG), end),
+        2 => (start, along(end, BIG)),
+        _ => return None,
+    };
+    let mut path = Path::new();
+    path.move_to(offset(from, BIG));
+    path.line_to(offset(to, BIG));
+    path.line_to(offset(to, -BIG));
+    path.line_to(offset(from, -BIG));
+    path.close();
+    Some(path)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn radial_clip_path(
+    start: Point,
+    start_radius: f64,
+    end: Point,
+    end_radius: f64,
+    ratio: f64,
+    angle: f64,
+    extend: i32,
+) -> Option<Path> {
+    let end_rx = end_radius.max(0.0);
+    let end_ry = (end_radius * ratio).max(0.0);
+    let start_rx = start_radius.max(0.0);
+    let start_ry = (start_radius * ratio).max(0.0);
+    match extend {
+        0 => {
+            if end_rx <= 0.0 || end_ry <= 0.0 {
+                return Some(Path::new());
+            }
+            let mut path = ellipse_path(end, end_rx, end_ry, angle, false);
+            if start_rx > 0.0 && start_ry > 0.0 {
+                append_ellipse(&mut path, start, start_rx, start_ry, angle, true);
+            }
+            Some(path)
+        }
+        1 => {
+            if end_rx <= 0.0 || end_ry <= 0.0 {
+                return Some(Path::new());
+            }
+            Some(ellipse_path(end, end_rx, end_ry, angle, false))
+        }
+        2 => {
+            if start_rx <= 0.0 || start_ry <= 0.0 {
+                // 起始半径为 0 时，“起始椭圆之外”就是整个平面。
+                return None;
+            }
+            const BIG: f64 = 1.0e5;
+            let mut path = Path::new();
+            path.move_to(Point::new(start.x - BIG, start.y - BIG));
+            path.line_to(Point::new(start.x + BIG, start.y - BIG));
+            path.line_to(Point::new(start.x + BIG, start.y + BIG));
+            path.line_to(Point::new(start.x - BIG, start.y + BIG));
+            path.close();
+            append_ellipse(&mut path, start, start_rx, start_ry, angle, true);
+            Some(path)
+        }
+        _ => None,
+    }
+}
+
+fn ellipse_path(center: Point, rx: f64, ry: f64, angle: f64, reverse: bool) -> Path {
+    let mut path = Path::new();
+    append_ellipse(&mut path, center, rx, ry, angle, reverse);
+    path
+}
+
+fn append_ellipse(path: &mut Path, center: Point, rx: f64, ry: f64, angle: f64, reverse: bool) {
+    const STEPS: usize = 64;
+    let (sin_a, cos_a) = angle.to_radians().sin_cos();
+    for step in 0..=STEPS {
+        let mut t = std::f64::consts::TAU * step as f64 / STEPS as f64;
+        if reverse {
+            t = -t;
+        }
+        let (sin_t, cos_t) = t.sin_cos();
+        let x = rx * cos_t;
+        let y = ry * sin_t;
+        let point = Point::new(
+            center.x + cos_a * x - sin_a * y,
+            center.y + sin_a * x + cos_a * y,
+        );
+        if step == 0 {
+            path.move_to(point);
+        } else {
+            path.line_to(point);
+        }
+    }
+    path.close();
 }
 
 fn distribute_stops(mut stops: Vec<GradientStop>) -> Vec<GradientStop> {
@@ -1504,6 +2016,81 @@ fn distribute_stops(mut stops: Vec<GradientStop>) -> Vec<GradientStop> {
 
 fn distance(a: Point, b: Point) -> f64 {
     ((a.x - b.x).powi(2) + (a.y - b.y).powi(2)).sqrt()
+}
+
+#[derive(Clone, Copy, Debug)]
+struct MeshPoint {
+    position: Point,
+    color: Rgba,
+}
+
+fn mesh_midpoint(a: MeshPoint, b: MeshPoint) -> MeshPoint {
+    let mix = |a: f32, b: f32| (a + b) * 0.5;
+    MeshPoint {
+        position: Point::new(
+            (a.position.x + b.position.x) * 0.5,
+            (a.position.y + b.position.y) * 0.5,
+        ),
+        color: Rgba::new(
+            mix(a.color.r, b.color.r),
+            mix(a.color.g, b.color.g),
+            mix(a.color.b, b.color.b),
+            mix(a.color.a, b.color.a),
+        ),
+    }
+}
+
+fn subdivide_mesh(triangle: [MeshPoint; 3], depth: u8, output: &mut Vec<[MeshPoint; 3]>) {
+    if depth == 0 {
+        output.push(triangle);
+        return;
+    }
+    let [a, b, c] = triangle;
+    let ab = mesh_midpoint(a, b);
+    let bc = mesh_midpoint(b, c);
+    let ca = mesh_midpoint(c, a);
+    subdivide_mesh([a, ab, ca], depth - 1, output);
+    subdivide_mesh([ab, b, bc], depth - 1, output);
+    subdivide_mesh([ca, bc, c], depth - 1, output);
+    subdivide_mesh([ab, bc, ca], depth - 1, output);
+}
+
+/// 相邻纯色三角形各自抗锯齿会在公共边留下白缝，渲染时把顶点向外扩一点制造重叠。
+const MESH_OVERLAP: f64 = 0.25;
+
+fn triangle_path(triangle: &[MeshPoint; 3]) -> Path {
+    let center_x = (triangle[0].position.x + triangle[1].position.x + triangle[2].position.x) / 3.0;
+    let center_y = (triangle[0].position.y + triangle[1].position.y + triangle[2].position.y) / 3.0;
+    let expand = |position: Point| {
+        let dx = position.x - center_x;
+        let dy = position.y - center_y;
+        let length = (dx * dx + dy * dy).sqrt();
+        if length <= f64::EPSILON {
+            position
+        } else {
+            Point::new(
+                position.x + dx / length * MESH_OVERLAP,
+                position.y + dy / length * MESH_OVERLAP,
+            )
+        }
+    };
+    let mut path = Path::new();
+    path.move_to(expand(triangle[0].position));
+    path.line_to(expand(triangle[1].position));
+    path.line_to(expand(triangle[2].position));
+    path.close();
+    path
+}
+
+fn average_color(triangle: &[MeshPoint; 3]) -> Rgba {
+    let [a, b, c] = triangle;
+    let mix = |a: f32, b: f32, c: f32| (a + b + c) / 3.0;
+    Rgba::new(
+        mix(a.color.r, b.color.r, c.color.r),
+        mix(a.color.g, b.color.g, c.color.g),
+        mix(a.color.b, b.color.b, c.color.b),
+        mix(a.color.a, b.color.a, c.color.a),
+    )
 }
 
 fn parent_dir(path: &str) -> &str {
@@ -1648,6 +2235,34 @@ mod tests {
                 PathSegment::LineTo(Point::new(3.0, 3.0)),
             ]
         );
+    }
+
+    #[test]
+    fn maps_gradient_extend_and_map_unit() {
+        use super::{gradient_axis, gradient_extend};
+        use crate::paint::GradientExtend;
+
+        assert_eq!(gradient_extend(Some("Repeat")), GradientExtend::Repeat);
+        assert_eq!(gradient_extend(Some("Reflect")), GradientExtend::Reflect);
+        assert_eq!(gradient_extend(Some("Direct")), GradientExtend::Pad);
+        assert_eq!(gradient_extend(None), GradientExtend::Pad);
+
+        let (_, end) = gradient_axis(
+            Point::new(0.0, 0.0),
+            Point::new(100.0, 0.0),
+            Some("Repeat"),
+            Some(25.0),
+        );
+        assert_eq!(end, Point::new(25.0, 0.0));
+
+        // Direct 不使用 MapUnit。
+        let (_, end) = gradient_axis(
+            Point::new(0.0, 0.0),
+            Point::new(0.0, 100.0),
+            None,
+            Some(25.0),
+        );
+        assert_eq!(end, Point::new(0.0, 100.0));
     }
 
     #[test]

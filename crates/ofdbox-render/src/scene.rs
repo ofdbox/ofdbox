@@ -17,7 +17,7 @@ pub struct Scene {
 }
 
 /// 带变换和裁剪的元素组。
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct Group {
     /// 组变换，子元素从本组局部空间映射到父空间。
     pub transform: Matrix,
@@ -38,6 +38,12 @@ impl Group {
             opacity: 1.0,
             children: Vec::new(),
         }
+    }
+}
+
+impl Default for Group {
+    fn default() -> Self {
+        Self::new(Matrix::IDENTITY)
     }
 }
 

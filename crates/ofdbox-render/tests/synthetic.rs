@@ -273,6 +273,211 @@ fn renders_page_block_and_template() {
     assert_eq!(pixel(&target, 75, 75), [0, 255, 0, 255]);
 }
 
+fn render_content(content: &str) -> RasterTarget {
+    let mut package = open(synthetic_package(content));
+    let document = package.parse_document().expect("document");
+    let page = document
+        .pages()
+        .expect("pages")
+        .pages()
+        .next()
+        .expect("page");
+    let pool = ResourcePool::new(PoolBudget::default());
+    let options = RenderOptions {
+        dpi: 25.4,
+        ..Default::default()
+    };
+    let scene = OfdFrontend::new(&mut package, &pool, options)
+        .build_page(&page)
+        .expect("scene");
+    let mut target = RasterTarget::from_size(scene.size, 25.4).expect("target");
+    let mut backend = VelloCpuBackend::with_defaults();
+    let mut frame = backend.begin_frame((), &mut target).expect("frame");
+    frame.draw(&scene).expect("draw");
+    frame.finish().expect("finish");
+    target
+}
+
+fn radial_content(eccentricity: &str) -> String {
+    format!(
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<ofd:Page xmlns:ofd="http://www.ofdspec.org/2016">
+  <ofd:Area><ofd:PhysicalBox>0 0 100 100</ofd:PhysicalBox></ofd:Area>
+  <ofd:Content><ofd:Layer ID="1">
+    <ofd:PathObject ID="p1" Boundary="0 0 100 100" Fill="true" Stroke="false">
+      <ofd:FillColor>
+        <ofd:RadialShd StartPoint="50 50" EndPoint="50 50" EndRadius="50" Eccentricity="{eccentricity}" Angle="0">
+          <ofd:Segment Position="0"><ofd:Color Value="255 0 0"/></ofd:Segment>
+          <ofd:Segment Position="1"><ofd:Color Value="0 0 255"/></ofd:Segment>
+        </ofd:RadialShd>
+      </ofd:FillColor>
+      <ofd:AbbreviatedData>M 0 0 L 100 0 L 100 100 L 0 100 C</ofd:AbbreviatedData>
+    </ofd:PathObject>
+  </ofd:Layer></ofd:Content>
+</ofd:Page>"#
+    )
+}
+
+#[test]
+fn tiles_pattern_fill() {
+    const CONTENT: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<ofd:Page xmlns:ofd="http://www.ofdspec.org/2016">
+  <ofd:Area><ofd:PhysicalBox>0 0 100 30</ofd:PhysicalBox></ofd:Area>
+  <ofd:Content><ofd:Layer ID="1">
+    <ofd:PathObject ID="p1" Boundary="0 0 100 20" Fill="true" Stroke="false">
+      <ofd:FillColor>
+        <ofd:Pattern Width="10" Height="10" XStep="10" YStep="10" RelativeTo="Object">
+          <ofd:CellContent>
+            <ofd:PathObject ID="cell" Boundary="0 0 5 10" Fill="true" Stroke="false">
+              <ofd:FillColor Value="255 0 0"/>
+              <ofd:AbbreviatedData>M 0 0 L 5 0 L 5 10 L 0 10 C</ofd:AbbreviatedData>
+            </ofd:PathObject>
+          </ofd:CellContent>
+        </ofd:Pattern>
+      </ofd:FillColor>
+      <ofd:AbbreviatedData>M 0 0 L 100 0 L 100 20 L 0 20 C</ofd:AbbreviatedData>
+    </ofd:PathObject>
+  </ofd:Layer></ofd:Content>
+</ofd:Page>"#;
+    let target = render_content(CONTENT);
+    assert_eq!(pixel(&target, 2, 5), [255, 0, 0, 255]);
+    assert_eq!(pixel(&target, 7, 5), [255, 255, 255, 255]);
+    assert_eq!(pixel(&target, 12, 5), [255, 0, 0, 255]);
+}
+
+fn radial_repeat_content(map_type: &str) -> String {
+    format!(
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<ofd:Page xmlns:ofd="http://www.ofdspec.org/2016">
+  <ofd:Area><ofd:PhysicalBox>0 0 200 150</ofd:PhysicalBox></ofd:Area>
+  <ofd:Content><ofd:Layer ID="1">
+    <ofd:PathObject ID="p1" Boundary="0 0 200 150" Fill="true" Stroke="false">
+      <ofd:FillColor>
+        <ofd:RadialShd StartPoint="40 70" EndPoint="50 90" StartRadius="10" EndRadius="70" MapType="{map_type}">
+          <ofd:Segment Position="0"><ofd:Color Value="255 255 0"/></ofd:Segment>
+          <ofd:Segment Position="1"><ofd:Color Value="0 0 255"/></ofd:Segment>
+        </ofd:RadialShd>
+      </ofd:FillColor>
+      <ofd:AbbreviatedData>M 0 0 L 200 0 L 200 150 L 0 150 C</ofd:AbbreviatedData>
+    </ofd:PathObject>
+  </ofd:Layer></ofd:Content>
+</ofd:Page>"#
+    )
+}
+
+#[test]
+fn renders_radial_repeat_and_reflect() {
+    let repeat = render_content(&radial_repeat_content("Repeat"));
+    let reflect = render_content(&radial_repeat_content("Reflect"));
+    assert_ne!(pixel(&repeat, 40, 70), [255, 255, 255, 255]);
+    assert_ne!(pixel(&repeat, 120, 100), pixel(&reflect, 120, 100));
+}
+
+#[test]
+fn radial_extend_zero_clips_to_end_ellipse() {
+    const CONTENT: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<ofd:Page xmlns:ofd="http://www.ofdspec.org/2016">
+  <ofd:Area><ofd:PhysicalBox>0 0 100 40</ofd:PhysicalBox></ofd:Area>
+  <ofd:Content><ofd:Layer ID="1">
+    <ofd:PathObject ID="p1" Boundary="0 0 100 40" Fill="true" Stroke="false">
+      <ofd:FillColor>
+        <ofd:RadialShd StartPoint="50 20" EndPoint="50 20" StartRadius="0" EndRadius="25">
+          <ofd:Segment Position="0"><ofd:Color Value="255 255 0"/></ofd:Segment>
+          <ofd:Segment Position="1"><ofd:Color Value="0 0 255"/></ofd:Segment>
+        </ofd:RadialShd>
+      </ofd:FillColor>
+      <ofd:AbbreviatedData>M 0 0 L 100 0 L 100 40 L 0 40 C</ofd:AbbreviatedData>
+    </ofd:PathObject>
+  </ofd:Layer></ofd:Content>
+</ofd:Page>"#;
+    let target = render_content(CONTENT);
+    let center = pixel(&target, 50, 20);
+    assert!(center[0] > 200 && center[1] > 200, "{center:?}");
+    assert_eq!(pixel(&target, 90, 20), [255, 255, 255, 255]);
+}
+
+#[test]
+fn axial_extend_zero_clips_to_axis_band() {
+    const CONTENT: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<ofd:Page xmlns:ofd="http://www.ofdspec.org/2016">
+  <ofd:Area><ofd:PhysicalBox>0 0 100 40</ofd:PhysicalBox></ofd:Area>
+  <ofd:Content><ofd:Layer ID="1">
+    <ofd:PathObject ID="p1" Boundary="0 0 100 40" Fill="true" Stroke="false">
+      <ofd:FillColor>
+        <ofd:AxialShd StartPoint="20 20" EndPoint="80 20" Extend="0">
+          <ofd:Segment Position="0"><ofd:Color Value="255 0 0"/></ofd:Segment>
+          <ofd:Segment Position="1"><ofd:Color Value="0 0 255"/></ofd:Segment>
+        </ofd:AxialShd>
+      </ofd:FillColor>
+      <ofd:AbbreviatedData>M 0 0 L 100 0 L 100 40 L 0 40 C</ofd:AbbreviatedData>
+    </ofd:PathObject>
+  </ofd:Layer></ofd:Content>
+</ofd:Page>"#;
+    let target = render_content(CONTENT);
+    assert_eq!(pixel(&target, 10, 20), [255, 255, 255, 255]);
+    let middle = pixel(&target, 50, 20);
+    assert!(middle[0] > 100 && middle[2] > 100, "{middle:?}");
+    assert_eq!(pixel(&target, 90, 20), [255, 255, 255, 255]);
+}
+
+#[test]
+fn interpolates_gouraud_triangle() {
+    const CONTENT: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<ofd:Page xmlns:ofd="http://www.ofdspec.org/2016">
+  <ofd:Area><ofd:PhysicalBox>0 0 100 100</ofd:PhysicalBox></ofd:Area>
+  <ofd:Content><ofd:Layer ID="1">
+    <ofd:PathObject ID="p1" Boundary="0 0 100 100" Fill="true" Stroke="false">
+      <ofd:FillColor>
+        <ofd:GouraudShd>
+          <ofd:Point X="0" Y="0"><ofd:Color Value="255 0 0"/></ofd:Point>
+          <ofd:Point X="100" Y="0"><ofd:Color Value="0 255 0"/></ofd:Point>
+          <ofd:Point X="0" Y="100"><ofd:Color Value="0 0 255"/></ofd:Point>
+        </ofd:GouraudShd>
+      </ofd:FillColor>
+      <ofd:AbbreviatedData>M 0 0 L 100 0 L 100 100 L 0 100 C</ofd:AbbreviatedData>
+    </ofd:PathObject>
+  </ofd:Layer></ofd:Content>
+</ofd:Page>"#;
+    let target = render_content(CONTENT);
+    let center = pixel(&target, 33, 33);
+    assert!(center[0] > 60 && center[0] < 120, "{center:?}");
+    assert!(center[1] > 60 && center[1] < 120, "{center:?}");
+    assert!(center[2] > 60 && center[2] < 120, "{center:?}");
+}
+
+#[test]
+fn renders_lagouraud_grid() {
+    const CONTENT: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<ofd:Page xmlns:ofd="http://www.ofdspec.org/2016">
+  <ofd:Area><ofd:PhysicalBox>0 0 100 100</ofd:PhysicalBox></ofd:Area>
+  <ofd:Content><ofd:Layer ID="1">
+    <ofd:PathObject ID="p1" Boundary="0 0 100 100" Fill="true" Stroke="false">
+      <ofd:FillColor>
+        <ofd:LaGourandShd VerticesPerRow="2">
+          <ofd:Point X="0" Y="0"><ofd:Color Value="255 0 0"/></ofd:Point>
+          <ofd:Point X="100" Y="0"><ofd:Color Value="255 0 0"/></ofd:Point>
+          <ofd:Point X="0" Y="100"><ofd:Color Value="255 0 0"/></ofd:Point>
+          <ofd:Point X="100" Y="100"><ofd:Color Value="255 0 0"/></ofd:Point>
+        </ofd:LaGourandShd>
+      </ofd:FillColor>
+      <ofd:AbbreviatedData>M 0 0 L 100 0 L 100 100 L 0 100 C</ofd:AbbreviatedData>
+    </ofd:PathObject>
+  </ofd:Layer></ofd:Content>
+</ofd:Page>"#;
+    let target = render_content(CONTENT);
+    assert_eq!(pixel(&target, 25, 75), [255, 0, 0, 255]);
+    assert_eq!(pixel(&target, 75, 25), [255, 0, 0, 255]);
+}
+
+#[test]
+fn renders_elliptical_radial_gradient() {
+    let circle = render_content(&radial_content("0"));
+    assert_eq!(pixel(&circle, 90, 50), pixel(&circle, 50, 90));
+
+    let ellipse = render_content(&radial_content("0.8"));
+    assert_ne!(pixel(&ellipse, 90, 50), pixel(&ellipse, 50, 90));
+}
+
 #[test]
 fn uses_default_color_space_for_palette_index() {
     const DOCUMENT: &str = r#"<?xml version="1.0" encoding="UTF-8"?>

@@ -96,6 +96,10 @@ pub struct RadialGradient {
     pub stops: Vec<GradientStop>,
     /// 延展方式。
     pub extend: GradientExtend,
+    /// 椭圆离心率，`0` 表示圆。
+    pub eccentricity: f64,
+    /// 椭圆长轴与 X 轴正向的夹角，单位度。
+    pub angle: f64,
 }
 
 /// 填充或描边使用的画笔。
