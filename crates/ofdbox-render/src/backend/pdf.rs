@@ -12,7 +12,7 @@ use crate::error::RenderError;
 use crate::geometry::{Matrix, Point};
 use crate::paint::{Paint, Rgba};
 use crate::path::{FillRule, LineCap, LineJoin, Path, PathSegment};
-use crate::scene::{Element, Group, ImageElement, PathElement, Scene};
+use crate::scene::{Element, Group, ImageElement, PathElement, Scene, TextElement};
 
 /// PDF 版本。
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
@@ -412,7 +412,7 @@ impl<'a> ContentBuilder<'a> {
                 Element::Group(child) => self.group(child),
                 Element::Path(path) => self.path_element(path),
                 Element::Image(image) => self.image_element(image),
-                Element::Text(_) => {}
+                Element::Text(text) => self.text_element(text),
             }
         }
         self.raw("Q\n");
@@ -462,6 +462,46 @@ impl<'a> ContentBuilder<'a> {
             },
             (false, true) => self.raw("S\n"),
             (false, false) => self.raw("n\n"),
+        }
+    }
+
+    fn text_element(&mut self, element: &TextElement) {
+        let Ok(face) = ttf_parser::Face::parse(element.font.data(), element.font.face_index())
+        else {
+            return;
+        };
+        let units = face.units_per_em();
+        if units == 0 {
+            return;
+        }
+        let paint = element
+            .fill
+            .as_ref()
+            .or_else(|| element.stroke.as_ref().map(|stroke| &stroke.paint));
+        let Some(color) = paint.and_then(solid_paint) else {
+            return;
+        };
+        self.set_fill_color(color);
+        let scale = element.size / f64::from(units);
+        for glyph in &element.glyphs {
+            let Ok(glyph_id) = u16::try_from(glyph.id) else {
+                continue;
+            };
+            let mut builder = GlyphPathBuilder::default();
+            if face
+                .outline_glyph(ttf_parser::GlyphId(glyph_id), &mut builder)
+                .is_none()
+                || builder.path.is_empty()
+            {
+                continue;
+            }
+            let transform = Matrix::scale(scale, -scale)
+                .then(Matrix::translate(f64::from(glyph.x), f64::from(glyph.y)))
+                .then(element.transform);
+            self.raw("q\n");
+            self.matrix(transform);
+            self.path(&builder.path);
+            self.raw("f\nQ\n");
         }
     }
 
@@ -631,6 +671,40 @@ impl<'a> ContentBuilder<'a> {
     }
 }
 
+#[derive(Default)]
+struct GlyphPathBuilder {
+    path: Path,
+}
+
+impl ttf_parser::OutlineBuilder for GlyphPathBuilder {
+    fn move_to(&mut self, x: f32, y: f32) {
+        self.path.move_to(Point::new(f64::from(x), f64::from(y)));
+    }
+
+    fn line_to(&mut self, x: f32, y: f32) {
+        self.path.line_to(Point::new(f64::from(x), f64::from(y)));
+    }
+
+    fn quad_to(&mut self, x1: f32, y1: f32, x: f32, y: f32) {
+        self.path.quadratic_to(
+            Point::new(f64::from(x1), f64::from(y1)),
+            Point::new(f64::from(x), f64::from(y)),
+        );
+    }
+
+    fn curve_to(&mut self, x1: f32, y1: f32, x2: f32, y2: f32, x: f32, y: f32) {
+        self.path.cubic_to(
+            Point::new(f64::from(x1), f64::from(y1)),
+            Point::new(f64::from(x2), f64::from(y2)),
+            Point::new(f64::from(x), f64::from(y)),
+        );
+    }
+
+    fn close(&mut self) {
+        self.path.close();
+    }
+}
+
 fn solid_paint(paint: &Paint) -> Option<Rgba> {
     match paint {
         Paint::Solid(color) => Some(*color),
@@ -731,7 +805,9 @@ mod tests {
     use crate::paint::{GradientExtend, GradientStop, LinearGradient, Paint, Rgba};
     use crate::path::{FillRule, Path};
     use crate::resource::{PoolBudget, ResourcePool};
-    use crate::scene::{Element, Group, ImageElement, PathElement, Scene};
+    use crate::scene::{
+        Element, Group, ImageElement, PathElement, PositionedGlyph, Scene, TextElement,
+    };
 
     fn scene() -> Scene {
         Scene {
@@ -860,6 +936,47 @@ mod tests {
         assert!(text.contains("/ShadingType 2"));
         assert!(text.contains("/FunctionType 2"));
         assert!(text.contains(" sh\n"));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn writes_text_outlines_when_font_available() {
+        let Ok(bytes) = std::fs::read("C:/Windows/Fonts/arial.ttf") else {
+            return;
+        };
+        let Ok(face) = ttf_parser::Face::parse(&bytes, 0) else {
+            return;
+        };
+        let Some(glyph) = face.glyph_index('A') else {
+            return;
+        };
+        let pool = ResourcePool::new(PoolBudget::default());
+        let font = pool.embedded_font(&bytes, 0).expect("embedded font");
+        let mut root = Group::default();
+        root.children.push(Element::Text(TextElement {
+            font,
+            size: 10.0,
+            transform: Matrix::IDENTITY,
+            glyphs: vec![PositionedGlyph {
+                id: u32::from(glyph.0),
+                x: 0.0,
+                y: 10.0,
+            }],
+            fill: Some(Paint::Solid(Rgba::BLACK)),
+            stroke: None,
+        }));
+        let scene = Scene {
+            size: Size::new(100.0, 100.0),
+            root,
+            diagnostics: Vec::new(),
+        };
+        let mut document = PdfDocument::new(PdfOptions::default());
+        document.add_page(&scene).expect("page");
+        let pdf = document.finish().expect("pdf");
+        let text = String::from_utf8_lossy(&pdf);
+        assert!(text.contains("q\n"));
+        assert!(text.contains(" m\n"));
+        assert!(text.contains("f\nQ\n"));
     }
 
     #[test]
