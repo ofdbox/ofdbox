@@ -2321,12 +2321,39 @@ fn distribute_stops(mut stops: Vec<GradientStop>) -> Vec<GradientStop> {
     if stops.is_empty() {
         return stops;
     }
-    let missing = stops.iter().any(|stop| !stop.offset.is_finite());
-    if missing {
-        let last = stops.len().saturating_sub(1).max(1);
+    let last = stops.len() - 1;
+    if !stops.iter().any(|stop| stop.offset.is_finite()) {
+        let divisor = last.max(1) as f32;
         for (index, stop) in stops.iter_mut().enumerate() {
-            stop.offset = index as f32 / last as f32;
+            stop.offset = index as f32 / divisor;
         }
+        return stops;
+    }
+    if !stops[0].offset.is_finite() {
+        stops[0].offset = 0.0;
+    }
+    if !stops[last].offset.is_finite() {
+        stops[last].offset = 1.0;
+    }
+    let mut index = 0;
+    while index < stops.len() {
+        if stops[index].offset.is_finite() {
+            index += 1;
+            continue;
+        }
+        let start = index - 1;
+        let mut end = index;
+        while end < stops.len() && !stops[end].offset.is_finite() {
+            end += 1;
+        }
+        let span = end - start;
+        let start_offset = stops[start].offset;
+        let end_offset = stops[end].offset;
+        for step in 1..span {
+            stops[start + step].offset =
+                start_offset + (end_offset - start_offset) * step as f32 / span as f32;
+        }
+        index = end;
     }
     stops.sort_by(|a, b| {
         a.offset
@@ -2500,9 +2527,9 @@ fn template_order(value: &str) -> TemplateOrder {
 
 #[cfg(test)]
 mod tests {
-    use super::{components_to_rgba, parse_color_components, parse_path_data};
+    use super::{components_to_rgba, distribute_stops, parse_color_components, parse_path_data};
     use crate::geometry::Point;
-    use crate::paint::Rgba;
+    use crate::paint::{GradientStop, Rgba};
     use crate::path::PathSegment;
 
     #[test]
@@ -2596,6 +2623,31 @@ mod tests {
             Some(25.0),
         );
         assert_eq!(end, Point::new(0.0, 100.0));
+    }
+
+    #[test]
+    fn distributes_gradient_positions() {
+        let stop = |offset: f32| GradientStop {
+            offset,
+            color: Rgba::BLACK,
+        };
+        let stops = distribute_stops(vec![
+            stop(f32::NAN),
+            stop(f32::NAN),
+            stop(0.5),
+            stop(f32::NAN),
+            stop(f32::NAN),
+        ]);
+        assert_eq!(
+            stops.iter().map(|stop| stop.offset).collect::<Vec<_>>(),
+            [0.0, 0.25, 0.5, 0.75, 1.0]
+        );
+
+        let stops = distribute_stops(vec![stop(f32::NAN), stop(f32::NAN), stop(f32::NAN)]);
+        assert_eq!(
+            stops.iter().map(|stop| stop.offset).collect::<Vec<_>>(),
+            [0.0, 0.5, 1.0]
+        );
     }
 
     #[test]
