@@ -632,6 +632,38 @@ fn radial_content(eccentricity: &str) -> String {
 }
 
 #[test]
+fn clip_areas_are_united() {
+    const CONTENT: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<ofd:Page xmlns:ofd="http://www.ofdspec.org/2016">
+  <ofd:Area><ofd:PhysicalBox>0 0 100 40</ofd:PhysicalBox></ofd:Area>
+  <ofd:Content><ofd:Layer ID="1">
+    <ofd:PathObject ID="p1" Boundary="0 0 100 40" Fill="true" Stroke="false">
+      <ofd:Clips>
+        <ofd:Clip>
+          <ofd:Area>
+            <ofd:PathObject ID="c1" Boundary="10 10 20 20" Fill="true">
+              <ofd:AbbreviatedData>M 10 10 L 30 10 L 30 30 L 10 30 C</ofd:AbbreviatedData>
+            </ofd:PathObject>
+          </ofd:Area>
+          <ofd:Area>
+            <ofd:PathObject ID="c2" Boundary="60 10 20 20" Fill="true">
+              <ofd:AbbreviatedData>M 60 10 L 80 10 L 80 30 L 60 30 C</ofd:AbbreviatedData>
+            </ofd:PathObject>
+          </ofd:Area>
+        </ofd:Clip>
+      </ofd:Clips>
+      <ofd:FillColor Value="255 0 0"/>
+      <ofd:AbbreviatedData>M 0 0 L 100 0 L 100 40 L 0 40 C</ofd:AbbreviatedData>
+    </ofd:PathObject>
+  </ofd:Layer></ofd:Content>
+</ofd:Page>"#;
+    let target = render_content(CONTENT);
+    assert_eq!(pixel(&target, 20, 20), [255, 0, 0, 255]);
+    assert_eq!(pixel(&target, 70, 20), [255, 0, 0, 255]);
+    assert_eq!(pixel(&target, 50, 20), [255, 255, 255, 255]);
+}
+
+#[test]
 fn tiles_pattern_fill() {
     const CONTENT: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
 <ofd:Page xmlns:ofd="http://www.ofdspec.org/2016">

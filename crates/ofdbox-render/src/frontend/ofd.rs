@@ -14,7 +14,7 @@ use crate::geometry::{Matrix, Point, Rect, Size};
 use crate::image::ImageFormat;
 use crate::options::{RenderOptions, UnsupportedPolicy};
 use crate::paint::{GradientExtend, GradientStop, LinearGradient, Paint, RadialGradient, Rgba};
-use crate::path::{FillRule, LineCap, LineJoin, Path, StrokeStyle};
+use crate::path::{FillRule, LineCap, LineJoin, Path, PathSegment, StrokeStyle};
 use crate::resource::{ResourcePool, SceneKey};
 use crate::scene::{
     Clip, DiagnosticCode, Element, Group, ImageElement, PathElement, PositionedGlyph, Scene,
@@ -483,8 +483,8 @@ impl Builder<'_> {
 
         // 对象裁剪在对象空间，由内向外嵌套。
         let mut inner = elements;
-        for (path, clip_ctm) in self.object_clips(object) {
-            inner = vec![Element::Group(clip_group(path, clip_ctm, inner))];
+        for path in self.object_clips(object) {
+            inner = vec![Element::Group(clip_group(path, Matrix::IDENTITY, inner))];
         }
         // 真实文件把对象内容放在 Boundary 的局部坐标中：先应用 CTM，
         // 再用 Boundary 左上角在父空间定位；Boundary 同时负责裁剪。
@@ -508,12 +508,15 @@ impl Builder<'_> {
         output.push(Element::Group(wrapper));
     }
 
-    fn object_clips(&mut self, object: &GraphicObjectView) -> Vec<(Arc<Path>, Matrix)> {
+    fn object_clips(&mut self, object: &GraphicObjectView) -> Vec<Arc<Path>> {
         let Some(clips) = object.clips() else {
             return Vec::new();
         };
         let mut paths = Vec::new();
         for clip in clips.clips() {
+            // 同一 Clip 下的多个 Area 是并集，合并为一条路径；多个 Clip 之间再取交集。
+            let mut union = Path::new();
+            let mut has_area = false;
             for area in clip.areas() {
                 let ctm = area
                     .ctm()
@@ -522,15 +525,25 @@ impl Builder<'_> {
                 let Some(content) = area.content() else {
                     continue;
                 };
-                if let Some(boundary) = content.attribute("Boundary").and_then(parse_rect) {
-                    paths.push((Arc::new(boundary.to_path()), ctm));
-                }
                 match content.kind() {
                     GraphicObjectKind::Path => {
                         if let Some(data) = content.abbreviated_data()
                             && let Some(path) = parse_path_data(data)
                         {
-                            paths.push((Arc::new(path), ctm));
+                            append_transformed_path(&mut union, &path, ctm);
+                            has_area = true;
+                        }
+                    }
+                    GraphicObjectKind::Text => {
+                        // 标准允许文字轮廓作为裁剪区；当前按外接矩形近似。
+                        if let Some(boundary) = content.attribute("Boundary").and_then(parse_rect) {
+                            append_transformed_path(&mut union, &boundary.to_path(), ctm);
+                            has_area = true;
+                            self.diagnostic(
+                                DiagnosticCode::UnsupportedObject,
+                                object.id(),
+                                "文本裁剪按外接矩形近似",
+                            );
                         }
                     }
                     other => {
@@ -541,6 +554,9 @@ impl Builder<'_> {
                         );
                     }
                 }
+            }
+            if has_area {
+                paths.push(Arc::new(union));
             }
         }
         paths
@@ -1673,6 +1689,51 @@ fn decode_text(text: &str) -> Vec<char> {
         }
     }
     output
+}
+
+fn append_transformed_path(target: &mut Path, source: &Path, matrix: Matrix) {
+    let scale = ((matrix.a * matrix.a + matrix.b * matrix.b).sqrt()
+        + (matrix.c * matrix.c + matrix.d * matrix.d).sqrt())
+        / 2.0;
+    let extra_rotation = matrix.b.atan2(matrix.a);
+    for segment in &source.segments {
+        match *segment {
+            PathSegment::MoveTo(point) => target.move_to(matrix.apply(point)),
+            PathSegment::LineTo(point) => target.line_to(matrix.apply(point)),
+            PathSegment::QuadraticTo { control, to } => {
+                target.quadratic_to(matrix.apply(control), matrix.apply(to));
+            }
+            PathSegment::CubicTo {
+                control1,
+                control2,
+                to,
+            } => {
+                target.cubic_to(
+                    matrix.apply(control1),
+                    matrix.apply(control2),
+                    matrix.apply(to),
+                );
+            }
+            PathSegment::ArcTo {
+                rx,
+                ry,
+                rotation,
+                large_arc,
+                sweep,
+                to,
+            } => {
+                target.arc_to(
+                    rx * scale,
+                    ry * scale,
+                    rotation + extra_rotation,
+                    large_arc,
+                    sweep,
+                    matrix.apply(to),
+                );
+            }
+            PathSegment::Close => target.close(),
+        }
+    }
 }
 
 fn parse_path_data(data: &str) -> Option<Path> {
