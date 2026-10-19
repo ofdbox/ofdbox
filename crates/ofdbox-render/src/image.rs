@@ -11,6 +11,10 @@ pub enum ImageFormat {
     Png,
     /// JPEG。
     Jpeg,
+    /// BMP。
+    Bmp,
+    /// JBIG2。真实文件里也出现 `GBIG2` 拼写。
+    Jbig2,
     /// 未支持的格式。
     Other(String),
 }
@@ -21,6 +25,8 @@ impl ImageFormat {
         match format.trim().to_ascii_uppercase().as_str() {
             "PNG" => Self::Png,
             "JPG" | "JPEG" => Self::Jpeg,
+            "BMP" => Self::Bmp,
+            "JBIG2" | "GBIG2" | "JB2" => Self::Jbig2,
             other => Self::Other(other.to_owned()),
         }
     }
@@ -68,6 +74,8 @@ pub fn decode_image(
     let image = match format {
         ImageFormat::Png => decode_png(data)?,
         ImageFormat::Jpeg => decode_jpeg(data)?,
+        ImageFormat::Bmp => decode_bmp(data)?,
+        ImageFormat::Jbig2 => decode_jbig2(data)?,
         ImageFormat::Other(format) => {
             return Err(RenderError::Unsupported(format!("图片格式: {format}")));
         }
@@ -171,6 +179,50 @@ fn decode_jpeg(data: &[u8]) -> Result<DecodedImage, RenderError> {
     })
 }
 
+fn decode_bmp(data: &[u8]) -> Result<DecodedImage, RenderError> {
+    let image = bmp::from_reader(&mut Cursor::new(data))
+        .map_err(|error| RenderError::Image(error.to_string()))?;
+    let width = image.get_width();
+    let height = image.get_height();
+    let mut rgba = Vec::with_capacity(width as usize * height as usize * 4);
+    for y in 0..height {
+        for x in 0..width {
+            let pixel = image.get_pixel(x, y);
+            rgba.extend_from_slice(&[pixel.r, pixel.g, pixel.b, 255]);
+        }
+    }
+    Ok(DecodedImage {
+        width,
+        height,
+        rgba,
+    })
+}
+
+fn decode_jbig2(data: &[u8]) -> Result<DecodedImage, RenderError> {
+    let pages = justbig2::decode(data)
+        .or_else(|_| justbig2::decode_embedded(data))
+        .map_err(|error| RenderError::Image(error.to_string()))?;
+    let page = pages
+        .into_iter()
+        .next()
+        .ok_or_else(|| RenderError::Image("JBIG2 没有页面".to_owned()))?;
+    if page.width == 0 || page.height == 0 {
+        return Err(RenderError::Image("JBIG2 页面尺寸无效".to_owned()));
+    }
+    let mut rgba = Vec::with_capacity(page.width as usize * page.height as usize * 4);
+    for y in 0..page.height {
+        for x in 0..page.width {
+            let color = if page.get_pixel(x, y) == 0 { 255 } else { 0 };
+            rgba.extend_from_slice(&[color, color, color, 255]);
+        }
+    }
+    Ok(DecodedImage {
+        width: page.width,
+        height: page.height,
+        rgba,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::{DecodedImage, ImageFormat, decode_image};
@@ -194,5 +246,43 @@ mod tests {
     #[test]
     fn unsupported_format_is_explicit() {
         assert!(decode_image(&ImageFormat::Other("JP2".to_owned()), &[], 10).is_err());
+    }
+
+    #[test]
+    fn parses_bmp_and_jbig2_format_names() {
+        assert_eq!(ImageFormat::from_media_format("BMP"), ImageFormat::Bmp);
+        assert_eq!(ImageFormat::from_media_format("GBIG2"), ImageFormat::Jbig2);
+        assert_eq!(ImageFormat::from_media_format("JBIG2"), ImageFormat::Jbig2);
+    }
+
+    #[test]
+    fn decodes_24_bit_bmp() {
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(b"BM");
+        bytes.extend_from_slice(&70u32.to_le_bytes());
+        bytes.extend_from_slice(&0u32.to_le_bytes());
+        bytes.extend_from_slice(&54u32.to_le_bytes());
+        bytes.extend_from_slice(&40u32.to_le_bytes());
+        bytes.extend_from_slice(&2i32.to_le_bytes());
+        bytes.extend_from_slice(&2i32.to_le_bytes());
+        bytes.extend_from_slice(&1u16.to_le_bytes());
+        bytes.extend_from_slice(&24u16.to_le_bytes());
+        bytes.extend_from_slice(&0u32.to_le_bytes());
+        bytes.extend_from_slice(&16u32.to_le_bytes());
+        bytes.extend_from_slice(&0i32.to_le_bytes());
+        bytes.extend_from_slice(&0i32.to_le_bytes());
+        bytes.extend_from_slice(&0u32.to_le_bytes());
+        bytes.extend_from_slice(&0u32.to_le_bytes());
+        for _ in 0..2 {
+            bytes.extend_from_slice(&[255, 0, 0, 255, 0, 0, 0, 0]);
+        }
+        let image = decode_image(&ImageFormat::Bmp, &bytes, 16).expect("bmp");
+        assert_eq!((image.width, image.height), (2, 2));
+        assert_eq!(&image.rgba[..4], &[0, 0, 255, 255]);
+    }
+
+    #[test]
+    fn rejects_invalid_jbig2() {
+        assert!(decode_image(&ImageFormat::Jbig2, b"not-jbig2", 100).is_err());
     }
 }

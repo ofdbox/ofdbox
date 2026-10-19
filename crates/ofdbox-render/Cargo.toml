@@ -8,7 +8,9 @@ description = "OFD 页面渲染：统一场景、共享资源池与 CPU 后端�
 publish = false
 
 [dependencies]
+bmp = "0.5"
 jpeg-decoder = "0.3"
+justbig2 = "0.2"
 ofdbox-core = { path = "../ofdbox-core" }
 png = "0.18"
 skrifa = "0.44"
