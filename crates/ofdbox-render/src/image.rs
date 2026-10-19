@@ -15,6 +15,8 @@ pub enum ImageFormat {
     Bmp,
     /// JBIG2。真实文件里也出现 `GBIG2` 拼写。
     Jbig2,
+    /// TIFF（仅支持首帧）。
+    Tiff,
     /// 未支持的格式。
     Other(String),
 }
@@ -37,7 +39,7 @@ impl ImageFormat {
         } else if data.starts_with(&[0x49, 0x49, 0x2A, 0x00])
             || data.starts_with(&[0x4D, 0x4D, 0x00, 0x2A])
         {
-            Some(Self::Other("TIFF".to_owned()))
+            Some(Self::Tiff)
         } else if data.starts_with(&[0x00, 0x00, 0x00, 0x0C, b'j', b'P', b' ', b' ']) {
             Some(Self::Other("JP2".to_owned()))
         } else if data.starts_with(&[0xFF, 0x4F, 0xFF, 0x51]) {
@@ -54,6 +56,7 @@ impl ImageFormat {
             "JPG" | "JPEG" => Self::Jpeg,
             "BMP" => Self::Bmp,
             "JBIG2" | "GBIG2" | "JB2" => Self::Jbig2,
+            "TIF" | "TIFF" => Self::Tiff,
             other => Self::Other(other.to_owned()),
         }
     }
@@ -103,6 +106,7 @@ pub fn decode_image(
         ImageFormat::Jpeg => decode_jpeg(data, max_pixels)?,
         ImageFormat::Bmp => decode_bmp(data)?,
         ImageFormat::Jbig2 => decode_jbig2(data)?,
+        ImageFormat::Tiff => decode_tiff(data, max_pixels)?,
         ImageFormat::Other(format) => {
             return Err(RenderError::Unsupported(format!("图片格式: {format}")));
         }
@@ -240,6 +244,75 @@ fn decode_bmp(data: &[u8]) -> Result<DecodedImage, RenderError> {
     })
 }
 
+fn decode_tiff(data: &[u8], max_pixels: u64) -> Result<DecodedImage, RenderError> {
+    let mut decoder = tiff::decoder::Decoder::new(Cursor::new(data))
+        .map_err(|error| RenderError::Image(error.to_string()))?;
+    let (width, height) = decoder
+        .dimensions()
+        .map_err(|error| RenderError::Image(error.to_string()))?;
+    if u64::from(width) * u64::from(height) > max_pixels {
+        return Err(RenderError::Image("图片像素数超出限制".to_owned()));
+    }
+    let color = decoder
+        .colortype()
+        .map_err(|error| RenderError::Image(error.to_string()))?;
+    let bytes = match decoder
+        .read_image()
+        .map_err(|error| RenderError::Image(error.to_string()))?
+    {
+        tiff::decoder::DecodingResult::U8(bytes) => bytes,
+        _ => {
+            return Err(RenderError::Image("不支持的 TIFF 像素深度".to_owned()));
+        }
+    };
+    let rgba = match color {
+        tiff::ColorType::Gray(8) => bytes
+            .iter()
+            .flat_map(|value| [*value, *value, *value, 255])
+            .collect(),
+        tiff::ColorType::GrayA(8) => bytes
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .flat_map(|pixel| [pixel[0], pixel[0], pixel[0], pixel[1]])
+            .collect(),
+        tiff::ColorType::RGB(8) => bytes
+            .as_chunks::<3>()
+            .0
+            .iter()
+            .flat_map(|pixel| [pixel[0], pixel[1], pixel[2], 255])
+            .collect(),
+        tiff::ColorType::RGBA(8) => bytes,
+        tiff::ColorType::CMYK(8) => bytes
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .flat_map(|pixel| {
+                let c = u16::from(pixel[0]);
+                let m = u16::from(pixel[1]);
+                let y = u16::from(pixel[2]);
+                let k = u16::from(pixel[3]);
+                [
+                    (255 - (c + k).min(255)) as u8,
+                    (255 - (m + k).min(255)) as u8,
+                    (255 - (y + k).min(255)) as u8,
+                    255,
+                ]
+            })
+            .collect(),
+        _ => {
+            return Err(RenderError::Image(format!(
+                "不支持的 TIFF 颜色类型: {color:?}"
+            )));
+        }
+    };
+    Ok(DecodedImage {
+        width,
+        height,
+        rgba,
+    })
+}
+
 fn decode_jbig2(data: &[u8]) -> Result<DecodedImage, RenderError> {
     let pages = justbig2::decode(data)
         .or_else(|_| justbig2::decode_embedded(data))
@@ -307,7 +380,7 @@ mod tests {
         );
         assert_eq!(
             ImageFormat::detect(&[0x49, 0x49, 0x2A, 0x00]),
-            Some(ImageFormat::Other("TIFF".to_owned()))
+            Some(ImageFormat::Tiff)
         );
         assert_eq!(ImageFormat::detect(b"not-an-image"), None);
     }
@@ -343,6 +416,27 @@ mod tests {
         let image = decode_image(&ImageFormat::Bmp, &bytes, 16).expect("bmp");
         assert_eq!((image.width, image.height), (2, 2));
         assert_eq!(&image.rgba[..4], &[0, 0, 255, 255]);
+    }
+
+    #[test]
+    fn decodes_rgb_tiff() {
+        use std::io::Cursor;
+
+        let mut bytes = Vec::new();
+        {
+            let mut encoder =
+                tiff::encoder::TiffEncoder::new(Cursor::new(&mut bytes)).expect("tiff encoder");
+            encoder
+                .write_image::<tiff::encoder::colortype::RGB8>(
+                    2,
+                    2,
+                    &[255, 0, 0, 0, 255, 0, 0, 0, 255, 255, 255, 255],
+                )
+                .expect("tiff image");
+        }
+        let image = decode_image(&ImageFormat::Tiff, &bytes, 16).expect("tiff");
+        assert_eq!((image.width, image.height), (2, 2));
+        assert_eq!(&image.rgba[..4], &[255, 0, 0, 255]);
     }
 
     #[test]

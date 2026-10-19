@@ -24,3 +24,4 @@ zeroize = { version = "1", features = ["derive"] }
 getrandom = { version = "0.4", features = ["sys_rng"] }
 base64 = "0.23"
 cms = { version = "0.3.0-rc.0", default-features = false, features = ["std"] }
+tiff = "0.9"

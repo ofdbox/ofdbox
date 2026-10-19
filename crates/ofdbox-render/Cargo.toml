@@ -16,6 +16,7 @@ png = "0.18"
 skrifa = "0.44"
 sm3.workspace = true
 thiserror.workspace = true
+tiff.workspace = true
 ttf-parser = "0.25"
 vello_cpu = "0.3.0"
 
