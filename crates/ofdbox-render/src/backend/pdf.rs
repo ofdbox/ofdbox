@@ -96,6 +96,7 @@ struct PdfPage {
     resources: String,
 }
 
+#[derive(Clone)]
 struct ImageResource {
     name: String,
     object: u32,
@@ -103,15 +104,19 @@ struct ImageResource {
     height: u32,
 }
 
+#[derive(Clone)]
 struct ShadingResource {
     name: String,
     object: u32,
 }
 
+#[derive(Clone)]
 struct FontResource {
     name: String,
     object: u32,
     embedded: bool,
+    file: Option<u32>,
+    cid: u32,
 }
 
 impl PdfDocument {
@@ -129,14 +134,24 @@ impl PdfDocument {
         }
     }
 
-    fn collect_fonts(&self, group: &Group, fonts: &mut HashMap<AssetId, Arc<FontAsset>>) {
+    fn collect_fonts(
+        &self,
+        group: &Group,
+        fonts: &mut HashMap<AssetId, Arc<FontAsset>>,
+        glyphs: &mut HashMap<AssetId, HashSet<u16>>,
+    ) {
         for element in &group.children {
             match element {
-                Element::Group(group) => self.collect_fonts(group, fonts),
+                Element::Group(group) => self.collect_fonts(group, fonts, glyphs),
                 Element::Text(text) => {
-                    fonts
-                        .entry(text.font.id())
-                        .or_insert_with(|| Arc::clone(&text.font));
+                    let id = text.font.id();
+                    fonts.entry(id).or_insert_with(|| Arc::clone(&text.font));
+                    let used = glyphs.entry(id).or_default();
+                    used.extend(
+                        text.glyphs
+                            .iter()
+                            .filter_map(|glyph| u16::try_from(glyph.id).ok()),
+                    );
                 }
                 Element::Path(_) | Element::Image(_) => {}
             }
@@ -182,6 +197,8 @@ impl PdfDocument {
                 name,
                 object: 0,
                 embedded: false,
+                file: None,
+                cid: 0,
             });
         }
         let face = ttf_parser::Face::parse(font.data(), font.face_index())
@@ -192,6 +209,8 @@ impl PdfDocument {
                 name,
                 object: 0,
                 embedded: false,
+                file: None,
+                cid: 0,
             });
         }
         let scale = 1000.0 / f64::from(units);
@@ -232,6 +251,8 @@ impl PdfDocument {
             name,
             object,
             embedded: true,
+            file: Some(file),
+            cid,
         })
     }
 
@@ -382,6 +403,10 @@ pub struct PdfDocument {
     pages: Vec<PdfPage>,
     metadata: PdfMetadata,
     outlines: Vec<PdfOutline>,
+    image_cache: HashMap<AssetId, ImageResource>,
+    font_cache: HashMap<AssetId, FontResource>,
+    font_glyphs: HashMap<AssetId, HashSet<u16>>,
+    font_assets: HashMap<AssetId, Arc<FontAsset>>,
 }
 
 impl PdfDocument {
@@ -393,6 +418,10 @@ impl PdfDocument {
             pages: Vec::new(),
             metadata: PdfMetadata::default(),
             outlines: Vec::new(),
+            image_cache: HashMap::new(),
+            font_cache: HashMap::new(),
+            font_glyphs: HashMap::new(),
+            font_assets: HashMap::new(),
         }
     }
 
@@ -423,20 +452,40 @@ impl PdfDocument {
         ordered.sort_by_key(|(id, _)| *id);
         let mut images = HashMap::new();
         let mut xobjects = String::new();
-        for (index, (id, image)) in ordered.into_iter().enumerate() {
-            let name = format!("Im{}", index + 1);
-            let resource = self.embed_image(&image, name)?;
+        for (id, image) in ordered {
+            let resource = if let Some(resource) = self.image_cache.get(&id).cloned() {
+                resource
+            } else {
+                let name = format!("Im{}", self.image_cache.len() + 1);
+                let resource = self.embed_image(&image, name)?;
+                self.image_cache.insert(id, resource.clone());
+                resource
+            };
             xobjects.push_str(&format!("/{} {} 0 R ", resource.name, resource.object));
             images.insert(id, resource);
         }
         let mut collected_fonts = HashMap::new();
-        self.collect_fonts(&scene.root, &mut collected_fonts);
+        let mut page_glyphs = HashMap::new();
+        self.collect_fonts(&scene.root, &mut collected_fonts, &mut page_glyphs);
+        for (id, glyphs) in page_glyphs {
+            self.font_glyphs.entry(id).or_default().extend(glyphs);
+        }
         let mut ordered_fonts = collected_fonts.into_iter().collect::<Vec<_>>();
         ordered_fonts.sort_by_key(|(id, _)| *id);
         let mut fonts = HashMap::new();
         let mut font_resources = String::new();
-        for (index, (id, font)) in ordered_fonts.into_iter().enumerate() {
-            let resource = self.embed_font(&font, format!("F{}", index + 1))?;
+        for (id, font) in ordered_fonts {
+            self.font_assets
+                .entry(id)
+                .or_insert_with(|| Arc::clone(&font));
+            let resource = if let Some(resource) = self.font_cache.get(&id).cloned() {
+                resource
+            } else {
+                let name = format!("F{}", self.font_cache.len() + 1);
+                let resource = self.embed_font(&font, name)?;
+                self.font_cache.insert(id, resource.clone());
+                resource
+            };
             if resource.embedded {
                 font_resources.push_str(&format!("/{} {} 0 R ", resource.name, resource.object));
             }
@@ -486,7 +535,9 @@ impl PdfDocument {
         content.raw(&format!("q\n{scale} 0 0 -{scale} 0 {height} cm\n"));
         content.group(&scene.root, 1.0);
         content.raw("Q\n");
-        let content = self.writer.stream("", &content.into_bytes());
+        let content = self
+            .writer
+            .stream("/Filter /FlateDecode", &deflate(&content.into_bytes())?);
         self.pages.push(PdfPage {
             width,
             height,
@@ -503,6 +554,8 @@ impl PdfDocument {
 
     /// 完成 PDF 并返回字节。
     pub fn finish(mut self) -> Result<Vec<u8>, RenderError> {
+        self.subset_fonts()?;
+        self.write_to_unicode()?;
         for outline in &self.outlines {
             if outline.page >= self.pages.len() {
                 return Err(RenderError::InvalidPage);
@@ -582,6 +635,64 @@ impl PdfDocument {
         catalog.push_str(" >>");
         let catalog_id = self.writer.add(catalog.into_bytes());
         Ok(self.writer.finish(catalog_id, info_id))
+    }
+
+    fn subset_fonts(&mut self) -> Result<(), RenderError> {
+        let tasks = self
+            .font_cache
+            .iter()
+            .filter_map(|(id, resource)| {
+                let file = resource.file?;
+                let font = self.font_assets.get(id)?;
+                let glyphs = self.font_glyphs.get(id)?;
+                Some((file, Arc::clone(font), glyphs.clone()))
+            })
+            .collect::<Vec<_>>();
+        for (file, font, glyphs) in tasks {
+            if glyphs.is_empty() {
+                continue;
+            }
+            let Some(data) = subset_truetype(font.data(), font.face_index(), &glyphs) else {
+                continue;
+            };
+            let compressed = deflate(&data)?;
+            self.writer.replace_stream(
+                file,
+                &format!("/Filter /FlateDecode /Length1 {}", data.len()),
+                &compressed,
+            );
+        }
+        Ok(())
+    }
+
+    fn write_to_unicode(&mut self) -> Result<(), RenderError> {
+        let tasks = self
+            .font_cache
+            .iter()
+            .filter_map(|(id, resource)| {
+                if !resource.embedded {
+                    return None;
+                }
+                let font = self.font_assets.get(id)?;
+                let glyphs = self.font_glyphs.get(id)?;
+                Some((resource.clone(), Arc::clone(font), glyphs.clone()))
+            })
+            .collect::<Vec<_>>();
+        for (resource, font, glyphs) in tasks {
+            let Some(cmap) = build_to_unicode(&font, &glyphs) else {
+                continue;
+            };
+            let stream = self.writer.stream("", cmap.as_bytes());
+            self.writer.set(
+                resource.object,
+                format!(
+                    "<< /Type /Font /Subtype /Type0 /BaseFont /{} /Encoding /Identity-H /DescendantFonts [{} 0 R] /ToUnicode {stream} 0 R >>",
+                    resource.name, resource.cid
+                )
+                .into_bytes(),
+            );
+        }
+        Ok(())
     }
 
     fn metadata_info(&mut self) -> Option<u32> {
@@ -1119,6 +1230,13 @@ impl PdfWriter {
         self.add(body)
     }
 
+    fn replace_stream(&mut self, id: u32, dict: &str, data: &[u8]) {
+        let mut body = format!("<< /Length {} {dict} >>\nstream\n", data.len()).into_bytes();
+        body.extend_from_slice(data);
+        body.extend_from_slice(b"\nendstream");
+        self.set(id, body);
+    }
+
     fn finish(self, root: u32, info: Option<u32>) -> Vec<u8> {
         let mut output = self.version.header().to_vec();
         let mut offsets = Vec::with_capacity(self.objects.len());
@@ -1148,6 +1266,226 @@ impl PdfWriter {
         );
         output
     }
+}
+
+fn build_to_unicode(font: &FontAsset, used: &HashSet<u16>) -> Option<String> {
+    let face = ttf_parser::Face::parse(font.data(), font.face_index()).ok()?;
+    let cmap = face.tables().cmap?;
+    let mut mapping = HashMap::<u16, u32>::new();
+    for subtable in cmap.subtables {
+        if !subtable.is_unicode() {
+            continue;
+        }
+        subtable.codepoints(|codepoint| {
+            if (0xD800..=0xDFFF).contains(&codepoint) {
+                return;
+            }
+            if let Some(glyph) = subtable.glyph_index(codepoint) {
+                mapping.entry(glyph.0).or_insert(codepoint);
+            }
+        });
+    }
+    let mut entries = mapping
+        .into_iter()
+        .filter(|(glyph, _)| used.contains(glyph))
+        .collect::<Vec<_>>();
+    entries.sort_unstable_by_key(|entry| entry.0);
+    if entries.is_empty() {
+        return None;
+    }
+    let mut cmap = String::from(
+        "/CIDInit /ProcSet findresource begin\n12 dict begin\nbegincmap\n/CIDSystemInfo << /Registry (Adobe) /Ordering (UCS) /Supplement 0 >> def\n/CMapName /Adobe-Identity-UCS def\n/CMapType 2 def\n1 begincodespacerange\n<0000> <FFFF>\nendcodespacerange\n",
+    );
+    for chunk in entries.chunks(100) {
+        cmap.push_str(&format!("{} beginbfchar\n", chunk.len()));
+        for (glyph, codepoint) in chunk {
+            cmap.push_str(&format!("<{glyph:04X}> <{}>\n", utf16_hex(*codepoint)));
+        }
+        cmap.push_str("endbfchar\n");
+    }
+    cmap.push_str("endcmap\nCMapName currentdict /CMap defineresource pop\nend\nend\n");
+    Some(cmap)
+}
+
+fn utf16_hex(codepoint: u32) -> String {
+    if codepoint <= 0xFFFF {
+        format!("{codepoint:04X}")
+    } else {
+        let value = codepoint - 0x10000;
+        let high = 0xD800 + (value >> 10);
+        let low = 0xDC00 + (value & 0x3FF);
+        format!("{high:04X}{low:04X}")
+    }
+}
+
+fn subset_truetype(data: &[u8], face_index: u32, used: &HashSet<u16>) -> Option<Vec<u8>> {
+    if face_index != 0 || data.len() < 12 || data.starts_with(b"ttcf") {
+        return None;
+    }
+    let num_tables = usize::from(be_u16(data, 4)?);
+    if num_tables == 0 || 12 + num_tables * 16 > data.len() {
+        return None;
+    }
+    let mut tables = Vec::with_capacity(num_tables);
+    for index in 0..num_tables {
+        let record = 12 + index * 16;
+        let tag: [u8; 4] = data.get(record..record + 4)?.try_into().ok()?;
+        let offset = be_u32(data, record + 8)? as usize;
+        let length = be_u32(data, record + 12)? as usize;
+        let body = data.get(offset..offset.checked_add(length)?)?;
+        tables.push((tag, body));
+    }
+    let find = |tag: &[u8; 4]| {
+        tables
+            .iter()
+            .find(|(name, _)| name == tag)
+            .map(|(_, body)| *body)
+    };
+    let head = find(b"head")?;
+    let maxp = find(b"maxp")?;
+    let loca = find(b"loca")?;
+    let glyf = find(b"glyf")?;
+    if head.len() < 54 || maxp.len() < 6 {
+        return None;
+    }
+    let num_glyphs = usize::from(be_u16(maxp, 4)?);
+    if num_glyphs == 0 {
+        return None;
+    }
+    let long_loca = be_i16(head, 50)? != 0;
+    let mut offsets = Vec::with_capacity(num_glyphs + 1);
+    for index in 0..=num_glyphs {
+        let offset = if long_loca {
+            usize::try_from(be_u32(loca, index * 4)?).ok()?
+        } else {
+            usize::from(be_u16(loca, index * 2)?) * 2
+        };
+        offsets.push(offset);
+    }
+    if offsets.last().copied()? > glyf.len() {
+        return None;
+    }
+
+    let mut used = used
+        .iter()
+        .copied()
+        .filter(|glyph| usize::from(*glyph) < num_glyphs)
+        .collect::<HashSet<_>>();
+    used.insert(0);
+    let mut queue = used.iter().copied().collect::<Vec<_>>();
+    while let Some(glyph) = queue.pop() {
+        let index = usize::from(glyph);
+        let start = offsets[index];
+        let end = offsets[index + 1];
+        if end <= start {
+            continue;
+        }
+        let body = &glyf[start..end];
+        if be_i16(body, 0)? >= 0 {
+            continue;
+        }
+        let mut position = 10;
+        loop {
+            let flags = be_u16(body, position)?;
+            let component = be_u16(body, position + 2)?;
+            position += 4;
+            position += if flags & 0x0001 != 0 { 4 } else { 2 };
+            if flags & 0x0008 != 0 {
+                position += 2;
+            } else if flags & 0x0040 != 0 {
+                position += 4;
+            } else if flags & 0x0080 != 0 {
+                position += 8;
+            }
+            if usize::from(component) < num_glyphs && used.insert(component) {
+                queue.push(component);
+            }
+            if flags & 0x0020 == 0 {
+                break;
+            }
+        }
+    }
+
+    let mut new_glyf = Vec::new();
+    let mut new_offsets = Vec::with_capacity(num_glyphs + 1);
+    for index in 0..num_glyphs {
+        new_offsets.push(u32::try_from(new_glyf.len()).ok()?);
+        if used.contains(&(index as u16)) {
+            new_glyf.extend_from_slice(&glyf[offsets[index]..offsets[index + 1]]);
+            while new_glyf.len() % 4 != 0 {
+                new_glyf.push(0);
+            }
+        }
+    }
+    new_offsets.push(u32::try_from(new_glyf.len()).ok()?);
+    let mut new_loca = Vec::with_capacity(new_offsets.len() * 4);
+    for offset in new_offsets {
+        new_loca.extend_from_slice(&offset.to_be_bytes());
+    }
+    let mut new_head = head.to_vec();
+    new_head[50..52].copy_from_slice(&1_i16.to_be_bytes());
+    new_head[8..12].fill(0);
+
+    let mut output_tables = tables
+        .iter()
+        .map(|(tag, body)| (*tag, body.to_vec()))
+        .collect::<Vec<_>>();
+    for (tag, body) in &mut output_tables {
+        match tag.as_slice() {
+            b"glyf" => *body = new_glyf.clone(),
+            b"loca" => *body = new_loca.clone(),
+            b"head" => *body = new_head.clone(),
+            _ => {}
+        }
+    }
+    output_tables.sort_by_key(|table| table.0);
+
+    let mut output = data[..12].to_vec();
+    let table_count = u16::try_from(output_tables.len()).ok()?;
+    output[4..6].copy_from_slice(&table_count.to_be_bytes());
+    let table_offset = 12 + output_tables.len() * 16;
+    let mut body = Vec::new();
+    for (tag, table) in &output_tables {
+        while body.len() % 4 != 0 {
+            body.push(0);
+        }
+        let offset = table_offset + body.len();
+        output.extend_from_slice(tag);
+        output.extend_from_slice(&checksum(table).to_be_bytes());
+        output.extend_from_slice(&u32::try_from(offset).ok()?.to_be_bytes());
+        output.extend_from_slice(&u32::try_from(table.len()).ok()?.to_be_bytes());
+        body.extend_from_slice(table);
+    }
+    output.extend_from_slice(&body);
+    Some(output)
+}
+
+fn be_u16(data: &[u8], offset: usize) -> Option<u16> {
+    Some(u16::from_be_bytes(
+        data.get(offset..offset + 2)?.try_into().ok()?,
+    ))
+}
+
+fn be_i16(data: &[u8], offset: usize) -> Option<i16> {
+    Some(i16::from_be_bytes(
+        data.get(offset..offset + 2)?.try_into().ok()?,
+    ))
+}
+
+fn be_u32(data: &[u8], offset: usize) -> Option<u32> {
+    Some(u32::from_be_bytes(
+        data.get(offset..offset + 4)?.try_into().ok()?,
+    ))
+}
+
+fn checksum(data: &[u8]) -> u32 {
+    let mut sum = 0_u32;
+    for chunk in data.chunks(4) {
+        let mut word = [0_u8; 4];
+        word[..chunk.len()].copy_from_slice(chunk);
+        sum = sum.wrapping_add(u32::from_be_bytes(word));
+    }
+    sum
 }
 
 fn deflate(data: &[u8]) -> Result<Vec<u8>, RenderError> {
@@ -1183,6 +1521,27 @@ mod tests {
         Element, Group, ImageElement, PathElement, PositionedGlyph, Scene, TextElement,
     };
 
+    fn pdf_text(pdf: &[u8]) -> String {
+        use std::io::Read as _;
+
+        let mut text = String::from_utf8_lossy(pdf).into_owned();
+        let mut rest = pdf;
+        while let Some(start) = rest.windows(7).position(|window| window == b"stream\n") {
+            let body = &rest[start + 7..];
+            let Some(end) = body.windows(9).position(|window| window == b"endstream") else {
+                break;
+            };
+            let mut decoded = String::new();
+            if flate2::read::ZlibDecoder::new(&body[..end])
+                .read_to_string(&mut decoded)
+                .is_ok()
+            {
+                text.push_str(&decoded);
+            }
+            rest = &body[end + 9..];
+        }
+        text
+    }
     fn scene() -> Scene {
         Scene {
             size: Size::new(100.0, 100.0),
@@ -1196,10 +1555,10 @@ mod tests {
         let mut document = PdfDocument::new(PdfOptions::default());
         document.add_page(&scene()).expect("page");
         let pdf = document.finish().expect("pdf");
-        let text = String::from_utf8_lossy(&pdf);
+        let text = pdf_text(&pdf);
         assert!(text.starts_with("%PDF-1.7"));
         assert!(text.contains("/MediaBox [0 0 283.4646 283.4646]"));
-        assert!(text.ends_with("%%EOF\n"));
+        assert!(pdf.ends_with(b"%%EOF\n"));
     }
 
     #[test]
@@ -1209,7 +1568,7 @@ mod tests {
         document.add_page(&scene()).expect("page 2");
         assert_eq!(document.page_count(), 2);
         let pdf = document.finish().expect("pdf");
-        let text = String::from_utf8_lossy(&pdf);
+        let text = pdf_text(&pdf);
         assert!(text.contains("/Count 2"));
         assert_eq!(text.matches("/MediaBox").count(), 2);
     }
@@ -1235,7 +1594,7 @@ mod tests {
         let mut document = PdfDocument::new(PdfOptions::default());
         document.add_page(&scene).expect("page");
         let pdf = document.finish().expect("pdf");
-        let text = String::from_utf8_lossy(&pdf);
+        let text = pdf_text(&pdf);
         assert!(text.contains("10 10 m"));
         assert!(text.contains("90 90 l"));
         assert!(text.contains("1 0 0 rg"));
@@ -1275,7 +1634,7 @@ mod tests {
         let mut document = PdfDocument::new(PdfOptions::default());
         document.add_page(&scene).expect("page");
         let pdf = document.finish().expect("pdf");
-        let text = String::from_utf8_lossy(&pdf);
+        let text = pdf_text(&pdf);
         assert!(text.contains("/XObject"));
         assert!(text.contains("/Im1"));
         assert!(text.contains("/Im1 Do"));
@@ -1317,7 +1676,7 @@ mod tests {
         let mut document = PdfDocument::new(PdfOptions::default());
         document.add_page(&scene).expect("page");
         let pdf = document.finish().expect("pdf");
-        let text = String::from_utf8_lossy(&pdf);
+        let text = pdf_text(&pdf);
         assert!(text.contains("/ShadingType 2"));
         assert!(text.contains("/FunctionType 2"));
         assert!(text.contains(" sh\n"));
@@ -1358,12 +1717,51 @@ mod tests {
         let mut document = PdfDocument::new(PdfOptions::default());
         document.add_page(&scene).expect("page");
         let pdf = document.finish().expect("pdf");
-        let text = String::from_utf8_lossy(&pdf);
+        let text = pdf_text(&pdf);
         assert!(text.contains("q\n"));
         assert!(text.contains("/Type0"));
         assert!(text.contains(" Tj\n"));
     }
 
+    #[cfg(windows)]
+    #[test]
+    fn writes_to_unicode_for_embedded_font() {
+        let Ok(bytes) = std::fs::read("C:/Windows/Fonts/arial.ttf") else {
+            return;
+        };
+        let Ok(face) = ttf_parser::Face::parse(&bytes, 0) else {
+            return;
+        };
+        let Some(glyph) = face.glyph_index('A') else {
+            return;
+        };
+        let pool = ResourcePool::new(PoolBudget::default());
+        let font = pool.embedded_font(&bytes, 0).expect("embedded font");
+        let mut root = Group::default();
+        root.children.push(Element::Text(TextElement {
+            font,
+            size: 10.0,
+            transform: Matrix::IDENTITY,
+            glyphs: vec![PositionedGlyph {
+                id: u32::from(glyph.0),
+                x: 0.0,
+                y: 10.0,
+            }],
+            fill: Some(Paint::Solid(Rgba::BLACK)),
+            stroke: None,
+        }));
+        let scene = Scene {
+            size: Size::new(100.0, 100.0),
+            root,
+            diagnostics: Vec::new(),
+        };
+        let mut document = PdfDocument::new(PdfOptions::default());
+        document.add_page(&scene).expect("page");
+        let pdf = document.finish().expect("pdf");
+        let text = pdf_text(&pdf);
+        assert!(text.contains("/ToUnicode"));
+        assert!(text.contains("beginbfchar"));
+    }
     #[test]
     fn writes_group_opacity() {
         let mut path = Path::new();
@@ -1389,7 +1787,7 @@ mod tests {
         let mut document = PdfDocument::new(PdfOptions::default());
         document.add_page(&scene).expect("page");
         let pdf = document.finish().expect("pdf");
-        let text = String::from_utf8_lossy(&pdf);
+        let text = pdf_text(&pdf);
         assert!(text.contains("/ExtGState"));
         assert!(text.contains(" gs\n"));
     }
@@ -1406,7 +1804,7 @@ mod tests {
         document.add_outline("First", 0);
         document.add_outline("Second", 1);
         let pdf = document.finish().expect("pdf");
-        let text = String::from_utf8_lossy(&pdf);
+        let text = pdf_text(&pdf);
         assert!(text.contains("/Info"));
         assert!(text.contains("/Title (Test)"));
         assert!(text.contains("/Outlines"));
