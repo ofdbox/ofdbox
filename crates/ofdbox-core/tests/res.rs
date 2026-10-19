@@ -113,6 +113,20 @@ fn canonical_res_parses_in_both_modes() {
 }
 
 #[test]
+fn multiple_font_containers_are_merged() {
+    let multi = RES.replace(
+        "</ofd:Res>",
+        r#"  <ofd:Fonts><ofd:Font ID="9" FontName="Arial"/></ofd:Fonts></ofd:Res>"#,
+    );
+    let view = parse(&multi, ReadOptions::LENIENT).expect("lenient Res");
+    let ids = view
+        .fonts()
+        .map(|font| font.id().unwrap().to_owned())
+        .collect::<Vec<_>>();
+    assert_eq!(ids, ["3", "9"]);
+}
+
+#[test]
 fn writer_emits_canonical_res_and_roundtrips() {
     let view = parse(RES, ReadOptions::LENIENT).unwrap();
     let xml = view.to_xml().expect("strict writer should succeed");

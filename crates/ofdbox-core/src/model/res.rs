@@ -148,14 +148,13 @@ impl ResView {
         entry: &str,
         make: impl Fn(Arc<XmlDocument>, NodeId) -> T,
     ) -> impl Iterator<Item = T> {
-        let Some(container_node) = self.doc.find_child(self.node, container) else {
-            return Vec::new().into_iter();
-        };
-        self.doc
-            .children_named(container_node, entry)
-            .map(|node| make(Arc::clone(&self.doc), node))
-            .collect::<Vec<_>>()
-            .into_iter()
+        let mut values = Vec::new();
+        for container_node in self.doc.children_named(self.node, container) {
+            for node in self.doc.children_named(container_node, entry) {
+                values.push(make(Arc::clone(&self.doc), node));
+            }
+        }
+        values.into_iter()
     }
 }
 
