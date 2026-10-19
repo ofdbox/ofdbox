@@ -69,6 +69,8 @@ pub struct CacheStats {
 /// 只读 OFD 包。
 pub struct OfdPackage {
     archive: ZipArchive<Box<dyn ReadSeek>>,
+    /// 归一化路径（正斜杠、小写）到 ZIP 条目名的索引。
+    entry_index: HashMap<String, String>,
     options: ReadOptions,
     entry_cache: ByteLruCache<String, Arc<[u8]>>,
     plain_cache: ByteLruCache<String, Arc<[u8]>>,
@@ -118,8 +120,14 @@ impl OfdPackage {
         cache_options: CacheOptions,
     ) -> Result<Self, OfdError> {
         let archive = ZipArchive::new(Box::new(reader) as Box<dyn ReadSeek>)?;
+        let mut entry_index = HashMap::new();
+        for name in archive.file_names().flatten() {
+            let name = name.into_owned();
+            entry_index.entry(entry_key(&name)).or_insert(name);
+        }
         Ok(Self {
             archive,
+            entry_index,
             options,
             entry_cache: ByteLruCache::new(cache_options.max_bytes),
             plain_cache: ByteLruCache::new(cache_options.max_bytes),
@@ -168,6 +176,7 @@ impl OfdPackage {
             return true;
         }
         self.archive.index_for_name(name).is_some()
+            || self.entry_index.contains_key(&entry_key(name))
     }
 
     /// entry 数量。
@@ -179,7 +188,7 @@ impl OfdPackage {
     pub fn entry_names(&self) -> Result<Vec<String>, OfdError> {
         let mut names = Vec::new();
         for name in self.archive.file_names() {
-            names.push(name?.into_owned());
+            names.push(name?.replace('\\', "/"));
         }
         if let Some(context) = &self.decryption {
             for operation in &context.operations {
@@ -315,12 +324,23 @@ impl OfdPackage {
         Ok(())
     }
 
+    fn resolve_zip_name(&self, name: &str) -> String {
+        if self.archive.index_for_name(name).is_some() {
+            return name.to_owned();
+        }
+        self.entry_index
+            .get(&entry_key(name))
+            .cloned()
+            .unwrap_or_else(|| name.to_owned())
+    }
+
     fn read_raw_entry(&mut self, name: &str) -> Result<Arc<[u8]>, OfdError> {
         if let Some(bytes) = self.entry_cache.get(&name.to_owned()) {
             return Ok(bytes);
         }
 
-        let mut entry = match self.archive.by_name(name) {
+        let actual = self.resolve_zip_name(name);
+        let mut entry = match self.archive.by_name(&actual) {
             Ok(entry) => entry,
             Err(zip::result::ZipError::FileNotFound) => {
                 return Err(OfdError::MissingEntry(name.to_owned()));
@@ -1005,6 +1025,12 @@ fn looks_like_xml(bytes: &[u8]) -> bool {
         .iter()
         .find(|byte| !byte.is_ascii_whitespace())
         .is_some_and(|byte| *byte == b'<')
+}
+
+fn entry_key(name: &str) -> String {
+    name.replace('\\', "/")
+        .trim_start_matches('/')
+        .to_ascii_lowercase()
 }
 
 fn normalize_entry_name(name: &str) -> Result<String, OfdError> {

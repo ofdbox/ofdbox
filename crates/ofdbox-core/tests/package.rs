@@ -12,6 +12,15 @@ const ROOT: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
   </ofd:DocBody>
 </ofd:OFD>"#;
 
+const DOCUMENT: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<ofd:Document xmlns:ofd="http://www.ofdspec.org/2016">
+  <ofd:CommonData>
+    <ofd:MaxUnitID>1</ofd:MaxUnitID>
+    <ofd:PageArea><ofd:PhysicalBox>0 0 100 100</ofd:PhysicalBox></ofd:PageArea>
+  </ofd:CommonData>
+  <ofd:Pages><ofd:Page ID="1" BaseLoc="Pages/Page_0/Content.xml"/></ofd:Pages>
+</ofd:Document>"#;
+
 #[test]
 fn from_bytes_parses_root() {
     let bytes = fixtures::zip_with_entry("OFD.xml", ROOT.as_bytes());
@@ -39,6 +48,32 @@ fn open_file_parses_root() {
     let mut package = OfdPackage::open(&path).expect("open package");
     let view = package.parse_root().expect("parse root");
     assert_eq!(view.doc_type(), Some("OFD"));
+}
+
+#[test]
+fn backslash_entry_names_are_resolved() {
+    let root = ROOT.replace(
+        "<ofd:DocRoot>Document.xml</ofd:DocRoot>",
+        "<ofd:DocRoot>Doc_0/Document.xml</ofd:DocRoot>",
+    );
+    let bytes = fixtures::zip_with_entries(&[
+        ("OFD.xml", root.as_bytes()),
+        ("Doc_0\\Document.xml", DOCUMENT.as_bytes()),
+    ]);
+    let mut package = OfdPackage::from_bytes(bytes).expect("open package");
+    assert!(package.contains("Doc_0/Document.xml"));
+    assert!(package.contains("doc_0/document.xml"));
+    let names = package.entry_names().expect("entry names");
+    assert!(names.iter().any(|name| name == "OFD.xml"));
+    assert!(names.iter().any(|name| name == "Doc_0/Document.xml"));
+    let document = package.parse_document().expect("document");
+    assert!(document.pages().is_some());
+    assert!(
+        !package
+            .read_entry("Doc_0/Document.xml")
+            .expect("read entry")
+            .is_empty()
+    );
 }
 
 #[test]
