@@ -23,7 +23,9 @@ mod resource;
 mod scene;
 
 pub use asset::{AssetId, FontAsset, ImageAsset};
-pub use backend::pdf::{PdfBackend, PdfDocument, PdfOptions, PdfVersion, TextMode};
+pub use backend::pdf::{
+    PdfBackend, PdfDocument, PdfMetadata, PdfOptions, PdfOutline, PdfVersion, TextMode,
+};
 pub use backend::vello_cpu::{RasterTarget, VelloCpuBackend, VelloCpuFrame};
 pub use backend::wgpu::WgpuBackend;
 pub use backend::{Backend, BackendCapabilities, BackendFrame, BackendInfo};

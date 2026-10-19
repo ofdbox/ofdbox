@@ -64,6 +64,31 @@ impl Default for PdfOptions {
     }
 }
 
+/// PDF 文档元数据。
+#[derive(Clone, Debug, Default)]
+pub struct PdfMetadata {
+    /// 标题。
+    pub title: Option<String>,
+    /// 作者。
+    pub author: Option<String>,
+    /// 主题。
+    pub subject: Option<String>,
+    /// 关键词。
+    pub keywords: Option<String>,
+    /// 创建工具。
+    pub creator: Option<String>,
+    /// 生成工具。
+    pub producer: Option<String>,
+}
+
+/// PDF 书签。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PdfOutline {
+    /// 标题。
+    pub title: String,
+    /// 目标页索引，从 0 开始。
+    pub page: usize,
+}
 struct PdfPage {
     width: f64,
     height: f64,
@@ -355,6 +380,8 @@ pub struct PdfDocument {
     options: PdfOptions,
     writer: PdfWriter,
     pages: Vec<PdfPage>,
+    metadata: PdfMetadata,
+    outlines: Vec<PdfOutline>,
 }
 
 impl PdfDocument {
@@ -364,7 +391,22 @@ impl PdfDocument {
             writer: PdfWriter::new(options.version),
             options,
             pages: Vec::new(),
+            metadata: PdfMetadata::default(),
+            outlines: Vec::new(),
         }
+    }
+
+    /// 设置文档元数据。
+    pub fn set_metadata(&mut self, metadata: PdfMetadata) {
+        self.metadata = metadata;
+    }
+
+    /// 添加书签，页索引从 0 开始。
+    pub fn add_outline(&mut self, title: impl Into<String>, page: usize) {
+        self.outlines.push(PdfOutline {
+            title: title.into(),
+            page,
+        });
     }
 
     /// 添加一页。
@@ -461,8 +503,14 @@ impl PdfDocument {
 
     /// 完成 PDF 并返回字节。
     pub fn finish(mut self) -> Result<Vec<u8>, RenderError> {
+        for outline in &self.outlines {
+            if outline.page >= self.pages.len() {
+                return Err(RenderError::InvalidPage);
+            }
+        }
         let pages_id = self.writer.placeholder();
         let mut kids = String::new();
+        let mut page_ids = Vec::with_capacity(self.pages.len());
         for page in &self.pages {
             let page_id = self.writer.add(
                 format!(
@@ -474,6 +522,7 @@ impl PdfDocument {
                 )
                 .into_bytes(),
             );
+            page_ids.push(page_id);
             kids.push_str(&format!("{page_id} 0 R "));
         }
         self.writer.set(
@@ -485,10 +534,76 @@ impl PdfDocument {
             )
             .into_bytes(),
         );
-        let catalog_id = self
-            .writer
-            .add(format!("<< /Type /Catalog /Pages {pages_id} 0 R >>").into_bytes());
-        Ok(self.writer.finish(catalog_id))
+
+        let outlines_id = if self.outlines.is_empty() {
+            None
+        } else {
+            let root = self.writer.placeholder();
+            let item_ids = self
+                .outlines
+                .iter()
+                .map(|_| self.writer.placeholder())
+                .collect::<Vec<_>>();
+            for (index, outline) in self.outlines.iter().enumerate() {
+                let mut body = format!(
+                    "<< /Title {} /Parent {root} 0 R",
+                    pdf_text_string(&outline.title)
+                );
+                if index > 0 {
+                    body.push_str(&format!(" /Prev {} 0 R", item_ids[index - 1]));
+                }
+                if let Some(next) = item_ids.get(index + 1) {
+                    body.push_str(&format!(" /Next {next} 0 R"));
+                }
+                body.push_str(&format!(
+                    " /Dest [{} 0 R /XYZ null null null] >>",
+                    page_ids[outline.page]
+                ));
+                self.writer.set(item_ids[index], body.into_bytes());
+            }
+            self.writer.set(
+                root,
+                format!(
+                    "<< /Type /Outlines /First {} 0 R /Last {} 0 R /Count {} >>",
+                    item_ids[0],
+                    item_ids[item_ids.len() - 1],
+                    item_ids.len()
+                )
+                .into_bytes(),
+            );
+            Some(root)
+        };
+
+        let info_id = self.metadata_info();
+        let mut catalog = format!("<< /Type /Catalog /Pages {pages_id} 0 R");
+        if let Some(outlines) = outlines_id {
+            catalog.push_str(&format!(" /Outlines {outlines} 0 R /PageMode /UseOutlines"));
+        }
+        catalog.push_str(" >>");
+        let catalog_id = self.writer.add(catalog.into_bytes());
+        Ok(self.writer.finish(catalog_id, info_id))
+    }
+
+    fn metadata_info(&mut self) -> Option<u32> {
+        let entries = [
+            ("Title", self.metadata.title.as_deref()),
+            ("Author", self.metadata.author.as_deref()),
+            ("Subject", self.metadata.subject.as_deref()),
+            ("Keywords", self.metadata.keywords.as_deref()),
+            ("Creator", self.metadata.creator.as_deref()),
+            ("Producer", self.metadata.producer.as_deref()),
+        ];
+        let mut body = String::new();
+        for (key, value) in entries {
+            if let Some(value) = value.filter(|value| !value.is_empty()) {
+                body.push_str(&format!(" /{key} {}", pdf_text_string(value)));
+            }
+        }
+        if body.is_empty() {
+            None
+        } else {
+            Some(self.writer.add(format!("<<{body} >>").into_bytes()))
+        }
     }
 }
 
@@ -925,6 +1040,32 @@ fn solid_paint(paint: &Paint) -> Option<Rgba> {
     }
 }
 
+fn pdf_text_string(value: &str) -> String {
+    if value.is_ascii() {
+        let mut text = String::from("(");
+        for ch in value.chars() {
+            match ch {
+                '(' => text.push_str("\\("),
+                ')' => text.push_str("\\)"),
+                '\\' => text.push_str("\\\\"),
+                '\n' => text.push_str("\\n"),
+                '\r' => text.push_str("\\r"),
+                '\t' => text.push_str("\\t"),
+                ch if ch.is_control() => text.push_str(&format!("\\{:03o}", ch as u32)),
+                ch => text.push(ch),
+            }
+        }
+        text.push(')');
+        text
+    } else {
+        let mut text = String::from("<FEFF");
+        for unit in value.encode_utf16() {
+            text.push_str(&format!("{unit:04X}"));
+        }
+        text.push('>');
+        text
+    }
+}
 fn paint_alpha(paint: &Paint) -> f32 {
     match paint {
         Paint::Solid(color) => color.a,
@@ -978,7 +1119,7 @@ impl PdfWriter {
         self.add(body)
     }
 
-    fn finish(self, root: u32) -> Vec<u8> {
+    fn finish(self, root: u32, info: Option<u32>) -> Vec<u8> {
         let mut output = self.version.header().to_vec();
         let mut offsets = Vec::with_capacity(self.objects.len());
         for (index, body) in self.objects.iter().enumerate() {
@@ -994,9 +1135,12 @@ impl PdfWriter {
         for offset in offsets {
             output.extend_from_slice(format!("{offset:010} 00000 n \n").as_bytes());
         }
+        let info = info
+            .map(|info| format!(" /Info {info} 0 R"))
+            .unwrap_or_default();
         output.extend_from_slice(
             format!(
-                "trailer\n<< /Size {} /Root {} 0 R >>\nstartxref\n{xref}\n%%EOF\n",
+                "trailer\n<< /Size {} /Root {} 0 R{info} >>\nstartxref\n{xref}\n%%EOF\n",
                 self.objects.len() + 1,
                 root
             )
@@ -1029,7 +1173,7 @@ fn number(value: f64) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{PdfBackend, PdfDocument, PdfOptions};
+    use super::{PdfBackend, PdfDocument, PdfMetadata, PdfOptions};
     use crate::geometry::{Matrix, Point, Size};
     use crate::image::ImageFormat;
     use crate::paint::{GradientExtend, GradientStop, LinearGradient, Paint, Rgba};
@@ -1248,6 +1392,27 @@ mod tests {
         let text = String::from_utf8_lossy(&pdf);
         assert!(text.contains("/ExtGState"));
         assert!(text.contains(" gs\n"));
+    }
+    #[test]
+    fn writes_metadata_and_outlines() {
+        let mut document = PdfDocument::new(PdfOptions::default());
+        document.add_page(&scene()).expect("page 1");
+        document.add_page(&scene()).expect("page 2");
+        document.set_metadata(PdfMetadata {
+            title: Some("Test".to_owned()),
+            author: Some("OFDBox".to_owned()),
+            ..PdfMetadata::default()
+        });
+        document.add_outline("First", 0);
+        document.add_outline("Second", 1);
+        let pdf = document.finish().expect("pdf");
+        let text = String::from_utf8_lossy(&pdf);
+        assert!(text.contains("/Info"));
+        assert!(text.contains("/Title (Test)"));
+        assert!(text.contains("/Outlines"));
+        assert!(text.contains("/PageMode /UseOutlines"));
+        assert!(text.contains("/Title (First)"));
+        assert_eq!(text.matches("/Dest [").count(), 2);
     }
     #[test]
     fn backend_writes_single_page() {
