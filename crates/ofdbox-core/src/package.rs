@@ -347,8 +347,23 @@ impl OfdPackage {
             }
             Err(error) => return Err(error.into()),
         };
+        let stored = entry.compression() == zip::CompressionMethod::Stored && !entry.encrypted();
         let mut bytes = Vec::with_capacity(entry.size() as usize);
-        entry.read_to_end(&mut bytes)?;
+        if let Err(error) = entry.read_to_end(&mut bytes) {
+            if !stored {
+                return Err(error.into());
+            }
+            drop(entry);
+            // 真实文件可能只在 ZIP 头里写了过期 CRC；Stored 条目的原始字节就是文件内容。
+            let index = self
+                .archive
+                .index_for_name(&actual)
+                .ok_or(OfdError::MissingEntry(name.to_owned()))?;
+            let mut raw = self.archive.by_index_raw(index)?;
+            let mut fallback = Vec::with_capacity(raw.size() as usize);
+            raw.read_to_end(&mut fallback)?;
+            bytes = fallback;
+        }
         let bytes: Arc<[u8]> = Arc::from(bytes);
         self.entry_cache
             .insert(name.to_owned(), Arc::clone(&bytes), bytes.len());

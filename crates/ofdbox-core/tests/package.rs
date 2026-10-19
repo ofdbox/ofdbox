@@ -87,6 +87,27 @@ fn missing_root_entry_is_reported() {
 }
 
 #[test]
+fn stored_entry_with_bad_crc_is_readable() {
+    let mut writer = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+    let options =
+        zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
+    writer.start_file("data.txt", options).expect("entry");
+    writer.write_all(b"AAAA").expect("write");
+    let mut bytes = writer.finish().expect("finish").into_inner();
+    let position = bytes
+        .windows(4)
+        .position(|window| window == b"AAAA")
+        .expect("payload");
+    bytes[position..position + 4].copy_from_slice(b"BBBB");
+
+    let mut package = OfdPackage::from_bytes(bytes).expect("open package");
+    assert_eq!(
+        &package.read_entry("data.txt").expect("read entry")[..],
+        b"BBBB"
+    );
+}
+
+#[test]
 fn invalid_zip_is_reported() {
     match OfdPackage::from_bytes(vec![1, 2, 3, 4]) {
         Err(OfdError::Zip(_)) => {}
