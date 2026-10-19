@@ -479,7 +479,7 @@ impl OfdPackage {
             .as_deref()
             .and_then(parent_dir)
             .ok_or_else(|| OfdError::InvalidStructure("尚未定位 Document.xml".to_owned()))?;
-        let entry = resolve_loc(base, &loc)?;
+        let entry = self.resolve_existing_loc(base, &loc)?;
         let view = self.parse_annotations_entry(entry.clone())?;
         self.annotations_entry = Some(entry);
         Ok(view)
@@ -575,7 +575,7 @@ impl OfdPackage {
             .as_deref()
             .and_then(parent_dir)
             .ok_or_else(|| OfdError::InvalidStructure("尚未定位注释索引文件".to_owned()))?;
-        let entry = resolve_loc(base, file_loc)?;
+        let entry = self.resolve_existing_loc(base, file_loc)?;
         self.parse_page_annot_entry(entry)
     }
 
@@ -641,6 +641,20 @@ impl OfdPackage {
             .and_then(parent_dir)
             .ok_or_else(|| OfdError::InvalidStructure("尚未定位 Document.xml".to_owned()))?;
         resolve_loc(base, loc)
+    }
+
+    fn resolve_existing_loc(&self, base: &str, loc: &str) -> Result<String, OfdError> {
+        let entry = resolve_loc(base, loc)?;
+        if self.contains(&entry) {
+            return Ok(entry);
+        }
+        // 真实文件里同一字段既可能相对于文档目录，也可能已经是根相对路径。
+        let root = resolve_loc("", loc)?;
+        if self.contains(&root) {
+            Ok(root)
+        } else {
+            Ok(entry)
+        }
     }
 
     /// 按包内路径规则解析相对引用。

@@ -187,6 +187,29 @@ fn lenient_normalizes_missing_2016_but_strict_rejects() {
 }
 
 #[test]
+fn package_resolves_root_relative_annotations() {
+    let document = DOCUMENT.replace("Document/Annotations.xml", "Doc_0/Annots/Annotations.xml");
+    let annotations =
+        ANNOTATIONS.replace("Pages/Page_0/Annots/Page_0.xml", "Doc_0/Annots/Page_0.xml");
+    let bytes = fixtures::zip_with_entries(&[
+        ("OFD.xml", ROOT.as_bytes()),
+        ("Doc_0/Document.xml", document.as_bytes()),
+        ("Doc_0/Annots/Annotations.xml", annotations.as_bytes()),
+        ("Doc_0/Annots/Page_0.xml", PAGE_ANNOT.as_bytes()),
+    ]);
+    let mut package = OfdPackage::from_bytes(bytes).expect("open package");
+
+    let index = package.parse_annotations().expect("Annotations");
+    let page = index.pages().next().expect("Page");
+    assert_eq!(page.page_id(), Some("10"));
+    let file_loc = page.file_loc().expect("FileLoc").to_owned();
+    let page_annot = package
+        .parse_page_annot(&file_loc)
+        .expect("PageAnnot should resolve root-relative");
+    assert_eq!(page_annot.annots().next().unwrap().id(), Some("20"));
+}
+
+#[test]
 fn package_resolves_annotations_and_page_annot() {
     let bytes = fixtures::zip_with_entries(&[
         ("OFD.xml", ROOT.as_bytes()),
