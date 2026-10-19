@@ -484,6 +484,7 @@ impl Builder<'_> {
 
         let mut elements = Vec::new();
         let kind = object.kind();
+        let is_image = matches!(&kind, GraphicObjectKind::Image);
         match kind {
             GraphicObjectKind::Path => {
                 if let Some(element) = self.build_path(object) {
@@ -539,6 +540,40 @@ impl Builder<'_> {
         });
         wrapper.children.push(Element::Group(object_group));
         output.push(Element::Group(wrapper));
+        if is_image && let Some(border) = self.build_image_border(object, &boundary) {
+            output.push(border);
+        }
+    }
+
+    fn build_image_border(
+        &mut self,
+        object: &GraphicObjectView,
+        boundary: &Rect,
+    ) -> Option<Element> {
+        let border = object.border()?;
+        let line_width = border.line_width().unwrap_or(0.353);
+        if line_width <= 0.0 {
+            return None;
+        }
+        let paint = border
+            .border_color()
+            .and_then(|color| self.paint(&color, object.id()))
+            .unwrap_or(Paint::Solid(Rgba::BLACK));
+        let horizontal = border.horizontal_corner_radius().unwrap_or(0.0);
+        let vertical = border.vertical_corner_radius().unwrap_or(0.0);
+        let path = rounded_rect_path(*boundary, horizontal, vertical);
+        let style = StrokeStyle {
+            width: line_width,
+            dash_offset: border.dash_offset().unwrap_or(0.0),
+            dash: border.dash_pattern().map(parse_floats).unwrap_or_default(),
+            ..StrokeStyle::default()
+        };
+        Some(Element::Path(PathElement {
+            path: Arc::new(path),
+            fill: None,
+            stroke: Some(StrokePaint { paint, style }),
+            fill_rule: FillRule::NonZero,
+        }))
     }
 
     fn object_clips(&mut self, object: &GraphicObjectView) -> Vec<Arc<Path>> {
@@ -1826,6 +1861,47 @@ fn decode_text(text: &str) -> Vec<char> {
         }
     }
     output
+}
+
+fn rounded_rect_path(rect: Rect, horizontal: f64, vertical: f64) -> Path {
+    let rx = horizontal.max(0.0).min(rect.width / 2.0);
+    let ry = vertical.max(0.0).min(rect.height / 2.0);
+    if rx <= 0.0 || ry <= 0.0 {
+        return rect.to_path();
+    }
+    let mut path = Path::new();
+    path.move_to(Point::new(rect.x + rx, rect.y));
+    path.line_to(Point::new(rect.x + rect.width - rx, rect.y));
+    path.arc_to(
+        rx,
+        ry,
+        0.0,
+        false,
+        true,
+        Point::new(rect.x + rect.width, rect.y + ry),
+    );
+    path.line_to(Point::new(rect.x + rect.width, rect.y + rect.height - ry));
+    path.arc_to(
+        rx,
+        ry,
+        0.0,
+        false,
+        true,
+        Point::new(rect.x + rect.width - rx, rect.y + rect.height),
+    );
+    path.line_to(Point::new(rect.x + rx, rect.y + rect.height));
+    path.arc_to(
+        rx,
+        ry,
+        0.0,
+        false,
+        true,
+        Point::new(rect.x, rect.y + rect.height - ry),
+    );
+    path.line_to(Point::new(rect.x, rect.y + ry));
+    path.arc_to(rx, ry, 0.0, false, true, Point::new(rect.x + rx, rect.y));
+    path.close();
+    path
 }
 
 fn append_transformed_path(target: &mut Path, source: &Path, matrix: Matrix) {
