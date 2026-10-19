@@ -345,6 +345,14 @@ fn select_font(request: &FontRequest<'_>) -> Option<PathBuf> {
         } else {
             candidates.extend(["msyh.ttc", "msyh.ttf"]);
         }
+    } else if name.contains("tahoma") {
+        if bold {
+            candidates.extend(["tahomabd.ttf", "tahoma.ttf"]);
+        } else {
+            candidates.push("tahoma.ttf");
+        }
+    } else if name.contains("latha") {
+        candidates.push("latha.ttf");
     } else if name.contains("times") {
         if bold && italic {
             candidates.extend(["timesbi.ttf", "timesi.ttf", "timesbd.ttf"]);

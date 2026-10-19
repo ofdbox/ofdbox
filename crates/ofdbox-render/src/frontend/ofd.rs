@@ -1128,9 +1128,11 @@ impl Builder<'_> {
             let mut x = run.x;
             let mut y = run.y;
             let mut glyphs = Vec::with_capacity(run.chars.len());
+            // CGTransform 之后 DeltaX/DeltaY 按“字形”给偏移，而不是按字符；
+            // 多对一/一对多/多对多的簇只消耗一个偏移。
+            let mut delta_index = 0usize;
             for (index, character) in run.chars.iter().enumerate() {
                 let slot = offset + index;
-                let covered = matches!(slots.get(slot), Some(Some(_)));
                 let slot_glyphs = match slots.get(slot) {
                     Some(Some(glyphs)) => glyphs.clone(),
                     Some(None) | None => face
@@ -1139,17 +1141,13 @@ impl Builder<'_> {
                         .map(|id| vec![u32::from(id.0)])
                         .unwrap_or_default(),
                 };
-                let continuation = covered && slot_glyphs.is_empty();
-                let mut cluster_x = x;
-                let mut cluster_y = y;
-                let mut advance_sum = 0.0;
                 for glyph_id in slot_glyphs.iter().copied() {
                     let advance = glyph_advance(face.as_ref(), glyph_id, size);
                     if transform_glyphs {
                         let transform = Matrix::scale(h_scale.max(0.0), 1.0)
                             .then(shear)
                             .then(Matrix::rotate(f64::from(char_direction).to_radians()))
-                            .then(Matrix::translate(cluster_x, cluster_y));
+                            .then(Matrix::translate(x, y));
                         elements.push(Element::Text(TextElement {
                             font: Arc::clone(&font),
                             size,
@@ -1165,44 +1163,31 @@ impl Builder<'_> {
                     } else {
                         glyphs.push(PositionedGlyph {
                             id: glyph_id,
-                            x: cluster_x as f32,
-                            y: cluster_y as f32,
+                            x: x as f32,
+                            y: y as f32,
                         });
                     }
-                    advance_sum += advance;
-                    match read_direction {
-                        180 => cluster_x -= advance * h_scale.max(0.0),
-                        90 => cluster_y += advance,
-                        270 => cluster_y -= advance,
-                        _ => cluster_x += advance * h_scale.max(0.0),
+                    let delta_x = run.delta_x.get(delta_index).copied();
+                    let delta_y = run.delta_y.get(delta_index).copied();
+                    if let Some(delta) = delta_x {
+                        x += delta;
+                    } else {
+                        match read_direction {
+                            180 => x -= advance * h_scale.max(0.0),
+                            90 | 270 => {}
+                            _ => x += advance * h_scale.max(0.0),
+                        }
                     }
-                }
-                let fallback_advance = if continuation {
-                    0.0
-                } else if slot_glyphs.is_empty() {
-                    size
-                } else {
-                    advance_sum
-                };
-                let delta_x = run.delta_x.get(index).copied();
-                let delta_y = run.delta_y.get(index).copied();
-                if let Some(delta) = delta_x {
-                    x += delta;
-                } else {
-                    match read_direction {
-                        0 => x += fallback_advance * h_scale.max(0.0),
-                        180 => x -= fallback_advance * h_scale.max(0.0),
-                        _ => {}
+                    if let Some(delta) = delta_y {
+                        y += delta;
+                    } else {
+                        match read_direction {
+                            90 => y += advance,
+                            270 => y -= advance,
+                            _ => {}
+                        }
                     }
-                }
-                if let Some(delta) = delta_y {
-                    y += delta;
-                } else {
-                    match read_direction {
-                        90 => y += fallback_advance,
-                        270 => y -= fallback_advance,
-                        _ => {}
-                    }
+                    delta_index += 1;
                 }
             }
             offset += run.chars.len();
