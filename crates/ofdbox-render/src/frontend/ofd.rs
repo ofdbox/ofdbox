@@ -157,12 +157,16 @@ fn build_scene(
                 .and_then(|area| area.physical_box().and_then(parse_rect))
         })
         .unwrap_or_else(|| Rect::new(0.0, 0.0, 210.0, 297.0));
+    let default_color_space = document
+        .common_data()
+        .and_then(|common| common.default_cs().map(str::to_owned));
     let mut builder = Builder {
         package,
         pool,
         options,
         resources,
         templates,
+        default_color_space,
         font_provider,
         font_cache,
         diagnostics: Vec::new(),
@@ -257,6 +261,8 @@ struct MediaResource {
 
 struct ColorSpaceResource {
     kind: String,
+    /// 每分量位数，标准允许 1/2/4/8/16，默认 8。
+    bits: u32,
     palette: Vec<String>,
 }
 
@@ -348,10 +354,16 @@ impl ResourceSet {
         }
         for color in res.color_spaces() {
             let Some(id) = color.id() else { continue };
+            let bits = color
+                .bits_per_component()
+                .and_then(|value| u32::try_from(value).ok())
+                .filter(|value| (1..=16).contains(value))
+                .unwrap_or(8);
             self.colors.insert(
                 id.to_owned(),
                 ColorSpaceResource {
                     kind: color.color_space_type().unwrap_or_default().to_owned(),
+                    bits,
                     palette: color.palette().map(str::to_owned).collect(),
                 },
             );
@@ -385,6 +397,7 @@ struct Builder<'a> {
     options: &'a RenderOptions,
     resources: ResourceSet,
     templates: HashMap<String, TemplateEntry>,
+    default_color_space: Option<String>,
     font_provider: &'a mut Option<Box<dyn FontProvider>>,
     font_cache: &'a mut HashMap<String, Option<Arc<crate::asset::FontAsset>>>,
     diagnostics: Vec<crate::scene::RenderDiagnostic>,
@@ -1024,23 +1037,25 @@ impl Builder<'_> {
     }
 
     fn solid_paint(&self, color: &ColorView) -> Option<Paint> {
+        let space = color
+            .color_space()
+            .and_then(|id| self.resources.colors.get(id))
+            .or_else(|| {
+                self.default_color_space
+                    .as_deref()
+                    .and_then(|id| self.resources.colors.get(id))
+            });
+        let bits = space.map_or(8, |space| space.bits);
         let value = if let Some(index) = color.index() {
-            let space = color
-                .color_space()
-                .and_then(|id| self.resources.colors.get(id))?;
             if index < 0 {
                 return None;
             }
-            space.palette.get(index as usize)?.clone()
+            space?.palette.get(index as usize)?.clone()
         } else {
             color.value()?.to_owned()
         };
-        let components = parse_floats(&value);
-        let kind = color
-            .color_space()
-            .and_then(|id| self.resources.colors.get(id))
-            .map(|space| space.kind.as_str())
-            .unwrap_or("");
+        let components = parse_color_components(&value, bits);
+        let kind = space.map_or("", |space| space.kind.as_str());
         let alpha = color
             .alpha()
             .map(|value| (value.clamp(0, 255) as f32) / 255.0)
@@ -1190,44 +1205,27 @@ fn decode_text(text: &str) -> Vec<char> {
 }
 
 fn parse_path_data(data: &str) -> Option<Path> {
-    let tokens = data
-        .split(|character: char| character.is_whitespace() || character == ',')
-        .filter(|token| !token.is_empty())
-        .collect::<Vec<_>>();
+    let tokens = tokenize_path(data)?;
     let mut path = Path::new();
     let mut index = 0usize;
     let mut command = None;
-    let mut first_move = true;
     while index < tokens.len() {
-        let token = tokens[index];
-        if token.len() == 1
-            && token
-                .chars()
-                .next()
-                .is_some_and(|c| c.is_ascii_alphabetic())
-        {
-            command = Some(token.chars().next().expect("command"));
+        if let PathToken::Command(value) = tokens[index] {
+            command = Some(value);
             index += 1;
             if command == Some('C') {
                 path.close();
                 continue;
             }
-            if command == Some('M') {
-                first_move = true;
-            }
         }
         let command = command?;
         match command {
+            // S 定义子路径起点，M 移动当前点：两者都开始新的子路径。
             'S' | 'M' => {
                 let x = number(tokens.get(index)?)?;
                 let y = number(tokens.get(index + 1)?)?;
                 index += 2;
-                if command == 'S' || first_move {
-                    path.move_to(Point::new(x, y));
-                    first_move = false;
-                } else {
-                    path.line_to(Point::new(x, y));
-                }
+                path.move_to(Point::new(x, y));
             }
             'L' => {
                 let x = number(tokens.get(index)?)?;
@@ -1271,8 +1269,76 @@ fn parse_path_data(data: &str) -> Option<Path> {
     Some(path)
 }
 
-fn number(token: &str) -> Option<f64> {
-    token.parse().ok()
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum PathToken {
+    Command(char),
+    Number(f64),
+}
+
+/// 紧缩路径数据的词法切分。
+///
+/// 标准只说明 `AbbreviatedData` 是“紧缩的操作符和操作数”，并未规定分隔符；
+/// 真实文件里既有 `M 0 0 L 1 0` 也有 `M 0 0L 1 0`。这里按字母/数字边界扫描，
+/// 同时接受空格、逗号、正负号和小数点作为隐式分隔符。
+fn tokenize_path(data: &str) -> Option<Vec<PathToken>> {
+    let bytes = data.as_bytes();
+    let mut tokens = Vec::new();
+    let mut index = 0usize;
+    while index < bytes.len() {
+        let byte = bytes[index];
+        if byte.is_ascii_whitespace() || byte == b',' {
+            index += 1;
+            continue;
+        }
+        if byte.is_ascii_alphabetic() {
+            tokens.push(PathToken::Command((byte as char).to_ascii_uppercase()));
+            index += 1;
+            continue;
+        }
+        let start = index;
+        if byte == b'+' || byte == b'-' {
+            index += 1;
+        }
+        let mut digits = false;
+        while index < bytes.len() && bytes[index].is_ascii_digit() {
+            index += 1;
+            digits = true;
+        }
+        if index < bytes.len() && bytes[index] == b'.' {
+            index += 1;
+            while index < bytes.len() && bytes[index].is_ascii_digit() {
+                index += 1;
+                digits = true;
+            }
+        }
+        if !digits {
+            return None;
+        }
+        if index < bytes.len() && (bytes[index] == b'e' || bytes[index] == b'E') {
+            let exponent = index;
+            index += 1;
+            if index < bytes.len() && (bytes[index] == b'+' || bytes[index] == b'-') {
+                index += 1;
+            }
+            let mut exponent_digits = false;
+            while index < bytes.len() && bytes[index].is_ascii_digit() {
+                index += 1;
+                exponent_digits = true;
+            }
+            if !exponent_digits {
+                index = exponent;
+            }
+        }
+        tokens.push(PathToken::Number(data[start..index].parse::<f64>().ok()?));
+    }
+    Some(tokens)
+}
+
+fn number(token: &PathToken) -> Option<f64> {
+    match token {
+        PathToken::Number(value) => Some(*value),
+        PathToken::Command(_) => None,
+    }
 }
 
 fn parse_u32s(text: &str) -> Vec<u32> {
@@ -1340,8 +1406,36 @@ fn parse_join(text: &str) -> Option<LineJoin> {
     }
 }
 
+/// 解析颜色各通道值并归一化到 `[0, 1]`。
+///
+/// 标准允许十进制或 `#` 开头的十六进制，取值范围 `[0, 2^BitsPerComponent - 1]`；
+/// 真实文件里也能见到 `0.0 0.0 0.0` 这类已归一化的写法，按小数处理。
+fn parse_color_components(value: &str, bits: u32) -> Vec<f64> {
+    let bits = bits.clamp(1, 16);
+    let max = f64::from((1u32 << bits) - 1);
+    value
+        .split(|character: char| character.is_whitespace() || character == ',')
+        .filter(|token| !token.is_empty())
+        .filter_map(|token| parse_color_component(token, max))
+        .collect()
+}
+
+fn parse_color_component(token: &str, max: f64) -> Option<f64> {
+    let token = token.trim();
+    if let Some(hex) = token.strip_prefix('#') {
+        let value = i64::from_str_radix(hex, 16).ok()?;
+        return Some((value as f64 / max).clamp(0.0, 1.0));
+    }
+    let value = token.parse::<f64>().ok()?;
+    if token.contains('.') || token.contains('e') || token.contains('E') {
+        Some(value.clamp(0.0, 1.0))
+    } else {
+        Some((value / max).clamp(0.0, 1.0))
+    }
+}
+
 fn components_to_rgba(components: &[f64], kind: &str, alpha: f32) -> Option<Rgba> {
-    let normalized = |value: f64| (value / 255.0).clamp(0.0, 1.0) as f32;
+    let normalized = |value: f64| value.clamp(0.0, 1.0) as f32;
     let (r, g, b) = match components.len() {
         1 => {
             let value = normalized(components[0]);
@@ -1481,5 +1575,123 @@ fn template_order(value: &str) -> TemplateOrder {
         TemplateOrder::Body
     } else {
         TemplateOrder::Background
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{components_to_rgba, parse_color_components, parse_path_data};
+    use crate::geometry::Point;
+    use crate::paint::Rgba;
+    use crate::path::PathSegment;
+
+    #[test]
+    fn parses_spaced_path() {
+        let path = parse_path_data("M 0 0 L 10 0 L 10 10 C").expect("path");
+        assert_eq!(path.segments.len(), 4);
+        assert_eq!(path.segments[0], PathSegment::MoveTo(Point::new(0.0, 0.0)));
+        assert_eq!(path.segments[1], PathSegment::LineTo(Point::new(10.0, 0.0)));
+        assert_eq!(path.segments[3], PathSegment::Close);
+    }
+
+    #[test]
+    fn parses_glued_commands() {
+        let path =
+            parse_path_data("M 0 0L 215.9 0L 215.9 1152.172L 0 1152.172L 0 0 C").expect("path");
+        assert_eq!(path.segments.len(), 6);
+        assert_eq!(path.segments[0], PathSegment::MoveTo(Point::new(0.0, 0.0)));
+        assert_eq!(
+            path.segments[1],
+            PathSegment::LineTo(Point::new(215.9, 0.0))
+        );
+        assert_eq!(
+            path.segments[2],
+            PathSegment::LineTo(Point::new(215.9, 1152.172))
+        );
+        assert_eq!(path.segments[5], PathSegment::Close);
+    }
+
+    #[test]
+    fn parses_numbers_without_separators() {
+        // 负号和小数点作为数字之间的隐式分隔符。
+        let path = parse_path_data("M1-2L3.5.5").expect("path");
+        assert_eq!(
+            path.segments,
+            vec![
+                PathSegment::MoveTo(Point::new(1.0, -2.0)),
+                PathSegment::LineTo(Point::new(3.5, 0.5)),
+            ]
+        );
+    }
+
+    #[test]
+    fn parses_exponent_and_comma() {
+        let path = parse_path_data("M0,0L1e1,-1.5e-1").expect("path");
+        assert_eq!(
+            path.segments,
+            vec![
+                PathSegment::MoveTo(Point::new(0.0, 0.0)),
+                PathSegment::LineTo(Point::new(10.0, -0.15)),
+            ]
+        );
+    }
+
+    #[test]
+    fn starts_new_subpath_on_every_move() {
+        let path = parse_path_data("M 0 0 L 1 0 M 2 2 L 3 3").expect("path");
+        assert_eq!(
+            path.segments,
+            vec![
+                PathSegment::MoveTo(Point::new(0.0, 0.0)),
+                PathSegment::LineTo(Point::new(1.0, 0.0)),
+                PathSegment::MoveTo(Point::new(2.0, 2.0)),
+                PathSegment::LineTo(Point::new(3.0, 3.0)),
+            ]
+        );
+    }
+
+    #[test]
+    fn parses_hex_colors_with_bpc() {
+        assert_eq!(
+            parse_color_components("#ff #0 #80", 8),
+            vec![1.0, 0.0, 128.0 / 255.0]
+        );
+        assert_eq!(
+            parse_color_components("#ffff #0000 #8000", 16),
+            vec![1.0, 0.0, 32768.0 / 65535.0]
+        );
+        assert_eq!(parse_color_components("#1 #0", 1), vec![1.0, 0.0]);
+    }
+
+    #[test]
+    fn parses_integer_and_fractional_color_values() {
+        assert_eq!(
+            parse_color_components("255 0 128", 8),
+            vec![1.0, 0.0, 128.0 / 255.0]
+        );
+        assert_eq!(
+            parse_color_components("0.5 0.25 0.0", 8),
+            vec![0.5, 0.25, 0.0]
+        );
+        assert_eq!(parse_color_components("65535 0 0", 16), vec![1.0, 0.0, 0.0]);
+    }
+
+    #[test]
+    fn converts_rgb_and_cmyk() {
+        assert_eq!(
+            components_to_rgba(&[1.0, 0.0, 0.0], "RGB", 1.0),
+            Some(Rgba::new(1.0, 0.0, 0.0, 1.0))
+        );
+        assert_eq!(
+            components_to_rgba(&[0.0, 0.0, 0.0, 0.0], "CMYK", 1.0),
+            Some(Rgba::new(1.0, 1.0, 1.0, 1.0))
+        );
+    }
+
+    #[test]
+    fn rejects_incomplete_or_unknown_commands() {
+        assert!(parse_path_data("M 0").is_none());
+        assert!(parse_path_data("X 0 0").is_none());
+        assert!(parse_path_data("M 0 0 L 1").is_none());
     }
 }
