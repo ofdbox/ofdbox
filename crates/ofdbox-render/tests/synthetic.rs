@@ -455,6 +455,25 @@ fn render_text(content: &str) -> Scene {
 }
 
 #[test]
+fn expands_delta_group_syntax() {
+    let content = r#"<?xml version="1.0" encoding="UTF-8"?>
+<ofd:Page xmlns:ofd="http://www.ofdspec.org/2016">
+  <ofd:Area><ofd:PhysicalBox>0 0 100 100</ofd:PhysicalBox></ofd:Area>
+  <ofd:Content><ofd:Layer ID="1">
+    <ofd:TextObject ID="t1" Boundary="0 0 100 100" Font="3" Size="10">
+      <ofd:CGTransform CodePosition="0" CodeCount="3" GlyphCount="3"><ofd:Glyphs>5 6 7</ofd:Glyphs></ofd:CGTransform>
+      <ofd:TextCode X="0" Y="0" DeltaX="1 g 2 3">ABC</ofd:TextCode>
+    </ofd:TextObject>
+  </ofd:Layer></ofd:Content>
+</ofd:Page>"#;
+    let scene = render_text(content);
+    assert_eq!(
+        collect_text(&scene),
+        vec![vec![(5, 0.0, 0.0), (6, 1.0, 0.0), (7, 4.0, 0.0)]]
+    );
+}
+
+#[test]
 fn inherits_text_code_origin() {
     let content = r#"<?xml version="1.0" encoding="UTF-8"?>
 <ofd:Page xmlns:ofd="http://www.ofdspec.org/2016">

@@ -1761,8 +1761,8 @@ fn collect_code_runs(object: &GraphicObjectView) -> Vec<CodeRun> {
             chars: decode_text(code.text()),
             x,
             y,
-            delta_x: code.delta_x().map(parse_floats).unwrap_or_default(),
-            delta_y: code.delta_y().map(parse_floats).unwrap_or_default(),
+            delta_x: code.delta_x().map(parse_delta_floats).unwrap_or_default(),
+            delta_y: code.delta_y().map(parse_delta_floats).unwrap_or_default(),
         });
     }
     runs
@@ -2091,6 +2091,46 @@ fn parse_u32s(text: &str) -> Vec<u32> {
     text.split_whitespace()
         .filter_map(|value| value.parse().ok())
         .collect()
+}
+
+/// `DeltaX`/`DeltaY` 的数值数列。
+///
+/// 部分厂商用 `g <次数> <值>` 压缩重复偏移，例如 `g 5 2.0285`
+/// 展开为 5 个 2.0285；标准示例仍使用纯数字，两种写法都接受。
+fn parse_delta_floats(text: &str) -> Vec<f64> {
+    let tokens = text
+        .split(|character: char| character.is_whitespace() || character == ',')
+        .filter(|token| !token.is_empty())
+        .collect::<Vec<_>>();
+    let mut values = Vec::new();
+    let mut index = 0;
+    while index < tokens.len() {
+        if tokens[index].eq_ignore_ascii_case("g") {
+            let Some(count) = tokens
+                .get(index + 1)
+                .and_then(|value| value.parse::<usize>().ok())
+            else {
+                index += 1;
+                continue;
+            };
+            let Some(value) = tokens
+                .get(index + 2)
+                .and_then(|value| value.parse::<f64>().ok())
+            else {
+                index += 1;
+                continue;
+            };
+            let count = count.min(1_000_000);
+            values.extend(std::iter::repeat_n(value, count));
+            index += 3;
+        } else if let Ok(value) = tokens[index].parse::<f64>() {
+            values.push(value);
+            index += 1;
+        } else {
+            index += 1;
+        }
+    }
+    values
 }
 
 fn parse_floats(text: &str) -> Vec<f64> {
@@ -2619,7 +2659,10 @@ fn template_order(value: &str) -> TemplateOrder {
 
 #[cfg(test)]
 mod tests {
-    use super::{components_to_rgba, distribute_stops, parse_color_components, parse_path_data};
+    use super::{
+        components_to_rgba, distribute_stops, parse_color_components, parse_delta_floats,
+        parse_path_data,
+    };
     use crate::geometry::Point;
     use crate::paint::{GradientStop, Rgba};
     use crate::path::PathSegment;
@@ -2715,6 +2758,17 @@ mod tests {
             Some(25.0),
         );
         assert_eq!(end, Point::new(0.0, 100.0));
+    }
+
+    #[test]
+    fn expands_delta_groups() {
+        assert_eq!(
+            parse_delta_floats("1 2 3 g 2 4 5"),
+            vec![1.0, 2.0, 3.0, 4.0, 4.0, 5.0]
+        );
+        assert_eq!(parse_delta_floats("G 3 1.5"), vec![1.5, 1.5, 1.5]);
+        assert_eq!(parse_delta_floats("g 0 9"), Vec::<f64>::new());
+        assert_eq!(parse_delta_floats("g 2 1 g 2 2"), vec![1.0, 1.0, 2.0, 2.0]);
     }
 
     #[test]
