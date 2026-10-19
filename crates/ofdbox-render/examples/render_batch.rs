@@ -316,24 +316,82 @@ fn select_font(request: &FontRequest<'_>) -> Option<PathBuf> {
         request.family_name.unwrap_or_default()
     )
     .to_ascii_lowercase();
+    let charset = request.charset.unwrap_or_default().to_ascii_lowercase();
+    let bold = request.bold;
+    let italic = request.italic;
     let root = Path::new("C:/Windows/Fonts");
-    let candidates: &[&str] = if name.contains("仿宋") || name.contains("fangsong") {
-        &["simfang.ttf"]
+    let mut candidates: Vec<&str> = Vec::new();
+
+    if charset.contains("symbol") {
+        candidates.push("symbol.ttf");
+    }
+    if charset.contains("big5") {
+        candidates.push("mingliub.ttc");
+    }
+
+    if name.contains("仿宋") || name.contains("fangsong") {
+        candidates.push("simfang.ttf");
     } else if name.contains("楷") || name.contains("kai") {
-        &["simkai.ttf"]
+        candidates.push("simkai.ttf");
     } else if name.contains("黑") || name.contains("hei") {
-        &["simhei.ttf"]
+        candidates.push("simhei.ttf");
     } else if name.contains("宋") || name.contains("song") {
-        &["simsun.ttc"]
+        candidates.push("simsun.ttc");
     } else if name.contains("雅黑") || name.contains("yahei") {
-        &["msyh.ttc", "msyh.ttf"]
+        if bold {
+            candidates.extend(["msyhbd.ttc", "msyh.ttc"]);
+        } else if italic {
+            candidates.extend(["msyhl.ttc", "msyh.ttc"]);
+        } else {
+            candidates.extend(["msyh.ttc", "msyh.ttf"]);
+        }
     } else if name.contains("times") {
-        &["times.ttf"]
+        if bold && italic {
+            candidates.extend(["timesbi.ttf", "timesi.ttf", "timesbd.ttf"]);
+        } else if bold {
+            candidates.extend(["timesbd.ttf", "times.ttf"]);
+        } else if italic {
+            candidates.extend(["timesi.ttf", "times.ttf"]);
+        } else {
+            candidates.push("times.ttf");
+        }
     } else if name.contains("arial") {
-        &["arial.ttf"]
-    } else {
-        &["msyh.ttc", "simsun.ttc", "simhei.ttf", "arial.ttf"]
-    };
+        if bold && italic {
+            candidates.extend(["arialbi.ttf", "ariali.ttf", "arialbd.ttf"]);
+        } else if bold {
+            candidates.extend(["arialbd.ttf", "arial.ttf"]);
+        } else if italic {
+            candidates.extend(["ariali.ttf", "arial.ttf"]);
+        } else {
+            candidates.push("arial.ttf");
+        }
+    } else if name.contains("courier") || name.contains("cour") {
+        if bold && italic {
+            candidates.extend(["courbi.ttf", "couri.ttf", "courbd.ttf"]);
+        } else if bold {
+            candidates.extend(["courbd.ttf", "cour.ttf"]);
+        } else if italic {
+            candidates.extend(["couri.ttf", "cour.ttf"]);
+        } else {
+            candidates.push("cour.ttf");
+        }
+    }
+
+    if request.fixed_width {
+        candidates.extend(["consola.ttf", "cour.ttf"]);
+    } else if request.serif {
+        if bold {
+            candidates.extend(["timesbd.ttf", "times.ttf"]);
+        } else {
+            candidates.push("times.ttf");
+        }
+    } else if bold {
+        candidates.extend(["msyhbd.ttc", "simhei.ttf", "arialbd.ttf"]);
+    } else if italic {
+        candidates.extend(["ariali.ttf", "timesi.ttf"]);
+    }
+    candidates.extend(["msyh.ttc", "simsun.ttc", "simhei.ttf", "arial.ttf"]);
+
     for candidate in candidates {
         let path = root.join(candidate);
         if path.is_file() {

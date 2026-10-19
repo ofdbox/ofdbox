@@ -384,6 +384,21 @@ fn italic_shears_glyphs() {
 }
 
 #[test]
+fn empty_text_with_missing_font_is_silent() {
+    let content = r#"<?xml version="1.0" encoding="UTF-8"?>
+<ofd:Page xmlns:ofd="http://www.ofdspec.org/2016">
+  <ofd:Area><ofd:PhysicalBox>0 0 100 100</ofd:PhysicalBox></ofd:Area>
+  <ofd:Content><ofd:Layer ID="1">
+    <ofd:TextObject ID="t1" Boundary="0 0 100 100" Font="99" Size="10">
+      <ofd:TextCode X="0" Y="0"></ofd:TextCode>
+    </ofd:TextObject>
+  </ofd:Layer></ofd:Content>
+</ofd:Page>"#;
+    let scene = render_text(content);
+    assert!(scene.diagnostics.is_empty(), "{:?}", scene.diagnostics);
+}
+
+#[test]
 fn cgtransform_one_to_many() {
     let content = r#"<?xml version="1.0" encoding="UTF-8"?>
 <ofd:Page xmlns:ofd="http://www.ofdspec.org/2016">

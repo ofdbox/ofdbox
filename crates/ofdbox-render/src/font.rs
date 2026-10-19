@@ -15,6 +15,10 @@ pub struct FontRequest<'a> {
     pub bold: bool,
     /// 是否斜体。
     pub italic: bool,
+    /// 是否衬线体。
+    pub serif: bool,
+    /// 是否等宽体。
+    pub fixed_width: bool,
 }
 
 /// 调用方注入的字体来源。

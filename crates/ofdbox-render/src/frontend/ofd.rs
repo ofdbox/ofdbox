@@ -249,6 +249,8 @@ struct FontResource {
     charset: Option<String>,
     bold: bool,
     italic: bool,
+    serif: bool,
+    fixed_width: bool,
 }
 
 #[derive(Clone)]
@@ -330,6 +332,8 @@ impl ResourceSet {
                         charset: font.charset().map(str::to_owned),
                         bold: font.bold().unwrap_or(false),
                         italic: font.italic().unwrap_or(false),
+                        serif: font.serif().unwrap_or(false),
+                        fixed_width: font.fixed_width().unwrap_or(false),
                     },
                 );
             }
@@ -959,6 +963,14 @@ impl Builder<'_> {
             );
             char_direction = 0;
         }
+        let runs = collect_code_runs(object);
+        let all_chars = runs
+            .iter()
+            .flat_map(|run| run.chars.iter().copied())
+            .collect::<Vec<_>>();
+        if all_chars.is_empty() {
+            return Vec::new();
+        }
         let font = match self.font(font_id) {
             Some(font) => font,
             None => {
@@ -1016,11 +1028,6 @@ impl Builder<'_> {
             None
         };
 
-        let runs = collect_code_runs(object);
-        let all_chars = runs
-            .iter()
-            .flat_map(|run| run.chars.iter().copied())
-            .collect::<Vec<_>>();
         let slots = glyph_slots(object, all_chars.len());
 
         let mut elements = Vec::new();
@@ -1360,6 +1367,8 @@ impl Builder<'_> {
                 charset: resource.charset.as_deref(),
                 bold: resource.bold,
                 italic: resource.italic,
+                serif: resource.serif,
+                fixed_width: resource.fixed_width,
             };
             provider.load(&request).ok()?
         });
