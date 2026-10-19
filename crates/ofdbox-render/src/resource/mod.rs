@@ -67,6 +67,8 @@ pub struct ImageKey {
     pub digest: ContentDigest,
     /// 图片编码格式。
     pub format: ImageFormat,
+    /// 可选蒙版的内容摘要与格式。
+    pub mask: Option<(ContentDigest, ImageFormat)>,
 }
 
 /// 场景缓存键。编辑器修改页面后应递增 `revision`。
@@ -167,6 +169,9 @@ impl ResourcePool {
         let key = ImageKey {
             digest: ContentDigest(sm3(&data)),
             format: format.clone(),
+            mask: mask
+                .as_ref()
+                .map(|(mask_format, bytes)| (ContentDigest(sm3(bytes)), mask_format.clone())),
         };
         let mut inner = self.lock()?;
         if let Some(asset) = inner.images.get(&key) {
@@ -310,5 +315,38 @@ impl<K: Eq + Hash + Clone, V: Clone> Lru<K, V> {
 
     fn len(&self) -> usize {
         self.entries.len()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{PoolBudget, ResourcePool};
+    use crate::image::ImageFormat;
+
+    #[test]
+    fn image_key_includes_mask() {
+        let pool = ResourcePool::new(PoolBudget::default());
+        let data = std::sync::Arc::<[u8]>::from(&b"image"[..]);
+        let first = pool
+            .embedded_image_shared(
+                ImageFormat::Png,
+                data.clone(),
+                Some((
+                    ImageFormat::Png,
+                    std::sync::Arc::<[u8]>::from(&b"mask-1"[..]),
+                )),
+            )
+            .expect("first image");
+        let second = pool
+            .embedded_image_shared(
+                ImageFormat::Png,
+                data,
+                Some((
+                    ImageFormat::Png,
+                    std::sync::Arc::<[u8]>::from(&b"mask-2"[..]),
+                )),
+            )
+            .expect("second image");
+        assert_ne!(first.id(), second.id());
     }
 }
