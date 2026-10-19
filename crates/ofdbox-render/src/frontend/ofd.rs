@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use ofdbox_core::{
     ColorView, CompositeGraphicUnitView, DrawParamView, GraphicObjectKind, GraphicObjectView,
-    OfdError, OfdPackage, PageView, ResView, TemplateView, TextCodeView,
+    OfdError, OfdPackage, PageView, ResView, TemplateView,
 };
 
 use crate::error::RenderError;
@@ -935,21 +935,29 @@ impl Builder<'_> {
             self.diagnostic(DiagnosticCode::Geometry, object.id(), "字号必须为正");
             return Vec::new();
         }
-        let read_direction = object
+        let mut read_direction = object
             .attribute("ReadDirection")
             .and_then(|value| value.parse::<i32>().ok())
             .unwrap_or(0);
-        let char_direction = object
-            .attribute("CharDirection")
-            .and_then(|value| value.parse::<i32>().ok())
-            .unwrap_or(0);
-        if read_direction != 0 || char_direction != 0 {
+        if !matches!(read_direction, 0 | 90 | 180 | 270) {
             self.diagnostic(
                 DiagnosticCode::UnsupportedObject,
                 object.id(),
-                "暂不支持竖排文字",
+                format!("不支持的 ReadDirection: {read_direction}"),
             );
-            return Vec::new();
+            read_direction = 0;
+        }
+        let mut char_direction = object
+            .attribute("CharDirection")
+            .and_then(|value| value.parse::<i32>().ok())
+            .unwrap_or(0);
+        if !matches!(char_direction, 0 | 90 | 180 | 270) {
+            self.diagnostic(
+                DiagnosticCode::UnsupportedObject,
+                object.id(),
+                format!("不支持的 CharDirection: {char_direction}"),
+            );
+            char_direction = 0;
         }
         let font = match self.font(font_id) {
             Some(font) => font,
@@ -994,6 +1002,8 @@ impl Builder<'_> {
 
         let mut elements = Vec::new();
         let mut offset = 0usize;
+        let rotate_glyphs = char_direction != 0;
+        let scale_glyphs = (h_scale - 1.0).abs() > f64::EPSILON;
         for run in runs {
             let mut x = run.x;
             let mut y = run.y;
@@ -1008,18 +1018,50 @@ impl Builder<'_> {
                 let Some(glyph_id) = glyph_id else {
                     continue;
                 };
-                glyphs.push(PositionedGlyph {
-                    id: glyph_id,
-                    x: x as f32,
-                    y: y as f32,
-                });
-                let advance = run
-                    .delta_x
-                    .get(index)
-                    .copied()
-                    .unwrap_or_else(|| glyph_advance(face.as_ref(), glyph_id, size));
-                x += advance * h_scale.max(0.0);
-                y += run.delta_y.get(index).copied().unwrap_or(0.0);
+                let advance = glyph_advance(face.as_ref(), glyph_id, size);
+                if rotate_glyphs || scale_glyphs {
+                    let transform = Matrix::scale(h_scale.max(0.0), 1.0)
+                        .then(Matrix::rotate(f64::from(char_direction).to_radians()))
+                        .then(Matrix::translate(x, y));
+                    elements.push(Element::Text(TextElement {
+                        font: Arc::clone(&font),
+                        size,
+                        transform,
+                        glyphs: vec![PositionedGlyph {
+                            id: glyph_id,
+                            x: 0.0,
+                            y: 0.0,
+                        }],
+                        fill: fill_paint.clone(),
+                        stroke: stroke_paint.clone(),
+                    }));
+                } else {
+                    glyphs.push(PositionedGlyph {
+                        id: glyph_id,
+                        x: x as f32,
+                        y: y as f32,
+                    });
+                }
+                let delta_x = run.delta_x.get(index).copied();
+                let delta_y = run.delta_y.get(index).copied();
+                if let Some(delta) = delta_x {
+                    x += delta;
+                } else {
+                    match read_direction {
+                        0 => x += advance * h_scale.max(0.0),
+                        180 => x -= advance * h_scale.max(0.0),
+                        _ => {}
+                    }
+                }
+                if let Some(delta) = delta_y {
+                    y += delta;
+                } else {
+                    match read_direction {
+                        90 => y += advance,
+                        270 => y -= advance,
+                        _ => {}
+                    }
+                }
             }
             offset += run.chars.len();
             if !glyphs.is_empty() {
@@ -1456,16 +1498,23 @@ struct CodeRun {
 }
 
 fn collect_code_runs(object: &GraphicObjectView) -> Vec<CodeRun> {
-    object
-        .text_codes()
-        .map(|code: TextCodeView| CodeRun {
+    let mut runs = Vec::new();
+    let mut last_x = 0.0;
+    let mut last_y = 0.0;
+    for code in object.text_codes() {
+        let x = code.x().unwrap_or(last_x);
+        let y = code.y().unwrap_or(last_y);
+        last_x = x;
+        last_y = y;
+        runs.push(CodeRun {
             chars: decode_text(code.text()),
-            x: code.x().unwrap_or(0.0),
-            y: code.y().unwrap_or(0.0),
+            x,
+            y,
             delta_x: code.delta_x().map(parse_floats).unwrap_or_default(),
             delta_y: code.delta_y().map(parse_floats).unwrap_or_default(),
-        })
-        .collect()
+        });
+    }
+    runs
 }
 
 fn glyph_slots(object: &GraphicObjectView, count: usize) -> Vec<Option<u32>> {

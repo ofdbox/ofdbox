@@ -112,6 +112,12 @@ impl Matrix {
         Self::new(x, 0.0, 0.0, y, 0.0, 0.0)
     }
 
+    /// 旋转矩阵，正角度在 Y 轴向下时表现为顺时针。
+    pub fn rotate(radians: f64) -> Self {
+        let (sin, cos) = radians.sin_cos();
+        Self::new(cos, sin, -sin, cos, 0.0, 0.0)
+    }
+
     /// 组合变换：先应用 `self`，再应用 `other`。
     pub fn then(self, other: Self) -> Self {
         Self {

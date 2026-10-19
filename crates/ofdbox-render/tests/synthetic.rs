@@ -3,8 +3,9 @@ use std::sync::{Arc, Mutex};
 
 use ofdbox_core::{OfdPackage, ReadOptions};
 use ofdbox_render::{
-    Backend, BackendFrame, Element, Group, OfdFrontend, PdfBackend, PdfFrontend, PoolBudget,
-    RasterTarget, RenderOptions, ResourcePool, Scene, Size, VelloCpuBackend, WgpuBackend,
+    Backend, BackendFrame, Element, Group, Matrix, OfdFrontend, PdfBackend, PdfFrontend, Point,
+    PoolBudget, RasterTarget, RenderOptions, ResourcePool, Scene, Size, VelloCpuBackend,
+    WgpuBackend,
 };
 use zip::ZipWriter;
 use zip::write::SimpleFileOptions;
@@ -192,6 +193,139 @@ fn collect_text(scene: &Scene) -> Vec<Vec<(u32, f32, f32)>> {
     let mut output = Vec::new();
     walk(&scene.root, &mut output);
     output
+}
+
+type TextRun = (Matrix, Vec<(u32, f32, f32)>);
+
+fn collect_text_runs(scene: &Scene) -> Vec<TextRun> {
+    fn walk(group: &Group, output: &mut Vec<TextRun>) {
+        for element in &group.children {
+            match element {
+                Element::Group(group) => walk(group, output),
+                Element::Text(text) => output.push((
+                    text.transform,
+                    text.glyphs
+                        .iter()
+                        .map(|glyph| (glyph.id, glyph.x, glyph.y))
+                        .collect(),
+                )),
+                _ => {}
+            }
+        }
+    }
+    let mut output = Vec::new();
+    walk(&scene.root, &mut output);
+    output
+}
+
+const TEXT_RES: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<ofd:Res xmlns:ofd="http://www.ofdspec.org/2016">
+  <ofd:ColorSpaces><ofd:ColorSpace ID="1" Type="RGB"/></ofd:ColorSpaces>
+  <ofd:Fonts><ofd:Font ID="3" FontName="Dummy"><ofd:FontFile>Fonts/dummy.ttf</ofd:FontFile></ofd:Font></ofd:Fonts>
+</ofd:Res>"#;
+
+fn render_text(content: &str) -> Scene {
+    let bytes = zip(&[
+        ("OFD.xml", OFD_XML.as_bytes()),
+        ("Doc_0/Document.xml", DOCUMENT_XML.as_bytes()),
+        ("Doc_0/PublicRes.xml", TEXT_RES.as_bytes()),
+        ("Doc_0/Fonts/dummy.ttf", b"not-a-real-font"),
+        ("Doc_0/Pages/Page_0/Content.xml", content.as_bytes()),
+    ]);
+    let mut package = open(bytes);
+    let document = package.parse_document().expect("document");
+    let page = document
+        .pages()
+        .expect("pages")
+        .pages()
+        .next()
+        .expect("page");
+    let pool = ResourcePool::new(PoolBudget::default());
+    OfdFrontend::new(&mut package, &pool, RenderOptions::default())
+        .build_page(&page)
+        .expect("scene")
+}
+
+#[test]
+fn inherits_text_code_origin() {
+    let content = r#"<?xml version="1.0" encoding="UTF-8"?>
+<ofd:Page xmlns:ofd="http://www.ofdspec.org/2016">
+  <ofd:Area><ofd:PhysicalBox>0 0 100 100</ofd:PhysicalBox></ofd:Area>
+  <ofd:Content><ofd:Layer ID="1">
+    <ofd:TextObject ID="t1" Boundary="0 0 100 20" Font="3" Size="10">
+      <ofd:CGTransform CodePosition="0" CodeCount="1" GlyphCount="1"><ofd:Glyphs>5</ofd:Glyphs></ofd:CGTransform>
+      <ofd:TextCode X="3" Y="7">A</ofd:TextCode>
+      <ofd:CGTransform CodePosition="1" CodeCount="1" GlyphCount="1"><ofd:Glyphs>6</ofd:Glyphs></ofd:CGTransform>
+      <ofd:TextCode>B</ofd:TextCode>
+    </ofd:TextObject>
+  </ofd:Layer></ofd:Content>
+</ofd:Page>"#;
+    let scene = render_text(content);
+    assert_eq!(
+        collect_text(&scene),
+        vec![vec![(5, 3.0, 7.0)], vec![(6, 3.0, 7.0)]]
+    );
+}
+
+#[test]
+fn vertical_text_advances_downward() {
+    let content = r#"<?xml version="1.0" encoding="UTF-8"?>
+<ofd:Page xmlns:ofd="http://www.ofdspec.org/2016">
+  <ofd:Area><ofd:PhysicalBox>0 0 100 100</ofd:PhysicalBox></ofd:Area>
+  <ofd:Content><ofd:Layer ID="1">
+    <ofd:TextObject ID="t1" Boundary="0 0 100 100" Font="3" Size="10" ReadDirection="90">
+      <ofd:CGTransform CodePosition="0" CodeCount="2" GlyphCount="2"><ofd:Glyphs>5 6</ofd:Glyphs></ofd:CGTransform>
+      <ofd:TextCode X="1" Y="2">AB</ofd:TextCode>
+    </ofd:TextObject>
+  </ofd:Layer></ofd:Content>
+</ofd:Page>"#;
+    let scene = render_text(content);
+    assert_eq!(
+        collect_text(&scene),
+        vec![vec![(5, 1.0, 2.0), (6, 1.0, 12.0)]]
+    );
+}
+
+#[test]
+fn char_direction_rotates_glyphs() {
+    let content = r#"<?xml version="1.0" encoding="UTF-8"?>
+<ofd:Page xmlns:ofd="http://www.ofdspec.org/2016">
+  <ofd:Area><ofd:PhysicalBox>0 0 100 100</ofd:PhysicalBox></ofd:Area>
+  <ofd:Content><ofd:Layer ID="1">
+    <ofd:TextObject ID="t1" Boundary="0 0 100 100" Font="3" Size="10" CharDirection="90">
+      <ofd:CGTransform CodePosition="0" CodeCount="1" GlyphCount="1"><ofd:Glyphs>5</ofd:Glyphs></ofd:CGTransform>
+      <ofd:TextCode X="10" Y="20">A</ofd:TextCode>
+    </ofd:TextObject>
+  </ofd:Layer></ofd:Content>
+</ofd:Page>"#;
+    let scene = render_text(content);
+    let runs = collect_text_runs(&scene);
+    assert_eq!(runs.len(), 1);
+    assert_eq!(runs[0].1, vec![(5, 0.0, 0.0)]);
+    let origin = runs[0].0.apply(Point::new(1.0, 0.0));
+    assert!((origin.x - 10.0).abs() < 1e-6);
+    assert!((origin.y - 21.0).abs() < 1e-6);
+}
+
+#[test]
+fn hscale_scales_glyph_and_advance() {
+    let content = r#"<?xml version="1.0" encoding="UTF-8"?>
+<ofd:Page xmlns:ofd="http://www.ofdspec.org/2016">
+  <ofd:Area><ofd:PhysicalBox>0 0 100 100</ofd:PhysicalBox></ofd:Area>
+  <ofd:Content><ofd:Layer ID="1">
+    <ofd:TextObject ID="t1" Boundary="0 0 100 100" Font="3" Size="10" HScale="0.5">
+      <ofd:CGTransform CodePosition="0" CodeCount="2" GlyphCount="2"><ofd:Glyphs>5 6</ofd:Glyphs></ofd:CGTransform>
+      <ofd:TextCode X="0" Y="0">AB</ofd:TextCode>
+    </ofd:TextObject>
+  </ofd:Layer></ofd:Content>
+</ofd:Page>"#;
+    let scene = render_text(content);
+    let runs = collect_text_runs(&scene);
+    assert_eq!(runs.len(), 2);
+    let first = runs[0].0.apply(Point::new(1.0, 0.0));
+    let second = runs[1].0.apply(Point::new(1.0, 0.0));
+    assert!((first.x - 0.5).abs() < 1e-6);
+    assert!((second.x - 5.5).abs() < 1e-6);
 }
 
 #[test]
