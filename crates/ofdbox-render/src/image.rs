@@ -20,6 +20,33 @@ pub enum ImageFormat {
 }
 
 impl ImageFormat {
+    /// 按文件头魔数识别真实图片格式。
+    ///
+    /// 真实文件里经常出现扩展名/`Format` 与实际内容不一致的情况，优先使用内容。
+    pub fn detect(data: &[u8]) -> Option<Self> {
+        if data.starts_with(&[0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A]) {
+            Some(Self::Png)
+        } else if data.starts_with(&[0xFF, 0xD8, 0xFF]) {
+            Some(Self::Jpeg)
+        } else if data.starts_with(b"BM") {
+            Some(Self::Bmp)
+        } else if data.starts_with(&[0x97, b'J', b'B', b'2']) || data.first() == Some(&0x97) {
+            Some(Self::Jbig2)
+        } else if data.starts_with(b"GIF87a") || data.starts_with(b"GIF89a") {
+            Some(Self::Other("GIF".to_owned()))
+        } else if data.starts_with(&[0x49, 0x49, 0x2A, 0x00])
+            || data.starts_with(&[0x4D, 0x4D, 0x00, 0x2A])
+        {
+            Some(Self::Other("TIFF".to_owned()))
+        } else if data.starts_with(&[0x00, 0x00, 0x00, 0x0C, b'j', b'P', b' ', b' ']) {
+            Some(Self::Other("JP2".to_owned()))
+        } else if data.starts_with(&[0xFF, 0x4F, 0xFF, 0x51]) {
+            Some(Self::Other("J2K".to_owned()))
+        } else {
+            None
+        }
+    }
+
     /// 从 OFD 多媒体的 `Format` 属性解析。
     pub fn from_media_format(format: &str) -> Self {
         match format.trim().to_ascii_uppercase().as_str() {
@@ -246,6 +273,28 @@ mod tests {
     #[test]
     fn unsupported_format_is_explicit() {
         assert!(decode_image(&ImageFormat::Other("JP2".to_owned()), &[], 10).is_err());
+    }
+
+    #[test]
+    fn detects_formats_by_magic() {
+        assert_eq!(
+            ImageFormat::detect(&[0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A]),
+            Some(ImageFormat::Png)
+        );
+        assert_eq!(
+            ImageFormat::detect(&[0xFF, 0xD8, 0xFF, 0xE0]),
+            Some(ImageFormat::Jpeg)
+        );
+        assert_eq!(ImageFormat::detect(b"BM\x00\x00"), Some(ImageFormat::Bmp));
+        assert_eq!(
+            ImageFormat::detect(b"GIF89a"),
+            Some(ImageFormat::Other("GIF".to_owned()))
+        );
+        assert_eq!(
+            ImageFormat::detect(&[0x49, 0x49, 0x2A, 0x00]),
+            Some(ImageFormat::Other("TIFF".to_owned()))
+        );
+        assert_eq!(ImageFormat::detect(b"not-an-image"), None);
     }
 
     #[test]

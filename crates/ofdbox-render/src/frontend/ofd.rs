@@ -1160,12 +1160,14 @@ impl Builder<'_> {
                 let bytes =
                     read_resource(self.package, &mask.dir, mask.base.as_deref(), &mask.file)
                         .ok()?;
-                Some((mask.format, bytes))
+                let format = ImageFormat::detect(&bytes).unwrap_or(mask.format);
+                Some((format, bytes))
             });
         let mask = mask
             .as_ref()
             .map(|(format, bytes)| (format.clone(), &bytes[..]));
-        let image = match self.pool.embedded_image(media.format.clone(), &file, mask) {
+        let format = ImageFormat::detect(&file).unwrap_or_else(|| media.format.clone());
+        let image = match self.pool.embedded_image(format, &file, mask) {
             Ok(image) => image,
             Err(error) => {
                 self.diagnostic(
