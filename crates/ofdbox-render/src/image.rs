@@ -49,6 +49,17 @@ impl ImageFormat {
         }
     }
 
+    /// 从媒体文件路径的扩展名推断格式。
+    ///
+    /// 标准的 `Format` 属性是可选的，真实文件经常只给文件名。
+    pub fn from_path(path: &str) -> Self {
+        let extension = path
+            .rsplit_once('.')
+            .map(|(_, extension)| extension)
+            .unwrap_or("");
+        Self::from_media_format(extension)
+    }
+
     /// 从 OFD 多媒体的 `Format` 属性解析。
     pub fn from_media_format(format: &str) -> Self {
         match format.trim().to_ascii_uppercase().as_str() {
@@ -361,6 +372,14 @@ mod tests {
     #[test]
     fn unsupported_format_is_explicit() {
         assert!(decode_image(&ImageFormat::Other("JP2".to_owned()), &[], 10).is_err());
+    }
+
+    #[test]
+    fn infers_format_from_path() {
+        assert_eq!(ImageFormat::from_path("a/b.PNG"), ImageFormat::Png);
+        assert_eq!(ImageFormat::from_path("x.jpg"), ImageFormat::Jpeg);
+        assert_eq!(ImageFormat::from_path("x.tif"), ImageFormat::Tiff);
+        assert_eq!(ImageFormat::from_path("x.jbig2"), ImageFormat::Jbig2);
     }
 
     #[test]

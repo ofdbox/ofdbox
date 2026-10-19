@@ -351,13 +351,14 @@ impl ResourceSet {
             let Some(file) = media.media_file() else {
                 continue;
             };
-            let Some(format) = media.format() else {
-                continue;
-            };
+            let format = media
+                .format()
+                .map(ImageFormat::from_media_format)
+                .unwrap_or_else(|| ImageFormat::from_path(file));
             self.images.insert(
                 id.to_owned(),
                 MediaResource {
-                    format: ImageFormat::from_media_format(format),
+                    format,
                     file: file.to_owned(),
                     dir: dir.clone(),
                     base: base.clone(),
