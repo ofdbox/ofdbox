@@ -797,9 +797,10 @@ impl Builder<'_> {
         if let Some(cached) = self.font_cache.get(&key) {
             return cached.clone();
         }
-        let data = if let Some(file) = resource.file.as_deref() {
+        let embedded = resource.file.as_deref().and_then(|file| {
             read_resource(self.package, &resource.dir, resource.base.as_deref(), file).ok()
-        } else {
+        });
+        let data = embedded.filter(|bytes| !bytes.is_empty()).or_else(|| {
             let provider = self.font_provider.as_mut()?;
             let request = FontRequest {
                 font_name: resource.name.as_deref(),
@@ -809,7 +810,7 @@ impl Builder<'_> {
                 italic: resource.italic,
             };
             provider.load(&request).ok()?
-        };
+        });
         let asset = data
             .filter(|bytes| !bytes.is_empty())
             .and_then(|bytes| self.pool.embedded_font_shared(bytes, 0).ok());

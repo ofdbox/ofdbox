@@ -4,9 +4,11 @@
 //! `cargo run -p ofdbox-render --release --example render_batch -- <输入目录> <输出目录>`
 //!
 //! 每个文档输出到独立子目录，页面命名为 `page_0001.png`。
-//! 无法读取或渲染的文档/页面会被跳过，并记录到输出目录的 `_skipped.txt`。
+//! 无法读取或渲染的文档/页面会被跳过，并记录到输出目录的 `_skipped.txt`；
+//! 渲染过程中跳过的特性（竖排文字、PageBlock 等）聚合到 `_diagnostics.txt`。
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
+use std::fmt::Write as _;
 use std::fs;
 use std::hash::{Hash, Hasher};
 use std::io::BufWriter;
@@ -17,7 +19,7 @@ use std::time::Instant;
 use ofdbox_core::OfdPackage;
 use ofdbox_render::{
     Backend, BackendFrame, FontProvider, FontRequest, OfdFrontend, PoolBudget, RasterTarget,
-    RenderError, RenderOptions, ResourcePool, VelloCpuBackend,
+    RenderDiagnostic, RenderError, RenderOptions, ResourcePool, VelloCpuBackend,
 };
 
 const DPI: f64 = 96.0;
@@ -60,6 +62,7 @@ fn main() {
         ..Default::default()
     });
     let mut folders = FolderNames::default();
+    let mut diagnostics = DiagnosticsReport::default();
     let mut skipped = Vec::new();
     let started = Instant::now();
     let mut documents = 0usize;
@@ -111,6 +114,7 @@ fn main() {
         .with_font_provider(Box::new(provider));
         let mut document_pages = 0usize;
         let mut document_failed = 0usize;
+        let mut document_diagnostics = DocumentDiagnostics::new(&label);
         for (index, page) in pages_view.pages().enumerate() {
             pages += 1;
             let scene = match frontend.build_page(&page) {
@@ -122,6 +126,7 @@ fn main() {
                     continue;
                 }
             };
+            diagnostics.record(&mut document_diagnostics, index + 1, &scene.diagnostics);
             let mut target = match RasterTarget::from_size(scene.size, DPI) {
                 Ok(target) => target,
                 Err(error) => {
@@ -161,6 +166,9 @@ fn main() {
             }
             document_pages += 1;
         }
+        if document_diagnostics.total > 0 {
+            diagnostics.documents.push(document_diagnostics);
+        }
         if document_pages == 0 {
             let _ = fs::remove_dir(&folder);
             failed_documents += 1;
@@ -174,6 +182,12 @@ fn main() {
         let report = skipped.join("\n");
         let _ = fs::write(output.join("_skipped.txt"), format!("{report}\n"));
     }
+    let report = diagnostics.render(documents, pages, failed_documents, failed_pages);
+    let _ = fs::write(output.join("_diagnostics.txt"), report);
+    eprintln!(
+        "诊断: total={} pages_with_diagnostics={}",
+        diagnostics.total_count, diagnostics.pages_with_diagnostics
+    );
     eprintln!(
         "完成: docs={documents} failed_docs={failed_documents} pages={pages} failed_pages={failed_pages} elapsed={:.1}s",
         started.elapsed().as_secs_f64()
@@ -327,4 +341,132 @@ fn select_font(request: &FontRequest<'_>) -> Option<PathBuf> {
         }
     }
     None
+}
+
+#[derive(Default)]
+struct DiagnosticsReport {
+    total: BTreeMap<&'static str, usize>,
+    total_count: usize,
+    pages_with_diagnostics: usize,
+    documents: Vec<DocumentDiagnostics>,
+}
+
+impl DiagnosticsReport {
+    fn record(
+        &mut self,
+        document: &mut DocumentDiagnostics,
+        page: usize,
+        diagnostics: &[RenderDiagnostic],
+    ) {
+        if diagnostics.is_empty() {
+            return;
+        }
+        self.pages_with_diagnostics += 1;
+        let mut entries = BTreeMap::new();
+        for diagnostic in diagnostics {
+            let code = diagnostic.code.name();
+            *self.total.entry(code).or_insert(0) += 1;
+            *document.by_code.entry(code).or_insert(0) += 1;
+            document.total += 1;
+            self.total_count += 1;
+            let entry = entries
+                .entry((code.to_owned(), diagnostic.message.clone()))
+                .or_insert_with(PageDiagnosticEntry::default);
+            entry.count += 1;
+            if let Some(id) = diagnostic.object_id.as_deref()
+                && entry.ids.len() < 4
+                && !entry.ids.iter().any(|existing| existing == id)
+            {
+                entry.ids.push(id.to_owned());
+            }
+        }
+        document.pages.push(PageDiagnostics { page, entries });
+    }
+
+    fn render(
+        &self,
+        documents: usize,
+        pages: usize,
+        failed_documents: usize,
+        failed_pages: usize,
+    ) -> String {
+        let mut text = String::new();
+        let _ = writeln!(text, "OFD 渲染诊断报告");
+        let _ = writeln!(text, "DPI: {DPI}");
+        let _ = writeln!(
+            text,
+            "文档: {documents} 成功 / {failed_documents} 失败, 页面: {pages}, 构建失败页: {failed_pages}"
+        );
+        let _ = writeln!(
+            text,
+            "诊断总数: {}，有诊断页面: {}",
+            self.total_count, self.pages_with_diagnostics
+        );
+        let _ = writeln!(text, "构建失败详情见 _skipped.txt");
+        let _ = writeln!(text);
+        let _ = writeln!(text, "## 汇总");
+        if self.total.is_empty() {
+            let _ = writeln!(text, "未发现诊断。");
+        } else {
+            for (code, count) in &self.total {
+                let _ = writeln!(text, "{code}: {count}");
+            }
+        }
+        let _ = writeln!(text);
+        let _ = writeln!(text, "## 明细");
+        for document in &self.documents {
+            let summary = document
+                .by_code
+                .iter()
+                .map(|(code, count)| format!("{code}={count}"))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let _ = writeln!(
+                text,
+                "{}: {} 条 ({summary})",
+                document.label, document.total
+            );
+            for page in &document.pages {
+                let _ = writeln!(text, "  page {}", page.page);
+                for ((code, message), entry) in &page.entries {
+                    let ids = if entry.ids.is_empty() {
+                        String::new()
+                    } else {
+                        format!(" IDs={}", entry.ids.join(","))
+                    };
+                    let _ = writeln!(text, "    [{code}] x{} {message}{ids}", entry.count);
+                }
+            }
+        }
+        text
+    }
+}
+
+struct DocumentDiagnostics {
+    label: String,
+    total: usize,
+    by_code: BTreeMap<&'static str, usize>,
+    pages: Vec<PageDiagnostics>,
+}
+
+impl DocumentDiagnostics {
+    fn new(label: &str) -> Self {
+        Self {
+            label: label.to_owned(),
+            total: 0,
+            by_code: BTreeMap::new(),
+            pages: Vec::new(),
+        }
+    }
+}
+
+struct PageDiagnostics {
+    page: usize,
+    entries: BTreeMap<(String, String), PageDiagnosticEntry>,
+}
+
+#[derive(Default)]
+struct PageDiagnosticEntry {
+    count: usize,
+    ids: Vec<String>,
 }

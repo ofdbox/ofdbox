@@ -100,7 +100,8 @@ cargo run -p ofdbox-render --release --example render_batch -- <输入目录> <�
 ```
 
 递归查找输入目录下的 `.ofd`，每个文档输出到独立子目录，页面命名为 `page_0001.png`。
-无法读取或渲染的文档/页面会跳过，并记录到输出目录的 `_skipped.txt`。
+无法读取或渲染的文档/页面会跳过，并记录到输出目录的 `_skipped.txt`；
+竖排文字、PageBlock、缺失字体等渲染诊断按文档和页面聚合到 `_diagnostics.txt`。
 
 ## 标准覆盖
 

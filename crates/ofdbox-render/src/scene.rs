@@ -136,7 +136,7 @@ pub struct RenderDiagnostic {
 }
 
 /// 诊断类别。
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum DiagnosticCode {
     /// 图元类型暂未实现。
     UnsupportedObject,
@@ -148,6 +148,19 @@ pub enum DiagnosticCode {
     Paint,
     /// 几何数据无效。
     Geometry,
+}
+
+impl DiagnosticCode {
+    /// 稳定的报告名称。
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::UnsupportedObject => "UnsupportedObject",
+            Self::Font => "Font",
+            Self::Image => "Image",
+            Self::Paint => "Paint",
+            Self::Geometry => "Geometry",
+        }
+    }
 }
 
 impl Scene {
