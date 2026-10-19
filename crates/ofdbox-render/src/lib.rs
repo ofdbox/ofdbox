@@ -28,7 +28,7 @@ pub use backend::vello_cpu::{RasterTarget, VelloCpuBackend, VelloCpuFrame};
 pub use backend::wgpu::WgpuBackend;
 pub use backend::{Backend, BackendCapabilities, BackendFrame, BackendInfo};
 pub use error::RenderError;
-pub use font::{FontProvider, FontRequest};
+pub use font::{FnFontProvider, FontProvider, FontRequest};
 pub use frontend::ofd::OfdFrontend;
 pub use frontend::pdf::PdfFrontend;
 pub use geometry::{Matrix, Point, Rect, Size};

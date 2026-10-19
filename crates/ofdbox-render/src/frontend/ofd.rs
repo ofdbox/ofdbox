@@ -9,7 +9,7 @@ use ofdbox_core::{
 };
 
 use crate::error::RenderError;
-use crate::font::{FontProvider, FontRequest};
+use crate::font::{FnFontProvider, FontProvider, FontRequest};
 use crate::geometry::{Matrix, Point, Rect, Size};
 use crate::image::ImageFormat;
 use crate::options::{RenderOptions, UnsupportedPolicy};
@@ -49,6 +49,15 @@ impl<'a> OfdFrontend<'a> {
     /// 注入系统字体或自定义字体来源。
     pub fn with_font_provider(mut self, provider: Box<dyn FontProvider>) -> Self {
         self.font_provider = Some(provider);
+        self
+    }
+
+    /// 用闭包按字体 ID/名称/文件路径做自定义映射。
+    pub fn with_font_resolver<F>(mut self, resolver: F) -> Self
+    where
+        F: for<'req> FnMut(&FontRequest<'req>) -> Result<Option<Arc<[u8]>>, RenderError> + 'static,
+    {
+        self.font_provider = Some(Box::new(FnFontProvider::new(resolver)));
         self
     }
 
@@ -245,6 +254,7 @@ struct ResourceSet {
 
 #[derive(Clone)]
 struct FontResource {
+    id: String,
     file: Option<String>,
     dir: String,
     base: Option<String>,
@@ -332,6 +342,7 @@ impl ResourceSet {
                 self.fonts.insert(
                     id.to_owned(),
                     FontResource {
+                        id: id.to_owned(),
                         file: font.font_file().map(str::to_owned),
                         dir: dir.clone(),
                         base: base.clone(),
@@ -1451,6 +1462,7 @@ impl Builder<'_> {
         let data = embedded.filter(|bytes| !bytes.is_empty()).or_else(|| {
             let provider = self.font_provider.as_mut()?;
             let request = FontRequest {
+                font_id: Some(resource.id.as_str()),
                 font_name: resource.name.as_deref(),
                 family_name: resource.family.as_deref(),
                 charset: resource.charset.as_deref(),
@@ -1458,6 +1470,7 @@ impl Builder<'_> {
                 italic: resource.italic,
                 serif: resource.serif,
                 fixed_width: resource.fixed_width,
+                font_file: resource.file.as_deref(),
             };
             provider.load(&request).ok()?
         });
