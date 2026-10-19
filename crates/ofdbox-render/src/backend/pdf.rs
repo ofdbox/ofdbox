@@ -78,6 +78,11 @@ struct ImageResource {
     height: u32,
 }
 
+struct ShadingResource {
+    name: String,
+    object: u32,
+}
+
 impl PdfDocument {
     fn collect_images(&self, group: &Group, images: &mut HashMap<AssetId, Arc<ImageAsset>>) {
         for element in &group.children {
@@ -91,6 +96,108 @@ impl PdfDocument {
                 Element::Path(_) | Element::Text(_) => {}
             }
         }
+    }
+
+    fn collect_gradients(&self, group: &Group, gradients: &mut HashMap<String, Paint>) {
+        for element in &group.children {
+            match element {
+                Element::Group(group) => self.collect_gradients(group, gradients),
+                Element::Path(path) => {
+                    if let Some(paint) = &path.fill
+                        && matches!(paint, Paint::Linear(_) | Paint::Radial(_))
+                    {
+                        gradients
+                            .entry(format!("{paint:?}"))
+                            .or_insert_with(|| paint.clone());
+                    }
+                }
+                Element::Image(_) | Element::Text(_) => {}
+            }
+        }
+    }
+
+    fn embed_gradient(&mut self, paint: &Paint) -> Result<ShadingResource, RenderError> {
+        let (stops, coords, shading_type) = match paint {
+            Paint::Linear(gradient) => (
+                &gradient.stops,
+                format!(
+                    "[{} {} {} {}]",
+                    number(gradient.start.x),
+                    number(gradient.start.y),
+                    number(gradient.end.x),
+                    number(gradient.end.y)
+                ),
+                2,
+            ),
+            Paint::Radial(gradient) => (
+                &gradient.stops,
+                format!(
+                    "[{} {} {} {} {} {}]",
+                    number(gradient.start_center.x),
+                    number(gradient.start_center.y),
+                    number(gradient.start_radius),
+                    number(gradient.end_center.x),
+                    number(gradient.end_center.y),
+                    number(gradient.end_radius)
+                ),
+                3,
+            ),
+            Paint::Solid(_) => {
+                return Err(RenderError::Unsupported("纯色没有 Shading".to_owned()));
+            }
+        };
+        if stops.len() < 2 {
+            return Err(RenderError::Unsupported("渐变缺少颜色段".to_owned()));
+        }
+        let mut functions = Vec::new();
+        for pair in stops.windows(2) {
+            let body = format!(
+                "<< /FunctionType 2 /Domain [0 1] /C0 [{} {} {}] /C1 [{} {} {}] /N 1 >>",
+                number(f64::from(pair[0].color.r)),
+                number(f64::from(pair[0].color.g)),
+                number(f64::from(pair[0].color.b)),
+                number(f64::from(pair[1].color.r)),
+                number(f64::from(pair[1].color.g)),
+                number(f64::from(pair[1].color.b))
+            );
+            functions.push(self.writer.add(body.into_bytes()));
+        }
+        let function = if functions.len() == 1 {
+            format!("{} 0 R", functions[0])
+        } else {
+            let bounds = stops[1..stops.len() - 1]
+                .iter()
+                .map(|stop| number(f64::from(stop.offset).clamp(0.0, 1.0)))
+                .collect::<Vec<_>>()
+                .join(" ");
+            let function_count = functions.len();
+            let functions = functions
+                .iter()
+                .map(|id| format!("{id} 0 R"))
+                .collect::<Vec<_>>()
+                .join(" ");
+            let encode = std::iter::repeat_n("0 1", function_count)
+                .collect::<Vec<_>>()
+                .join(" ");
+            let id = self.writer.add(
+                format!(
+                    "<< /FunctionType 3 /Domain [0 1] /Functions [{functions}] /Bounds [{bounds}] /Encode [{encode}] >>"
+                )
+                .into_bytes(),
+            );
+            format!("{id} 0 R")
+        };
+        let name_index = self.writer.objects.len() + 1;
+        let object = self.writer.add(
+            format!(
+                "<< /ShadingType {shading_type} /ColorSpace /DeviceRGB /Coords {coords} /Function {function} /Extend [true true] >>"
+            )
+            .into_bytes(),
+        );
+        Ok(ShadingResource {
+            name: format!("Sh{name_index}"),
+            object,
+        })
     }
 
     fn embed_image(
@@ -168,13 +275,27 @@ impl PdfDocument {
             xobjects.push_str(&format!("/{} {} 0 R ", resource.name, resource.object));
             images.insert(id, resource);
         }
-        let resources = if xobjects.is_empty() {
-            String::new()
-        } else {
-            format!("/XObject << {} >>", xobjects.trim_end())
-        };
+        let mut collected_gradients = HashMap::new();
+        self.collect_gradients(&scene.root, &mut collected_gradients);
+        let mut ordered_gradients = collected_gradients.into_iter().collect::<Vec<_>>();
+        ordered_gradients.sort_by(|left, right| left.0.cmp(&right.0));
+        let mut gradients = HashMap::new();
+        let mut shadings = String::new();
+        for (key, paint) in ordered_gradients {
+            let resource = self.embed_gradient(&paint)?;
+            shadings.push_str(&format!("/{} {} 0 R ", resource.name, resource.object));
+            gradients.insert(key, resource);
+        }
+        let mut resources = Vec::new();
+        if !xobjects.is_empty() {
+            resources.push(format!("/XObject << {} >>", xobjects.trim_end()));
+        }
+        if !shadings.is_empty() {
+            resources.push(format!("/Shading << {} >>", shadings.trim_end()));
+        }
+        let resources = resources.join(" ");
 
-        let mut content = ContentBuilder::new(&images);
+        let mut content = ContentBuilder::new(&images, &gradients);
         content.raw(&format!("q\n{scale} 0 0 -{scale} 0 {height} cm\n"));
         content.group(&scene.root);
         content.raw("Q\n");
@@ -251,15 +372,20 @@ struct ContentBuilder<'a> {
     current: Point,
     start: Point,
     images: &'a HashMap<AssetId, ImageResource>,
+    gradients: &'a HashMap<String, ShadingResource>,
 }
 
 impl<'a> ContentBuilder<'a> {
-    fn new(images: &'a HashMap<AssetId, ImageResource>) -> Self {
+    fn new(
+        images: &'a HashMap<AssetId, ImageResource>,
+        gradients: &'a HashMap<String, ShadingResource>,
+    ) -> Self {
         Self {
             content: String::new(),
             current: Point::default(),
             start: Point::default(),
             images,
+            gradients,
         }
     }
 
@@ -293,6 +419,28 @@ impl<'a> ContentBuilder<'a> {
     }
 
     fn path_element(&mut self, element: &PathElement) {
+        if let Some(name) = element
+            .fill
+            .as_ref()
+            .and_then(|paint| self.gradient_name(paint))
+        {
+            self.raw("q\n");
+            self.path(&element.path);
+            match element.fill_rule {
+                FillRule::NonZero => self.raw("W n\n"),
+                FillRule::EvenOdd => self.raw("W* n\n"),
+            }
+            self.raw(&format!("/{name} sh\nQ\n"));
+            if let Some(stroke) = &element.stroke
+                && let Some(color) = solid_paint(&stroke.paint)
+            {
+                self.path(&element.path);
+                self.set_stroke_color(color);
+                self.set_stroke_style(&stroke.style);
+                self.raw("S\n");
+            }
+            return;
+        }
         self.path(&element.path);
         let fill = element.fill.as_ref().and_then(solid_paint);
         let stroke = element
@@ -315,6 +463,12 @@ impl<'a> ContentBuilder<'a> {
             (false, true) => self.raw("S\n"),
             (false, false) => self.raw("n\n"),
         }
+    }
+
+    fn gradient_name(&self, paint: &Paint) -> Option<String> {
+        self.gradients
+            .get(&format!("{paint:?}"))
+            .map(|resource| resource.name.clone())
     }
 
     fn image_element(&mut self, element: &ImageElement) {
@@ -574,7 +728,7 @@ mod tests {
     use super::{PdfBackend, PdfDocument, PdfOptions};
     use crate::geometry::{Matrix, Point, Size};
     use crate::image::ImageFormat;
-    use crate::paint::{Paint, Rgba};
+    use crate::paint::{GradientExtend, GradientStop, LinearGradient, Paint, Rgba};
     use crate::path::{FillRule, Path};
     use crate::resource::{PoolBudget, ResourcePool};
     use crate::scene::{Element, Group, ImageElement, PathElement, Scene};
@@ -664,6 +818,48 @@ mod tests {
         assert!(text.contains("/XObject"));
         assert!(text.contains("/Im1"));
         assert!(text.contains("/Im1 Do"));
+    }
+
+    #[test]
+    fn writes_linear_shading() {
+        let mut path = Path::new();
+        path.move_to(Point::new(10.0, 10.0));
+        path.line_to(Point::new(90.0, 10.0));
+        path.line_to(Point::new(90.0, 90.0));
+        path.close();
+        let mut root = Group::default();
+        root.children.push(Element::Path(PathElement {
+            path: std::sync::Arc::new(path),
+            fill: Some(Paint::Linear(LinearGradient {
+                start: Point::new(10.0, 50.0),
+                end: Point::new(90.0, 50.0),
+                stops: vec![
+                    GradientStop {
+                        offset: 0.0,
+                        color: Rgba::new(1.0, 0.0, 0.0, 1.0),
+                    },
+                    GradientStop {
+                        offset: 1.0,
+                        color: Rgba::new(0.0, 0.0, 1.0, 1.0),
+                    },
+                ],
+                extend: GradientExtend::Pad,
+            })),
+            stroke: None,
+            fill_rule: FillRule::NonZero,
+        }));
+        let scene = Scene {
+            size: Size::new(100.0, 100.0),
+            root,
+            diagnostics: Vec::new(),
+        };
+        let mut document = PdfDocument::new(PdfOptions::default());
+        document.add_page(&scene).expect("page");
+        let pdf = document.finish().expect("pdf");
+        let text = String::from_utf8_lossy(&pdf);
+        assert!(text.contains("/ShadingType 2"));
+        assert!(text.contains("/FunctionType 2"));
+        assert!(text.contains(" sh\n"));
     }
 
     #[test]
