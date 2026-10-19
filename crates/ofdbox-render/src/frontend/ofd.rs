@@ -971,6 +971,12 @@ impl Builder<'_> {
             .attribute("HScale")
             .and_then(|value| value.parse::<f64>().ok())
             .unwrap_or(1.0);
+        let weight = object
+            .attribute("Weight")
+            .and_then(|value| value.parse::<i32>().ok())
+            .filter(|value| (100..=900).contains(value))
+            .unwrap_or(400);
+        let italic = parse_bool(object.attribute("Italic")).unwrap_or(false);
         let fill = parse_bool(object.attribute("Fill")).unwrap_or(true);
         let stroke = parse_bool(object.attribute("Stroke")).unwrap_or(false);
         let fill_paint = if fill {
@@ -992,6 +998,23 @@ impl Builder<'_> {
         } else {
             None
         };
+        // Weight >= 600 且没有显式描边时，用细描边模拟粗体。
+        let synthetic_bold = if weight >= 600 && stroke_paint.is_none() {
+            fill_paint.as_ref().map(|paint| {
+                let style = StrokeStyle {
+                    width: (size * 0.03).max(0.01),
+                    cap: LineCap::Round,
+                    join: LineJoin::Round,
+                    ..StrokeStyle::default()
+                };
+                StrokePaint {
+                    paint: paint.clone(),
+                    style,
+                }
+            })
+        } else {
+            None
+        };
 
         let runs = collect_code_runs(object);
         let all_chars = runs
@@ -1004,6 +1027,12 @@ impl Builder<'_> {
         let mut offset = 0usize;
         let rotate_glyphs = char_direction != 0;
         let scale_glyphs = (h_scale - 1.0).abs() > f64::EPSILON;
+        let transform_glyphs = rotate_glyphs || scale_glyphs || italic;
+        let shear = if italic {
+            Matrix::new(1.0, 0.0, -0.21, 1.0, 0.0, 0.0)
+        } else {
+            Matrix::IDENTITY
+        };
         for run in runs {
             let mut x = run.x;
             let mut y = run.y;
@@ -1025,8 +1054,9 @@ impl Builder<'_> {
                 let mut advance_sum = 0.0;
                 for glyph_id in slot_glyphs.iter().copied() {
                     let advance = glyph_advance(face.as_ref(), glyph_id, size);
-                    if rotate_glyphs || scale_glyphs {
+                    if transform_glyphs {
                         let transform = Matrix::scale(h_scale.max(0.0), 1.0)
+                            .then(shear)
                             .then(Matrix::rotate(f64::from(char_direction).to_radians()))
                             .then(Matrix::translate(cluster_x, cluster_y));
                         elements.push(Element::Text(TextElement {
@@ -1039,7 +1069,7 @@ impl Builder<'_> {
                                 y: 0.0,
                             }],
                             fill: fill_paint.clone(),
-                            stroke: stroke_paint.clone(),
+                            stroke: stroke_paint.clone().or_else(|| synthetic_bold.clone()),
                         }));
                     } else {
                         glyphs.push(PositionedGlyph {
@@ -1092,7 +1122,7 @@ impl Builder<'_> {
                     transform: Matrix::IDENTITY,
                     glyphs,
                     fill: fill_paint.clone(),
-                    stroke: stroke_paint.clone(),
+                    stroke: stroke_paint.clone().or_else(|| synthetic_bold.clone()),
                 }));
             }
         }

@@ -328,6 +328,61 @@ fn hscale_scales_glyph_and_advance() {
     assert!((second.x - 5.5).abs() < 1e-6);
 }
 
+fn collect_text_stroke_widths(scene: &Scene) -> Vec<Option<f64>> {
+    fn walk(group: &Group, output: &mut Vec<Option<f64>>) {
+        for element in &group.children {
+            match element {
+                Element::Group(group) => walk(group, output),
+                Element::Text(text) => {
+                    output.push(text.stroke.as_ref().map(|stroke| stroke.style.width));
+                }
+                _ => {}
+            }
+        }
+    }
+    let mut output = Vec::new();
+    walk(&scene.root, &mut output);
+    output
+}
+
+#[test]
+fn weight_bolds_text() {
+    let content = r#"<?xml version="1.0" encoding="UTF-8"?>
+<ofd:Page xmlns:ofd="http://www.ofdspec.org/2016">
+  <ofd:Area><ofd:PhysicalBox>0 0 100 100</ofd:PhysicalBox></ofd:Area>
+  <ofd:Content><ofd:Layer ID="1">
+    <ofd:TextObject ID="t1" Boundary="0 0 100 100" Font="3" Size="10" Weight="700">
+      <ofd:CGTransform CodePosition="0" CodeCount="1" GlyphCount="1"><ofd:Glyphs>5</ofd:Glyphs></ofd:CGTransform>
+      <ofd:TextCode X="0" Y="0">A</ofd:TextCode>
+    </ofd:TextObject>
+  </ofd:Layer></ofd:Content>
+</ofd:Page>"#;
+    let scene = render_text(content);
+    let widths = collect_text_stroke_widths(&scene);
+    assert_eq!(widths.len(), 1);
+    assert!(widths[0].is_some_and(|width| width > 0.0));
+}
+
+#[test]
+fn italic_shears_glyphs() {
+    let content = r#"<?xml version="1.0" encoding="UTF-8"?>
+<ofd:Page xmlns:ofd="http://www.ofdspec.org/2016">
+  <ofd:Area><ofd:PhysicalBox>0 0 100 100</ofd:PhysicalBox></ofd:Area>
+  <ofd:Content><ofd:Layer ID="1">
+    <ofd:TextObject ID="t1" Boundary="0 0 100 100" Font="3" Size="10" Italic="true">
+      <ofd:CGTransform CodePosition="0" CodeCount="1" GlyphCount="1"><ofd:Glyphs>5</ofd:Glyphs></ofd:CGTransform>
+      <ofd:TextCode X="0" Y="0">A</ofd:TextCode>
+    </ofd:TextObject>
+  </ofd:Layer></ofd:Content>
+</ofd:Page>"#;
+    let scene = render_text(content);
+    let runs = collect_text_runs(&scene);
+    assert_eq!(runs.len(), 1);
+    let sheared = runs[0].0.apply(Point::new(0.0, -10.0));
+    assert!(sheared.x > 1.0, "{sheared:?}");
+    assert!((sheared.y + 10.0).abs() < 1e-6, "{sheared:?}");
+}
+
 #[test]
 fn cgtransform_one_to_many() {
     let content = r#"<?xml version="1.0" encoding="UTF-8"?>
