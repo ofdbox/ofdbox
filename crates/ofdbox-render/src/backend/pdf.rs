@@ -3,7 +3,7 @@
 //! 当前阶段把 [`Scene`] 写成矢量 PDF：页面坐标、路径、图片、裁剪、
 //! 渐变和文字。文字优先嵌入字体，字体不可用时退化为字形轮廓。
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::Write;
 use std::sync::Arc;
 
@@ -118,6 +118,39 @@ impl PdfDocument {
         }
     }
 
+    fn collect_alphas(&self, group: &Group, inherited: f32, alphas: &mut HashSet<u8>) {
+        let opacity = inherited * group.opacity.clamp(0.0, 1.0);
+        for element in &group.children {
+            match element {
+                Element::Group(group) => self.collect_alphas(group, opacity, alphas),
+                Element::Path(path) => {
+                    if let Some(paint) = &path.fill {
+                        insert_alpha(alphas, opacity * paint_alpha(paint));
+                    }
+                    if let Some(stroke) = &path.stroke {
+                        insert_alpha(alphas, opacity * paint_alpha(&stroke.paint));
+                    }
+                }
+                Element::Text(text) => {
+                    if let Some(paint) = &text.fill {
+                        insert_alpha(alphas, opacity * paint_alpha(paint));
+                    }
+                    if let Some(stroke) = &text.stroke {
+                        insert_alpha(alphas, opacity * paint_alpha(&stroke.paint));
+                    }
+                }
+                Element::Image(image) => {
+                    insert_alpha(alphas, opacity * image.alpha);
+                }
+            }
+        }
+    }
+
+    fn embed_ext_gstate(&mut self, alpha: u8) -> u32 {
+        let value = number(f64::from(alpha) / 255.0);
+        self.writer
+            .add(format!("<< /Type /ExtGState /ca {value} /CA {value} >>").into_bytes())
+    }
     fn embed_font(&mut self, font: &FontAsset, name: String) -> Result<FontResource, RenderError> {
         if self.options.text_mode == TextMode::Outline || !can_embed_font(font) {
             return Ok(FontResource {
@@ -379,6 +412,19 @@ impl PdfDocument {
             shadings.push_str(&format!("/{} {} 0 R ", resource.name, resource.object));
             gradients.insert(key, resource);
         }
+        let mut collected_alphas = HashSet::new();
+        self.collect_alphas(&scene.root, 1.0, &mut collected_alphas);
+        let mut ordered_alphas = collected_alphas.into_iter().collect::<Vec<_>>();
+        ordered_alphas.sort_unstable();
+        let mut alphas = HashMap::new();
+        let mut ext_gstates = String::new();
+        for alpha in ordered_alphas {
+            let object = self.embed_ext_gstate(alpha);
+            let name = format!("GS{alpha}");
+            ext_gstates.push_str(&format!("/{name} {object} 0 R "));
+            alphas.insert(alpha, name);
+        }
+
         let mut resources = Vec::new();
         if !xobjects.is_empty() {
             resources.push(format!("/XObject << {} >>", xobjects.trim_end()));
@@ -389,11 +435,14 @@ impl PdfDocument {
         if !font_resources.is_empty() {
             resources.push(format!("/Font << {} >>", font_resources.trim_end()));
         }
+        if !ext_gstates.is_empty() {
+            resources.push(format!("/ExtGState << {} >>", ext_gstates.trim_end()));
+        }
         let resources = resources.join(" ");
 
-        let mut content = ContentBuilder::new(&images, &gradients, &fonts);
+        let mut content = ContentBuilder::new(&images, &gradients, &fonts, &alphas);
         content.raw(&format!("q\n{scale} 0 0 -{scale} 0 {height} cm\n"));
-        content.group(&scene.root);
+        content.group(&scene.root, 1.0);
         content.raw("Q\n");
         let content = self.writer.stream("", &content.into_bytes());
         self.pages.push(PdfPage {
@@ -475,6 +524,7 @@ struct ContentBuilder<'a> {
     images: &'a HashMap<AssetId, ImageResource>,
     gradients: &'a HashMap<String, ShadingResource>,
     fonts: &'a HashMap<AssetId, FontResource>,
+    alphas: &'a HashMap<u8, String>,
 }
 
 impl<'a> ContentBuilder<'a> {
@@ -482,6 +532,7 @@ impl<'a> ContentBuilder<'a> {
         images: &'a HashMap<AssetId, ImageResource>,
         gradients: &'a HashMap<String, ShadingResource>,
         fonts: &'a HashMap<AssetId, FontResource>,
+        alphas: &'a HashMap<u8, String>,
     ) -> Self {
         Self {
             content: String::new(),
@@ -490,6 +541,7 @@ impl<'a> ContentBuilder<'a> {
             images,
             gradients,
             fonts,
+            alphas,
         }
     }
 
@@ -501,7 +553,8 @@ impl<'a> ContentBuilder<'a> {
         self.content.into_bytes()
     }
 
-    fn group(&mut self, group: &Group) {
+    fn group(&mut self, group: &Group, inherited: f32) {
+        let opacity = inherited * group.opacity.clamp(0.0, 1.0);
         self.raw("q\n");
         self.matrix(group.transform);
         if let Some(clip) = &group.clip {
@@ -513,75 +566,76 @@ impl<'a> ContentBuilder<'a> {
         }
         for child in &group.children {
             match child {
-                Element::Group(child) => self.group(child),
-                Element::Path(path) => self.path_element(path),
-                Element::Image(image) => self.image_element(image),
-                Element::Text(text) => self.text_element(text),
+                Element::Group(child) => self.group(child, opacity),
+                Element::Path(path) => self.path_element(path, opacity),
+                Element::Image(image) => self.image_element(image, opacity),
+                Element::Text(text) => self.text_element(text, opacity),
             }
         }
         self.raw("Q\n");
     }
 
-    fn path_element(&mut self, element: &PathElement) {
-        if let Some(name) = element
-            .fill
-            .as_ref()
-            .and_then(|paint| self.gradient_name(paint))
-        {
-            self.raw("q\n");
-            self.path(&element.path);
-            match element.fill_rule {
-                FillRule::NonZero => self.raw("W n\n"),
-                FillRule::EvenOdd => self.raw("W* n\n"),
-            }
-            self.raw(&format!("/{name} sh\nQ\n"));
-            if let Some(stroke) = &element.stroke
-                && let Some(color) = solid_paint(&stroke.paint)
-            {
-                self.path(&element.path);
-                self.set_stroke_color(color);
-                self.set_stroke_style(&stroke.style);
-                self.raw("S\n");
-            }
-            return;
-        }
-        self.path(&element.path);
-        let fill = element.fill.as_ref().and_then(solid_paint);
-        let stroke = element
-            .stroke
-            .as_ref()
-            .and_then(|stroke| solid_paint(&stroke.paint).map(|color| (color, &stroke.style)));
-        if let Some((color, style)) = stroke {
-            self.set_stroke_color(color);
-            self.set_stroke_style(style);
-        }
-        if let Some(color) = fill {
-            self.set_fill_color(color);
-        }
-        match (fill.is_some(), stroke.is_some()) {
-            (true, true) => self.raw("B\n"),
-            (true, false) => match element.fill_rule {
-                FillRule::NonZero => self.raw("f\n"),
-                FillRule::EvenOdd => self.raw("f*\n"),
-            },
-            (false, true) => self.raw("S\n"),
-            (false, false) => self.raw("n\n"),
+    fn apply_alpha(&mut self, alpha: f32) {
+        if let Some(name) = self.alphas.get(&alpha_byte(alpha)).cloned() {
+            self.raw(&format!("/{name} gs\n"));
         }
     }
 
-    fn text_element(&mut self, element: &TextElement) {
+    fn path_element(&mut self, element: &PathElement, opacity: f32) {
+        if let Some(paint) = &element.fill {
+            let alpha = opacity * paint_alpha(paint);
+            self.raw("q\n");
+            self.apply_alpha(alpha);
+            if let Some(name) = self.gradient_name(paint) {
+                self.path(&element.path);
+                match element.fill_rule {
+                    FillRule::NonZero => self.raw("W n\n"),
+                    FillRule::EvenOdd => self.raw("W* n\n"),
+                }
+                self.raw(&format!("/{name} sh\n"));
+            } else if let Some(color) = solid_paint(paint) {
+                self.path(&element.path);
+                self.set_fill_color(color);
+                match element.fill_rule {
+                    FillRule::NonZero => self.raw("f\n"),
+                    FillRule::EvenOdd => self.raw("f*\n"),
+                }
+            }
+            self.raw("Q\n");
+        }
+        if let Some(stroke) = &element.stroke
+            && let Some(color) = solid_paint(&stroke.paint)
+        {
+            self.raw("q\n");
+            self.apply_alpha(opacity * paint_alpha(&stroke.paint));
+            self.path(&element.path);
+            self.set_stroke_color(color);
+            self.set_stroke_style(&stroke.style);
+            self.raw("S\nQ\n");
+        }
+    }
+
+    fn text_element(&mut self, element: &TextElement, opacity: f32) {
         if element.stroke.is_none()
             && let Some(resource) = self.fonts.get(&element.font.id())
             && resource.embedded
             && let Some(color) = element.fill.as_ref().and_then(solid_paint)
         {
-            self.embedded_text(element, resource, color);
+            self.embedded_text(element, resource, color, opacity * color.a);
             return;
         }
-        self.outline_text(element);
+        self.outline_text(element, opacity);
     }
 
-    fn embedded_text(&mut self, element: &TextElement, resource: &FontResource, color: Rgba) {
+    fn embedded_text(
+        &mut self,
+        element: &TextElement,
+        resource: &FontResource,
+        color: Rgba,
+        alpha: f32,
+    ) {
+        self.raw("q\n");
+        self.apply_alpha(alpha);
         self.set_fill_color(color);
         self.raw("BT\n");
         self.raw(&format!("/{} {} Tf\n", resource.name, number(element.size)));
@@ -603,10 +657,10 @@ impl<'a> ContentBuilder<'a> {
             ));
             self.raw(&format!("<{glyph_id:04X}> Tj\n"));
         }
-        self.raw("ET\n");
+        self.raw("ET\nQ\n");
     }
 
-    fn outline_text(&mut self, element: &TextElement) {
+    fn outline_text(&mut self, element: &TextElement, opacity: f32) {
         let Ok(face) = ttf_parser::Face::parse(element.font.data(), element.font.face_index())
         else {
             return;
@@ -640,6 +694,7 @@ impl<'a> ContentBuilder<'a> {
                 .then(Matrix::translate(f64::from(glyph.x), f64::from(glyph.y)))
                 .then(element.transform);
             self.raw("q\n");
+            self.apply_alpha(opacity * color.a);
             self.matrix(transform);
             self.path(&builder.path);
             self.raw("f\nQ\n");
@@ -652,11 +707,12 @@ impl<'a> ContentBuilder<'a> {
             .map(|resource| resource.name.clone())
     }
 
-    fn image_element(&mut self, element: &ImageElement) {
+    fn image_element(&mut self, element: &ImageElement, opacity: f32) {
         let Some(resource) = self.images.get(&element.image.id()) else {
             return;
         };
         self.raw("q\n");
+        self.apply_alpha(opacity * element.alpha);
         let flip = Matrix::scale(1.0, -1.0).then(Matrix::translate(0.0, 1.0));
         let transform = flip
             .then(Matrix::scale(
@@ -869,6 +925,23 @@ fn solid_paint(paint: &Paint) -> Option<Rgba> {
     }
 }
 
+fn paint_alpha(paint: &Paint) -> f32 {
+    match paint {
+        Paint::Solid(color) => color.a,
+        _ => 1.0,
+    }
+}
+
+fn alpha_byte(value: f32) -> u8 {
+    (value.clamp(0.0, 1.0) * 255.0).round() as u8
+}
+
+fn insert_alpha(alphas: &mut HashSet<u8>, value: f32) {
+    let alpha = alpha_byte(value);
+    if alpha < 255 {
+        alphas.insert(alpha);
+    }
+}
 struct PdfWriter {
     version: PdfVersion,
     objects: Vec<Vec<u8>>,
@@ -1147,6 +1220,35 @@ mod tests {
         assert!(text.contains(" Tj\n"));
     }
 
+    #[test]
+    fn writes_group_opacity() {
+        let mut path = Path::new();
+        path.move_to(Point::new(10.0, 10.0));
+        path.line_to(Point::new(90.0, 10.0));
+        path.line_to(Point::new(90.0, 90.0));
+        path.close();
+        let mut inner = Group::new(Matrix::IDENTITY);
+        inner.opacity = 0.5;
+        inner.children.push(Element::Path(PathElement {
+            path: std::sync::Arc::new(path),
+            fill: Some(Paint::Solid(Rgba::new(1.0, 0.0, 0.0, 1.0))),
+            stroke: None,
+            fill_rule: FillRule::NonZero,
+        }));
+        let mut root = Group::default();
+        root.children.push(Element::Group(inner));
+        let scene = Scene {
+            size: Size::new(100.0, 100.0),
+            root,
+            diagnostics: Vec::new(),
+        };
+        let mut document = PdfDocument::new(PdfOptions::default());
+        document.add_page(&scene).expect("page");
+        let pdf = document.finish().expect("pdf");
+        let text = String::from_utf8_lossy(&pdf);
+        assert!(text.contains("/ExtGState"));
+        assert!(text.contains(" gs\n"));
+    }
     #[test]
     fn backend_writes_single_page() {
         let pdf = PdfBackend::new().render(&scene()).expect("pdf");
