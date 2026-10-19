@@ -172,6 +172,7 @@ fn build_scene(
         diagnostics: Vec::new(),
         depth: 0,
         composites: HashSet::new(),
+        layer_draw_param: None,
     };
     let mut children = Vec::new();
     if page_content.area().is_none()
@@ -202,9 +203,12 @@ fn build_scene(
     );
     if let Some(content) = page_content.content() {
         for layer in content.layers() {
+            let previous = builder.layer_draw_param.clone();
+            builder.layer_draw_param = layer.draw_param().map(str::to_owned);
             for object in layer.objects() {
                 builder.render_object(&object, &mut children);
             }
+            builder.layer_draw_param = previous;
         }
     }
     builder.render_templates(
@@ -268,13 +272,17 @@ struct ColorSpaceResource {
     palette: Vec<String>,
 }
 
+#[derive(Clone, Default)]
 struct DrawParamResource {
+    relative: Option<String>,
     line_width: Option<f64>,
     join: Option<LineJoin>,
     cap: Option<LineCap>,
-    dash_offset: f64,
-    dash: Vec<f64>,
+    dash_offset: Option<f64>,
+    dash: Option<Vec<f64>>,
     miter_limit: Option<f64>,
+    fill_color: Option<ColorView>,
+    stroke_color: Option<ColorView>,
 }
 
 impl ResourceSet {
@@ -384,14 +392,38 @@ impl ResourceSet {
     }
 }
 
+fn apply_draw_param(style: &mut StrokeStyle, param: &DrawParamResource) {
+    if let Some(width) = param.line_width {
+        style.width = width;
+    }
+    if let Some(join) = param.join {
+        style.join = join;
+    }
+    if let Some(cap) = param.cap {
+        style.cap = cap;
+    }
+    if let Some(offset) = param.dash_offset {
+        style.dash_offset = offset;
+    }
+    if let Some(dash) = &param.dash {
+        style.dash = dash.clone();
+    }
+    if let Some(miter) = param.miter_limit {
+        style.miter_limit = miter;
+    }
+}
+
 fn draw_param(param: &DrawParamView) -> DrawParamResource {
     DrawParamResource {
+        relative: param.relative().map(str::to_owned),
         line_width: param.line_width(),
         join: param.join().and_then(parse_join),
         cap: param.cap().and_then(parse_cap),
-        dash_offset: param.dash_offset().unwrap_or(0.0),
-        dash: param.dash_pattern().map(parse_floats).unwrap_or_default(),
+        dash_offset: param.dash_offset(),
+        dash: param.dash_pattern().map(parse_floats),
         miter_limit: param.miter_limit(),
+        fill_color: param.fill_color(),
+        stroke_color: param.stroke_color(),
     }
 }
 
@@ -407,6 +439,7 @@ struct Builder<'a> {
     diagnostics: Vec<crate::scene::RenderDiagnostic>,
     depth: usize,
     composites: HashSet<String>,
+    layer_draw_param: Option<String>,
 }
 
 impl Builder<'_> {
@@ -576,7 +609,7 @@ impl Builder<'_> {
         };
         let fill = parse_bool(object.attribute("Fill")).unwrap_or(false);
         let stroke = parse_bool(object.attribute("Stroke")).unwrap_or(true);
-        let fill_color = if fill { object.fill_color() } else { None };
+        let fill_color = if fill { self.fill_color(object) } else { None };
         let pattern = fill_color
             .as_ref()
             .filter(|color| color.kind() == ofdbox_core::ColorKind::Pattern);
@@ -594,8 +627,8 @@ impl Builder<'_> {
             None
         };
         let stroke_paint = if stroke {
-            let paint = object
-                .stroke_color()
+            let paint = self
+                .stroke_color(object)
                 .and_then(|color| self.paint(&color, object.id()))
                 .or(Some(Paint::Solid(Rgba::BLACK)));
             paint.map(|paint| StrokePaint {
@@ -1008,16 +1041,14 @@ impl Builder<'_> {
         let fill = parse_bool(object.attribute("Fill")).unwrap_or(true);
         let stroke = parse_bool(object.attribute("Stroke")).unwrap_or(false);
         let fill_paint = if fill {
-            object
-                .fill_color()
+            self.fill_color(object)
                 .map(|color| self.paint(&color, object.id()))
                 .unwrap_or(Some(Paint::Solid(Rgba::BLACK)))
         } else {
             None
         };
         let stroke_paint = if stroke {
-            object
-                .stroke_color()
+            self.stroke_color(object)
                 .and_then(|color| self.paint(&color, object.id()))
                 .map(|paint| StrokePaint {
                     paint,
@@ -1359,9 +1390,12 @@ impl Builder<'_> {
         self.render_templates(&references, TemplateOrder::Body, output, visited);
         if let Some(content) = template.content.content() {
             for layer in content.layers() {
+                let previous = self.layer_draw_param.clone();
+                self.layer_draw_param = layer.draw_param().map(str::to_owned);
                 for object in layer.objects() {
                     self.render_object(&object, output);
                 }
+                self.layer_draw_param = previous;
             }
         }
         self.render_templates(&references, TemplateOrder::Foreground, output, visited);
@@ -1397,18 +1431,98 @@ impl Builder<'_> {
         asset
     }
 
-    fn stroke_style(&mut self, object: &GraphicObjectView) -> StrokeStyle {
-        let param = object
+    fn resolved_draw_param(&self, id: &str) -> Option<DrawParamResource> {
+        let mut chain = Vec::new();
+        let mut current = Some(id.to_owned());
+        let mut seen = HashSet::new();
+        while let Some(id) = current {
+            if !seen.insert(id.clone()) {
+                break;
+            }
+            let Some(resource) = self.resources.draw_params.get(&id) else {
+                break;
+            };
+            current = resource.relative.clone();
+            chain.push(resource.clone());
+        }
+        if chain.is_empty() {
+            return None;
+        }
+        let mut merged = DrawParamResource::default();
+        for resource in chain.iter().rev() {
+            if resource.line_width.is_some() {
+                merged.line_width = resource.line_width;
+            }
+            if resource.join.is_some() {
+                merged.join = resource.join;
+            }
+            if resource.cap.is_some() {
+                merged.cap = resource.cap;
+            }
+            if resource.dash_offset.is_some() {
+                merged.dash_offset = resource.dash_offset;
+            }
+            if resource.dash.is_some() {
+                merged.dash = resource.dash.clone();
+            }
+            if resource.miter_limit.is_some() {
+                merged.miter_limit = resource.miter_limit;
+            }
+            if resource.fill_color.is_some() {
+                merged.fill_color = resource.fill_color.clone();
+            }
+            if resource.stroke_color.is_some() {
+                merged.stroke_color = resource.stroke_color.clone();
+            }
+        }
+        Some(merged)
+    }
+
+    fn object_draw_param(&self, object: &GraphicObjectView) -> Option<DrawParamResource> {
+        object
             .attribute("DrawParam")
-            .and_then(|id| self.resources.draw_params.get(id));
+            .and_then(|id| self.resolved_draw_param(id))
+    }
+
+    fn layer_draw_param_resource(&self) -> Option<DrawParamResource> {
+        self.layer_draw_param
+            .as_deref()
+            .and_then(|id| self.resolved_draw_param(id))
+    }
+
+    fn fill_color(&self, object: &GraphicObjectView) -> Option<ColorView> {
+        object
+            .fill_color()
+            .or_else(|| {
+                self.object_draw_param(object)
+                    .and_then(|param| param.fill_color)
+            })
+            .or_else(|| {
+                self.layer_draw_param_resource()
+                    .and_then(|param| param.fill_color)
+            })
+    }
+
+    fn stroke_color(&self, object: &GraphicObjectView) -> Option<ColorView> {
+        object
+            .stroke_color()
+            .or_else(|| {
+                self.object_draw_param(object)
+                    .and_then(|param| param.stroke_color)
+            })
+            .or_else(|| {
+                self.layer_draw_param_resource()
+                    .and_then(|param| param.stroke_color)
+            })
+    }
+
+    fn stroke_style(&mut self, object: &GraphicObjectView) -> StrokeStyle {
         let mut style = StrokeStyle::default();
-        if let Some(param) = param {
-            style.width = param.line_width.unwrap_or(style.width);
-            style.join = param.join.unwrap_or(style.join);
-            style.cap = param.cap.unwrap_or(style.cap);
-            style.dash_offset = param.dash_offset;
-            style.dash = param.dash.clone();
-            style.miter_limit = param.miter_limit.unwrap_or(style.miter_limit);
+        if let Some(param) = self.layer_draw_param_resource() {
+            apply_draw_param(&mut style, &param);
+        }
+        if let Some(param) = self.object_draw_param(object) {
+            apply_draw_param(&mut style, &param);
         }
         if let Some(width) = object
             .attribute("LineWidth")

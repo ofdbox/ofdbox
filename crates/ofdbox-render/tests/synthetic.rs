@@ -3,9 +3,9 @@ use std::sync::{Arc, Mutex};
 
 use ofdbox_core::{OfdPackage, ReadOptions};
 use ofdbox_render::{
-    Backend, BackendFrame, Element, Group, Matrix, OfdFrontend, PdfBackend, PdfFrontend, Point,
-    PoolBudget, RasterTarget, RenderOptions, ResourcePool, Scene, Size, VelloCpuBackend,
-    WgpuBackend,
+    Backend, BackendFrame, Element, Group, Matrix, OfdFrontend, Paint, PdfBackend, PdfFrontend,
+    Point, PoolBudget, RasterTarget, RenderOptions, ResourcePool, Rgba, Scene, Size,
+    VelloCpuBackend, WgpuBackend,
 };
 use zip::ZipWriter;
 use zip::write::SimpleFileOptions;
@@ -629,6 +629,84 @@ fn radial_content(eccentricity: &str) -> String {
   </ofd:Layer></ofd:Content>
 </ofd:Page>"#
     )
+}
+
+type PathStyle = (Option<Rgba>, Option<f64>);
+
+fn collect_path_styles(scene: &Scene) -> Vec<PathStyle> {
+    fn walk(group: &Group, output: &mut Vec<PathStyle>) {
+        for element in &group.children {
+            match element {
+                Element::Group(group) => walk(group, output),
+                Element::Path(path) => {
+                    let fill = match &path.fill {
+                        Some(Paint::Solid(color)) => Some(*color),
+                        _ => None,
+                    };
+                    output.push((fill, path.stroke.as_ref().map(|stroke| stroke.style.width)));
+                }
+                _ => {}
+            }
+        }
+    }
+    let mut output = Vec::new();
+    walk(&scene.root, &mut output);
+    output
+}
+
+#[test]
+fn inherits_draw_param_and_layer_param() {
+    const RES: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<ofd:Res xmlns:ofd="http://www.ofdspec.org/2016">
+  <ofd:ColorSpaces><ofd:ColorSpace ID="1" Type="RGB"/></ofd:ColorSpaces>
+  <ofd:DrawParams>
+    <ofd:DrawParam ID="1" LineWidth="2">
+      <ofd:FillColor Value="0 255 0"/>
+      <ofd:StrokeColor Value="255 0 0"/>
+    </ofd:DrawParam>
+    <ofd:DrawParam ID="2" Relative="1" LineWidth="0.5"/>
+    <ofd:DrawParam ID="3" Relative="1">
+      <ofd:FillColor Value="0 0 255"/>
+    </ofd:DrawParam>
+  </ofd:DrawParams>
+</ofd:Res>"#;
+    const CONTENT: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<ofd:Page xmlns:ofd="http://www.ofdspec.org/2016">
+  <ofd:Area><ofd:PhysicalBox>0 0 100 80</ofd:PhysicalBox></ofd:Area>
+  <ofd:Content>
+    <ofd:Layer ID="1" DrawParam="2">
+      <ofd:PathObject ID="p1" Boundary="0 0 100 40" Fill="true" Stroke="true">
+        <ofd:AbbreviatedData>M 0 0 L 100 0 L 100 40 L 0 40 C</ofd:AbbreviatedData>
+      </ofd:PathObject>
+      <ofd:PathObject ID="p2" Boundary="0 40 100 40" Fill="true" Stroke="false" DrawParam="3">
+        <ofd:AbbreviatedData>M 0 40 L 100 40 L 100 80 L 0 80 C</ofd:AbbreviatedData>
+      </ofd:PathObject>
+    </ofd:Layer>
+  </ofd:Content>
+</ofd:Page>"#;
+    let bytes = zip(&[
+        ("OFD.xml", OFD_XML.as_bytes()),
+        ("Doc_0/Document.xml", DOCUMENT_XML.as_bytes()),
+        ("Doc_0/PublicRes.xml", RES.as_bytes()),
+        ("Doc_0/Pages/Page_0/Content.xml", CONTENT.as_bytes()),
+    ]);
+    let mut package = open(bytes);
+    let document = package.parse_document().expect("document");
+    let page = document
+        .pages()
+        .expect("pages")
+        .pages()
+        .next()
+        .expect("page");
+    let pool = ResourcePool::new(PoolBudget::default());
+    let scene = OfdFrontend::new(&mut package, &pool, RenderOptions::default())
+        .build_page(&page)
+        .expect("scene");
+    let styles = collect_path_styles(&scene);
+    assert_eq!(styles.len(), 2);
+    assert_eq!(styles[0].0, Some(Rgba::new(0.0, 1.0, 0.0, 1.0)));
+    assert!((styles[0].1.unwrap() - 0.5).abs() < 1e-9);
+    assert_eq!(styles[1].0, Some(Rgba::new(0.0, 0.0, 1.0, 1.0)));
 }
 
 #[test]
