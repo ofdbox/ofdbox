@@ -1633,24 +1633,32 @@ fn decode_text(text: &str) -> Vec<char> {
     let mut output = Vec::new();
     let mut chars = text.chars().peekable();
     while let Some(character) = chars.next() {
-        if character == '\\' {
-            let mut hex = String::new();
-            for _ in 0..4 {
-                if let Some(next) = chars.next()
-                    && next.is_ascii_hexdigit()
-                {
-                    hex.push(next);
+        if character != '\\' {
+            output.push(character);
+            continue;
+        }
+        // 只有完整的 `\XXXX` 才消费后续字符，否则保留反斜杠本身。
+        let mut lookahead = chars.clone();
+        let mut hex = String::with_capacity(4);
+        for _ in 0..4 {
+            match lookahead.next() {
+                Some(next) if next.is_ascii_hexdigit() => hex.push(next),
+                _ => {
+                    hex.clear();
+                    break;
                 }
             }
-            if let Ok(value) = u32::from_str_radix(&hex, 16)
-                && let Some(character) = char::from_u32(value)
-            {
-                output.push(character);
-                continue;
+        }
+        if hex.len() == 4
+            && let Ok(value) = u32::from_str_radix(&hex, 16)
+            && let Some(decoded) = char::from_u32(value)
+        {
+            for _ in 0..4 {
+                chars.next();
             }
-            output.push('\\');
+            output.push(decoded);
         } else {
-            output.push(character);
+            output.push('\\');
         }
     }
     output
@@ -2383,6 +2391,16 @@ mod tests {
             Some(25.0),
         );
         assert_eq!(end, Point::new(0.0, 100.0));
+    }
+
+    #[test]
+    fn decodes_text_escapes() {
+        use super::decode_text;
+
+        assert_eq!(decode_text("A\\0042C"), vec!['A', 'B', 'C']);
+        assert_eq!(decode_text("\\0020"), vec![' ']);
+        assert_eq!(decode_text("\\00ZZ"), vec!['\\', '0', '0', 'Z', 'Z']);
+        assert_eq!(decode_text("\\zzzz"), vec!['\\', 'z', 'z', 'z', 'z']);
     }
 
     #[test]
