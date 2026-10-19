@@ -898,6 +898,32 @@ fn empty_fill_color_defaults_to_black() {
 }
 
 #[test]
+fn clips_are_in_object_space_before_ctm() {
+    const CONTENT: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<ofd:Page xmlns:ofd="http://www.ofdspec.org/2016">
+  <ofd:Area><ofd:PhysicalBox>0 0 100 100</ofd:PhysicalBox></ofd:Area>
+  <ofd:Content><ofd:Layer ID="1">
+    <ofd:PathObject ID="p1" Boundary="0 0 20 20" CTM="2 0 0 2 0 0" Fill="true" Stroke="false">
+      <ofd:Clips>
+        <ofd:Clip>
+          <ofd:Area>
+            <ofd:Path Boundary="0 0 5 5" Fill="true">
+              <ofd:AbbreviatedData>M 0 0 L 5 0 L 5 5 L 0 5 C</ofd:AbbreviatedData>
+            </ofd:Path>
+          </ofd:Area>
+        </ofd:Clip>
+      </ofd:Clips>
+      <ofd:FillColor Value="255 0 0"/>
+      <ofd:AbbreviatedData>M 0 0 L 10 0 L 10 10 L 0 10 C</ofd:AbbreviatedData>
+    </ofd:PathObject>
+  </ofd:Layer></ofd:Content>
+</ofd:Page>"#;
+    let target = render_content(CONTENT);
+    assert_eq!(pixel(&target, 2, 2), [255, 0, 0, 255]);
+    assert_eq!(pixel(&target, 15, 15), [255, 255, 255, 255]);
+}
+
+#[test]
 fn clip_areas_are_united() {
     const CONTENT: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
 <ofd:Page xmlns:ofd="http://www.ofdspec.org/2016">

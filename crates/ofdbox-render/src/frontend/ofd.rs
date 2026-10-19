@@ -516,22 +516,23 @@ impl Builder<'_> {
             return;
         }
 
-        // 对象裁剪在对象空间，由内向外嵌套。
-        let mut inner = elements;
+        // 裁剪区位于对象空间（Boundary 局部坐标），不能被对象 CTM 缩放；
+        // 先做对象空间裁剪，再对内容应用 CTM。
+        let mut content = Group::new(ctm);
+        content.children = elements;
+        let mut clipped = vec![Element::Group(content)];
         for path in self.object_clips(object) {
-            inner = vec![Element::Group(clip_group(path, Matrix::IDENTITY, inner))];
+            clipped = vec![Element::Group(clip_group(path, Matrix::IDENTITY, clipped))];
         }
-        // 真实文件把对象内容放在 Boundary 的局部坐标中：先应用 CTM，
-        // 再用 Boundary 左上角在父空间定位；Boundary 同时负责裁剪。
-        let object_transform = ctm.then(Matrix::translate(boundary.x, boundary.y));
-        let mut object_group = Group::new(object_transform);
+        // Boundary 左上角把对象空间映射到父空间。
+        let mut object_group = Group::new(Matrix::translate(boundary.x, boundary.y));
         if let Some(alpha) = object
             .attribute("Alpha")
             .and_then(|value| value.parse::<i32>().ok())
         {
             object_group.opacity = (alpha.clamp(0, 255) as f32) / 255.0;
         }
-        object_group.children = inner;
+        object_group.children = clipped;
 
         // Boundary 是父空间中的外接矩形，超出部分裁剪。
         let mut wrapper = Group::new(Matrix::IDENTITY);
