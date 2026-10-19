@@ -168,7 +168,7 @@ impl Default for StrokeStyle {
             width: 0.353,
             cap: LineCap::Butt,
             join: LineJoin::Miter,
-            miter_limit: 10.0,
+            miter_limit: 4.234,
             dash: Vec::new(),
             dash_offset: 0.0,
         }
