@@ -99,8 +99,8 @@ pub fn decode_image(
     max_pixels: u64,
 ) -> Result<DecodedImage, RenderError> {
     let image = match format {
-        ImageFormat::Png => decode_png(data)?,
-        ImageFormat::Jpeg => decode_jpeg(data)?,
+        ImageFormat::Png => decode_png(data, max_pixels)?,
+        ImageFormat::Jpeg => decode_jpeg(data, max_pixels)?,
         ImageFormat::Bmp => decode_bmp(data)?,
         ImageFormat::Jbig2 => decode_jbig2(data)?,
         ImageFormat::Other(format) => {
@@ -114,12 +114,17 @@ pub fn decode_image(
     Ok(image)
 }
 
-fn decode_png(data: &[u8]) -> Result<DecodedImage, RenderError> {
+fn decode_png(data: &[u8], max_pixels: u64) -> Result<DecodedImage, RenderError> {
     let mut decoder = png::Decoder::new(Cursor::new(data));
     decoder.set_transformations(png::Transformations::normalize_to_color8());
     let mut reader = decoder
         .read_info()
         .map_err(|error| RenderError::Image(error.to_string()))?;
+    let header = reader.info();
+    let pixels = u64::from(header.width) * u64::from(header.height);
+    if pixels > max_pixels {
+        return Err(RenderError::Image("图片像素数超出限制".to_owned()));
+    }
     let size = reader
         .output_buffer_size()
         .ok_or_else(|| RenderError::Image("PNG 输出尺寸未知".to_owned()))?;
@@ -159,8 +164,18 @@ fn decode_png(data: &[u8]) -> Result<DecodedImage, RenderError> {
     })
 }
 
-fn decode_jpeg(data: &[u8]) -> Result<DecodedImage, RenderError> {
+fn decode_jpeg(data: &[u8], max_pixels: u64) -> Result<DecodedImage, RenderError> {
     let mut decoder = jpeg_decoder::Decoder::new(Cursor::new(data));
+    decoder
+        .read_info()
+        .map_err(|error| RenderError::Image(error.to_string()))?;
+    let header = decoder
+        .info()
+        .ok_or_else(|| RenderError::Image("缺少 JPEG 图像信息".to_owned()))?;
+    let pixel_count = u64::from(header.width) * u64::from(header.height);
+    if pixel_count > max_pixels {
+        return Err(RenderError::Image("图片像素数超出限制".to_owned()));
+    }
     let pixels = decoder
         .decode()
         .map_err(|error| RenderError::Image(error.to_string()))?;
