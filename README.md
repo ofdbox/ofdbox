@@ -100,6 +100,24 @@ ofdbox = { path = "...", default-features = false, features = ["crypto"] }
 | wasm32-unknown-unknown | 库编译通过 | `ofdbox-render` 库；CLI 不适合浏览器 |
 
 HarmonyOS 字体查找已加入 `/system/fonts` 和 `/system/fonts/zh_CN`，并优先尝试 HarmonyOS Sans / Noto CJK。
+## 安装
+
+当前版本：`0.0.1`（alpha）。发布页提供 Windows、Linux、macOS 的 CLI 压缩包：
+
+```text
+ofdbox-0.0.1-alpha.1-x86_64-pc-windows-msvc.zip
+ofdbox-0.0.1-alpha.1-x86_64-unknown-linux-gnu.tar.gz
+ofdbox-0.0.1-alpha.1-x86_64-unknown-linux-musl.tar.gz
+ofdbox-0.0.1-alpha.1-aarch64-apple-darwin.tar.gz
+ofdbox-0.0.1-alpha.1-x86_64-apple-darwin.tar.gz
+```
+
+也可以从源码安装：
+
+```bash
+cargo install ofdbox-cli --version 0.0.1
+```
+
 ## CLI 使用
 
 ```bash
@@ -176,6 +194,7 @@ MIT OR Apache-2.0，二选一。
 
 - [LICENSE-MIT](LICENSE-MIT)
 - [LICENSE-APACHE](LICENSE-APACHE)
+
 
 
 

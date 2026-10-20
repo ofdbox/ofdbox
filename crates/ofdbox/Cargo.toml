@@ -25,9 +25,10 @@ seal = ["dep:ofdbox-seal"]
 full = ["render", "crypto", "seal"]
 
 [dependencies]
-ofdbox-core = { path = "../ofdbox-core" }
-ofdbox-render = { path = "../ofdbox-render", optional = true, default-features = false }
-ofdbox-crypto = { path = "../ofdbox-crypto", optional = true }
-ofdbox-seal = { path = "../ofdbox-seal", optional = true }
+ofdbox-core = { path = "../ofdbox-core", version = "0.0.1" }
+ofdbox-render = { path = "../ofdbox-render", version = "0.0.1", optional = true, default-features = false }
+ofdbox-crypto = { path = "../ofdbox-crypto", version = "0.0.1", optional = true }
+ofdbox-seal = { path = "../ofdbox-seal", version = "0.0.1", optional = true }
 thiserror.workspace = true
+
 

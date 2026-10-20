@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --workspace --locked
+
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+
+  features:
+    name: feature matrix
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo check -p ofdbox-render --no-default-features
+      - run: cargo check -p ofdbox-render --no-default-features --features ofd
+      - run: cargo check -p ofdbox-render --no-default-features --features pdf
+      - run: cargo check -p ofdbox-render --no-default-features --features ofd,image-ccitt
+      - run: cargo check -p ofdbox-render --no-default-features --features pdf,image-ccitt,cpu
+      - run: cargo check -p ofdbox --no-default-features --features pdf
+      - run: cargo check -p ofdbox --no-default-features --features ofd,cpu,image
+      - run: cargo check -p ofdbox-render --target wasm32-unknown-unknown
+      - run: cargo check -p ofdbox-render --target wasm32-unknown-unknown --no-default-features --features ofd

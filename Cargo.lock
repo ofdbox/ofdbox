@@ -968,7 +968,7 @@ dependencies = [
 
 [[package]]
 name = "ofdbox"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "ofdbox-core",
  "ofdbox-crypto",
@@ -979,7 +979,7 @@ dependencies = [
 
 [[package]]
 name = "ofdbox-cli"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -990,7 +990,7 @@ dependencies = [
 
 [[package]]
 name = "ofdbox-core"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "base64",
  "dotenvy",
@@ -1003,7 +1003,7 @@ dependencies = [
 
 [[package]]
 name = "ofdbox-crypto"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "base64",
  "cbc",
@@ -1023,7 +1023,7 @@ dependencies = [
 
 [[package]]
 name = "ofdbox-render"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "bmp",
  "dotenvy",
@@ -1046,7 +1046,7 @@ dependencies = [
 
 [[package]]
 name = "ofdbox-seal"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "dotenvy",
  "ofdbox-core",
