@@ -1,0 +1,22 @@
+﻿[package]
+name = "ofdbox"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "OFDBox facade for OFD/PDF rendering, conversion, crypto and seals."
+publish = false
+
+[features]
+default = ["render", "crypto", "seal"]
+render = ["dep:ofdbox-render"]
+crypto = ["dep:ofdbox-crypto"]
+seal = ["dep:ofdbox-seal"]
+full = ["render", "crypto", "seal"]
+
+[dependencies]
+ofdbox-core = { path = "../ofdbox-core" }
+ofdbox-render = { path = "../ofdbox-render", optional = true }
+ofdbox-crypto = { path = "../ofdbox-crypto", optional = true }
+ofdbox-seal = { path = "../ofdbox-seal", optional = true }
+thiserror.workspace = true

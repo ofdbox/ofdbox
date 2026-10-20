@@ -967,6 +967,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "ofdbox"
+version = "0.1.0"
+dependencies = [
+ "ofdbox-core",
+ "ofdbox-crypto",
+ "ofdbox-render",
+ "ofdbox-seal",
+ "thiserror",
+]
+
+[[package]]
 name = "ofdbox-cli"
 version = "0.1.0"
 dependencies = [

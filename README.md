@@ -24,10 +24,18 @@ OFDBox 是一个 Rust 实现的 OFD 文档工具箱，覆盖结构读写、加�
 | `ofdbox-crypto` | 已实现 | SM3-KDF、SM4-CBC、SM2 加解密/签名、证书链、SignedData |
 | `ofdbox-seal` | 已实现 | 印章结构识别、图片提取、印章验签 |
 | `ofdbox-render` | 已实现 | OFD/PDF 前端 → Scene IR → vello_cpu/PDF/OFD 后端；单文档转换 |
+| `ofdbox` | 已实现 | 对外门面：常用类型、统一错误、feature 转发 |
 | `ofdbox-cli` | 已实现 | 批量转换、目录遍历、页码/DPI/报告、性能汇总 |
 | `ofdbox-generate` | 规划 | 结构化内容 → 排版 → OFD/PDF |
 
-`ofdbox-render` 同时承担现有格式转换，不额外增加包装层。
+`ofdbox` 是对外门面；`ofdbox-render` 同时承担现有格式转换，不额外增加批处理包装层。
+
+```rust
+use ofdbox::prelude::*;
+
+let mut package = OfdPackage::open("sample.ofd")?;
+let document = package.parse_document()?;
+```
 
 ## ofdbox-render
 
@@ -146,6 +154,7 @@ MIT OR Apache-2.0，二选一。
 
 - [LICENSE-MIT](LICENSE-MIT)
 - [LICENSE-APACHE](LICENSE-APACHE)
+
 
 
 
