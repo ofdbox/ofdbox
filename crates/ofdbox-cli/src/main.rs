@@ -115,9 +115,9 @@ fn run() -> Result<()> {
     let mut files = Vec::new();
     for input in &args.inputs {
         if input.is_file() {
-            files.push(input.clone());
+            files.push((input.clone(), PathBuf::new()));
         } else if input.is_dir() {
-            collect_files(input, args.from, args.no_recursive, &mut files);
+            collect_files(input, input, args.from, args.no_recursive, &mut files);
         } else {
             anyhow::bail!("输入不存在: {}", input.display());
         }
@@ -137,7 +137,9 @@ fn run() -> Result<()> {
         diagnostics: BTreeMap::new(),
     };
     let mut used = HashSet::new();
-    for file in &files {
+    let started = std::time::Instant::now();
+    for (file, relative) in &files {
+        let file_started = std::time::Instant::now();
         let format = match args.from {
             Some(format) => format,
             None => match extension(file).as_str() {
@@ -158,6 +160,7 @@ fn run() -> Result<()> {
             format,
             args.to,
             &args.output,
+            relative,
             &stem,
             &pages,
             args.dpi,
@@ -171,7 +174,12 @@ fn run() -> Result<()> {
                 stats.docs += 1;
                 stats.pages += page_count;
                 if !args.quiet {
-                    println!("{label}: {page_count} 页 -> {stem}");
+                    println!(
+                        "{label}: {page_count} 页 -> {}/{} ({:.2}s)",
+                        relative.display(),
+                        stem,
+                        file_started.elapsed().as_secs_f64()
+                    );
                 }
             }
             Err(error) => {
@@ -183,12 +191,15 @@ fn run() -> Result<()> {
             }
         }
     }
+    let elapsed = started.elapsed().as_secs_f64();
     let summary = format!(
-        "完成: 文档={} 页={} 失败={} 跳过={}",
+        "完成: 文档={} 页={} 失败={} 跳过={} 耗时={elapsed:.2}s 文档/s={:.2} 页/s={:.2}",
         stats.docs,
         stats.pages,
         stats.failed,
-        stats.skipped.len()
+        stats.skipped.len(),
+        stats.docs as f64 / elapsed.max(0.001),
+        stats.pages as f64 / elapsed.max(0.001)
     );
     eprintln!("{summary}");
     if !stats.diagnostics.is_empty() {
@@ -203,12 +214,21 @@ fn run() -> Result<()> {
         );
     }
     if let Some(report) = args.report {
-        let mut text = format!("{summary}\n");
+        let mut text = format!(
+            "{summary}
+"
+        );
         for (code, count) in &stats.diagnostics {
-            text.push_str(&format!("{code}: {count}\n"));
+            text.push_str(&format!(
+                "{code}: {count}
+"
+            ));
         }
         for item in &stats.skipped {
-            text.push_str(&format!("FAILED {item}\n"));
+            text.push_str(&format!(
+                "FAILED {item}
+"
+            ));
         }
         fs::write(&report, text).with_context(|| format!("无法写报告 {}", report.display()))?;
     }
@@ -224,6 +244,7 @@ fn convert(
     from: InputFormat,
     to: OutputFormat,
     output: &Path,
+    relative: &Path,
     stem: &str,
     pages: &PageSpec,
     dpi: f64,
@@ -234,17 +255,17 @@ fn convert(
 ) -> Result<usize> {
     match (from, to) {
         (InputFormat::Ofd, OutputFormat::Pdf) => {
-            convert_ofd_pdf(file, output, stem, pages, force, pool, stats)
+            convert_ofd_pdf(file, output, relative, stem, pages, force, pool, stats)
         }
         (InputFormat::Ofd, OutputFormat::Png) => {
-            convert_ofd_png(file, output, stem, pages, dpi, force, pool, stats)
+            convert_ofd_png(file, output, relative, stem, pages, dpi, force, pool, stats)
         }
         (InputFormat::Pdf, OutputFormat::Png) => {
-            convert_pdf_png(file, output, stem, pages, dpi, force, pool, stats)
+            convert_pdf_png(file, output, relative, stem, pages, dpi, force, pool, stats)
         }
-        (InputFormat::Pdf, OutputFormat::Ofd) => {
-            convert_pdf_ofd(file, output, stem, pages, vector, force, pool, stats)
-        }
+        (InputFormat::Pdf, OutputFormat::Ofd) => convert_pdf_ofd(
+            file, output, relative, stem, pages, vector, force, pool, stats,
+        ),
         (InputFormat::Ofd, OutputFormat::Ofd) | (InputFormat::Pdf, OutputFormat::Pdf) => {
             anyhow::bail!("输入和输出格式相同")
         }
@@ -255,6 +276,7 @@ fn convert(
 fn convert_pdf_png(
     file: &Path,
     output: &Path,
+    relative: &Path,
     stem: &str,
     pages: &PageSpec,
     dpi: f64,
@@ -274,7 +296,7 @@ fn convert_pdf_png(
     for index in &selected {
         let scene = frontend.build_page(*index, pool)?;
         record_diagnostics(stats, &scene);
-        let target = png_path(output, stem, index + 1, selected.len() > 1, force);
+        let target = png_path(output, relative, stem, index + 1, selected.len() > 1, force);
         render_png(&mut renderer, &scene, &target, dpi)?;
     }
     Ok(selected.len())
@@ -284,6 +306,7 @@ fn convert_pdf_png(
 fn convert_pdf_ofd(
     file: &Path,
     output: &Path,
+    relative: &Path,
     stem: &str,
     pages: &PageSpec,
     vector: bool,
@@ -311,7 +334,7 @@ fn convert_pdf_ofd(
         }
     }
     let bytes = OfdBackend::new().render_pages(&scenes)?;
-    let path = target_path(output, stem, "ofd", force);
+    let path = target_path(output, relative, stem, "ofd", force);
     fs::write(&path, bytes).with_context(|| format!("无法写 {}", path.display()))?;
     Ok(scenes.len())
 }
@@ -320,6 +343,7 @@ fn convert_pdf_ofd(
 fn convert_ofd_png(
     file: &Path,
     output: &Path,
+    relative: &Path,
     stem: &str,
     pages: &PageSpec,
     dpi: f64,
@@ -356,15 +380,17 @@ fn convert_ofd_png(
         };
         let scene = frontend.build_page(&page)?;
         record_diagnostics(stats, &scene);
-        let target = png_path(output, stem, index + 1, selected.len() > 1, force);
+        let target = png_path(output, relative, stem, index + 1, selected.len() > 1, force);
         render_png(&mut renderer, &scene, &target, dpi)?;
     }
     Ok(selected.len())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn convert_ofd_pdf(
     file: &Path,
     output: &Path,
+    relative: &Path,
     stem: &str,
     pages: &PageSpec,
     force: bool,
@@ -404,7 +430,7 @@ fn convert_ofd_pdf(
         anyhow::bail!("没有可输出的页面");
     }
     let bytes = pdf.finish()?;
-    let path = target_path(output, stem, "pdf", force);
+    let path = target_path(output, relative, stem, "pdf", force);
     fs::write(&path, bytes).with_context(|| format!("无法写 {}", path.display()))?;
     Ok(output_pages)
 }
@@ -471,13 +497,20 @@ fn record_diagnostics(stats: &mut Stats, scene: &Scene) {
     }
 }
 
-fn png_path(output: &Path, stem: &str, page: usize, multi: bool, force: bool) -> PathBuf {
+fn png_path(
+    output: &Path,
+    relative: &Path,
+    stem: &str,
+    page: usize,
+    multi: bool,
+    force: bool,
+) -> PathBuf {
     let name = if multi {
         format!("page_{page:04}.png")
     } else {
         "page.png".to_owned()
     };
-    let dir = output.join(stem);
+    let dir = output.join(relative).join(stem);
     let _ = fs::create_dir_all(&dir);
     let path = dir.join(name);
     if force || !path.exists() {
@@ -487,8 +520,17 @@ fn png_path(output: &Path, stem: &str, page: usize, multi: bool, force: bool) ->
     }
 }
 
-fn target_path(output: &Path, stem: &str, extension: &str, force: bool) -> PathBuf {
-    let path = output.join(format!("{stem}.{extension}"));
+fn target_path(
+    output: &Path,
+    relative: &Path,
+    stem: &str,
+    extension: &str,
+    force: bool,
+) -> PathBuf {
+    let path = output.join(relative).join(format!("{stem}.{extension}"));
+    if let Some(parent) = path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
     if force || !path.exists() {
         return path;
     }
@@ -537,10 +579,11 @@ fn extension(path: &Path) -> String {
 }
 
 fn collect_files(
+    root: &Path,
     dir: &Path,
     from: Option<InputFormat>,
     no_recursive: bool,
-    output: &mut Vec<PathBuf>,
+    output: &mut Vec<(PathBuf, PathBuf)>,
 ) {
     let Ok(entries) = fs::read_dir(dir) else {
         return;
@@ -549,7 +592,7 @@ fn collect_files(
         let path = entry.path();
         if path.is_dir() {
             if !no_recursive {
-                collect_files(&path, from, no_recursive, output);
+                collect_files(root, &path, from, no_recursive, output);
             }
             continue;
         }
@@ -559,7 +602,13 @@ fn collect_files(
             None => matches!(extension(&path).as_str(), "ofd" | "pdf"),
         };
         if matches {
-            output.push(path);
+            let relative = path
+                .strip_prefix(root)
+                .ok()
+                .and_then(|value| value.parent())
+                .map(Path::to_path_buf)
+                .unwrap_or_default();
+            output.push((path, relative));
         }
     }
 }

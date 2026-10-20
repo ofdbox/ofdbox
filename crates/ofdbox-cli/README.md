@@ -18,7 +18,32 @@ cargo run -p ofdbox-cli -- convert <输入...> -t <pdf|ofd|png> -o <输出目录
 - `--force`：覆盖已存在文件；默认自动改名。
 - `--no-recursive`：目录不递归。
 - `--quiet`：只输出错误和汇总。
-- `--report <文件>`：写汇总和失败明细。
+- `--report <文件>`：写汇总、诊断和失败明细。
+
+## 输出结构
+
+输入目录会保留相对路径：
+
+```text
+输入/
+  a/ofd-files/invoice.ofd
+  b/test/1.ofd
+
+输出/
+  a/ofd-files/invoice.pdf
+  b/test/1.pdf
+```
+
+- PDF/OFD：`<输出目录>/<相对目录>/<文件名>.pdf|ofd`
+- PNG：`<输出目录>/<相对目录>/<文件名>/page_0001.png...`
+
+## 性能观测
+
+每个文件输出处理耗时；总结包含总耗时、文档/s、页/s。示例：
+
+```powershell
+ofdbox convert .\OFD文件 -t pdf -o .\pdf_export --report .\report.txt
+```
 
 ## 示例
 
@@ -33,9 +58,4 @@ ofdbox convert .\a.ofd .\b.pdf -t png -o .\png --pages 1-5 --dpi 300
 ofdbox convert .\in.pdf -t ofd -o .\out
 ```
 
-输出命名：
-
-- PDF/OFD：`<输出目录>/<文件名>.pdf|ofd`
-- PNG：`<输出目录>/<文件名>/page_0001.png...`
-
-退出码：全部失败为 1，否则为 0。失败文件不会中断其余转换。
+退出码：有失败为 1，否则为 0。失败文件不会中断其余转换。
