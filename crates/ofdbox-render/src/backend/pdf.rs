@@ -1706,6 +1706,7 @@ mod tests {
                 x: 0.0,
                 y: 10.0,
             }],
+            text: None,
             fill: Some(Paint::Solid(Rgba::BLACK)),
             stroke: None,
         }));
@@ -1747,6 +1748,7 @@ mod tests {
                 x: 0.0,
                 y: 10.0,
             }],
+            text: None,
             fill: Some(Paint::Solid(Rgba::BLACK)),
             stroke: None,
         }));

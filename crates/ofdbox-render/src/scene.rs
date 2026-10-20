@@ -93,6 +93,8 @@ pub struct TextElement {
     pub transform: Matrix,
     /// 字形及位置。
     pub glyphs: Vec<PositionedGlyph>,
+    /// 可选原文；为空时后端只能按字形轮廓输出。
+    pub text: Option<String>,
     /// 填充画笔。
     pub fill: Option<Paint>,
     /// 描边。

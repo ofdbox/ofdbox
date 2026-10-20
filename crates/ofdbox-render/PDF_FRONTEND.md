@@ -27,3 +27,4 @@ cargo test -p ofdbox-render --lib frontend::pdf
 cargo run -p ofdbox-render --release --example pdf_frontend_batch -- <PDF目录> <PNG输出目录>
 ```
 
+

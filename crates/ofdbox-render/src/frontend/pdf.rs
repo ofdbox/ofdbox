@@ -658,11 +658,20 @@ impl PdfFrontend {
             return;
         }
         let mut glyphs = Vec::new();
+        let mut text = String::new();
         let mut x = 0.0;
         if font_state.identity {
             for pair in bytes.as_chunks::<2>().0 {
                 let code = u32::from(u16::from_be_bytes(*pair));
                 let glyph = code as u16;
+                text.push(
+                    font_state
+                        .to_unicode
+                        .get(&code)
+                        .and_then(|value| char::from_u32(*value))
+                        .or_else(|| glyph_char(&face, glyph))
+                        .unwrap_or('\u{FFFD}'),
+                );
                 let advance = glyph_advance(&face, glyph, state.font_size, units);
                 glyphs.push(PositionedGlyph {
                     id: u32::from(glyph),
@@ -684,6 +693,7 @@ impl PdfFrontend {
                 let Some(glyph) = face.glyph_index(character) else {
                     continue;
                 };
+                text.push(character);
                 let advance = glyph_advance(&face, glyph.0, state.font_size, units);
                 glyphs.push(PositionedGlyph {
                     id: u32::from(glyph.0),
@@ -709,6 +719,7 @@ impl PdfFrontend {
             size: state.font_size,
             transform: Matrix::scale(1.0, -1.0).then(state.text_matrix),
             glyphs,
+            text: Some(text),
             fill,
             stroke,
         };
@@ -1084,6 +1095,28 @@ fn color_with_alpha(paint: &Paint, alpha: f32) -> Option<Paint> {
     }
 }
 
+fn glyph_char(face: &ttf_parser::Face<'_>, glyph: u16) -> Option<char> {
+    let cmap = face.tables().cmap?;
+    for subtable in cmap.subtables {
+        if !subtable.is_unicode() {
+            continue;
+        }
+        let mut result = None;
+        subtable.codepoints(|codepoint| {
+            if result.is_none()
+                && subtable
+                    .glyph_index(codepoint)
+                    .is_some_and(|id| id.0 == glyph)
+            {
+                result = char::from_u32(codepoint);
+            }
+        });
+        if result.is_some() {
+            return result;
+        }
+    }
+    None
+}
 fn glyph_advance(face: &ttf_parser::Face<'_>, glyph: u16, size: f64, units: f64) -> f64 {
     face.glyph_hor_advance(ttf_parser::GlyphId(glyph))
         .map(|advance| f64::from(advance) / units * size)
@@ -1299,6 +1332,7 @@ mod tests {
                 x: 0.0,
                 y: 0.0,
             }],
+            text: None,
             fill: Some(Paint::Solid(Rgba::BLACK)),
             stroke: None,
         }));

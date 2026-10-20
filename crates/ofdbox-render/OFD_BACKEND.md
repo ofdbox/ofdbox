@@ -1,11 +1,11 @@
-# OFD 后端现状
+﻿# OFD 后端现状
 
 ## 已实现
 
 - 多页 Scene 写成 OFD 1.1 ZIP 包：`OFD.xml`、`Document.xml`、逐页 `Content.xml`。
 - 路径对象：M/L/Q/B/A/C，Fill/Stroke、RGB 颜色、线宽、端点、连接、虚线。
 - 图片对象：复制原始图片资源到 `Doc_0/Res`，通过 `DocumentRes.xml` 引用。
-- 文字对象：嵌入 `FontFile` 到 `PublicRes.xml`，通过字形反查 Unicode 写 `TextCode`。
+- 文字对象：`TextElement.text` 存在时写原生 `TextObject` + `FontFile` + `TextCode`；没有原文时回退字形轮廓。
 - 页面尺寸、对象边界和 CTM 从 Scene 计算。
 
 ## 已知限制
@@ -22,3 +22,4 @@
 ```powershell
 cargo test -p ofdbox-render --lib backend::ofd
 ```
+

@@ -264,6 +264,59 @@ impl PageWriter<'_> {
     }
 
     fn text(&mut self, element: &TextElement, transform: Matrix) {
+        if let Some(text) = &element.text {
+            self.text_native(element, transform, text);
+        } else {
+            self.text_outline(element, transform);
+        }
+    }
+
+    fn text_native(&mut self, element: &TextElement, transform: Matrix, text: &str) {
+        if text.is_empty() {
+            return;
+        }
+        let id = self.id();
+        let font = self.font(&element.font);
+        let ctm = element.transform.then(transform);
+        let boundary = (0.0, 0.0, self.page_width, self.page_height);
+        let first = element
+            .glyphs
+            .first()
+            .copied()
+            .unwrap_or(crate::scene::PositionedGlyph {
+                id: 0,
+                x: 0.0,
+                y: 0.0,
+            });
+        let attributes = format!(
+            "ID=\"{id}\" Boundary=\"{}\" CTM=\"{}\" Font=\"{font}\" Size=\"{}\"",
+            box_text(boundary),
+            matrix_text(ctm),
+            number(element.size)
+        );
+        let mut colors = String::new();
+        if let Some(fill) = &element.fill
+            && let Some(color) = solid_color(fill)
+        {
+            colors.push_str(&format!("<ofd:FillColor Value=\"{}\"/>", color_text(color)));
+        }
+        if let Some(stroke) = &element.stroke
+            && let Some(color) = solid_color(&stroke.paint)
+        {
+            colors.push_str(&format!(
+                "<ofd:StrokeColor Value=\"{}\"/>",
+                color_text(color)
+            ));
+        }
+        self.content.push_str(&format!(
+            "<ofd:TextObject {attributes}>{colors}<ofd:TextCode X=\"{}\" Y=\"{}\">{}</ofd:TextCode></ofd:TextObject>",
+            number(f64::from(first.x)),
+            number(f64::from(first.y)),
+            xml_escape(text)
+        ));
+    }
+
+    fn text_outline(&mut self, element: &TextElement, transform: Matrix) {
         let Ok(face) = ttf_parser::Face::parse(element.font.data(), element.font.face_index())
         else {
             return;
@@ -772,6 +825,7 @@ mod tests {
                     x: 0.0,
                     y: 0.0,
                 }],
+                text: None,
                 fill: Some(Paint::Solid(Rgba::BLACK)),
                 stroke: None,
             }));

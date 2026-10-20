@@ -1168,6 +1168,7 @@ impl Builder<'_> {
                                 x: 0.0,
                                 y: 0.0,
                             }],
+                            text: Some(character.to_string()),
                             fill: fill_paint.clone(),
                             stroke: stroke_paint.clone().or_else(|| synthetic_bold.clone()),
                         }));
@@ -1208,6 +1209,7 @@ impl Builder<'_> {
                     size,
                     transform: Matrix::IDENTITY,
                     glyphs,
+                    text: Some(run.chars.iter().collect()),
                     fill: fill_paint.clone(),
                     stroke: stroke_paint.clone().or_else(|| synthetic_bold.clone()),
                 }));
