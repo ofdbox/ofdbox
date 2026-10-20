@@ -1,4 +1,4 @@
-﻿#![forbid(unsafe_code)]
+#![forbid(unsafe_code)]
 #![warn(missing_docs)]
 
 //! OFD 页面渲染。
@@ -23,6 +23,7 @@ mod resource;
 mod scene;
 
 pub use asset::{AssetId, FontAsset, ImageAsset};
+pub use backend::ofd::{OfdBackend, OfdOptions};
 pub use backend::pdf::{
     PdfBackend, PdfDocument, PdfMetadata, PdfOptions, PdfOutline, PdfVersion, TextMode,
 };
@@ -45,4 +46,3 @@ pub use scene::{
     Clip, DiagnosticCode, Element, Group, ImageElement, PathElement, PositionedGlyph,
     RenderDiagnostic, Scene, StrokePaint, TextElement,
 };
-

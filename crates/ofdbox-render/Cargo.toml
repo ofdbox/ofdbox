@@ -1,4 +1,4 @@
-[package]
+﻿[package]
 name = "ofdbox-render"
 version.workspace = true
 edition.workspace = true
@@ -22,7 +22,8 @@ thiserror.workspace = true
 tiff.workspace = true
 ttf-parser = "0.25"
 vello_cpu = "0.3.0"
+zip.workspace = true
 
 [dev-dependencies]
 dotenvy.workspace = true
-zip.workspace = true
+
