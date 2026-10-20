@@ -1,4 +1,4 @@
-#![forbid(unsafe_code)]
+﻿#![forbid(unsafe_code)]
 #![warn(missing_docs)]
 
 //! OFD 页面渲染。
@@ -45,3 +45,4 @@ pub use scene::{
     Clip, DiagnosticCode, Element, Group, ImageElement, PathElement, PositionedGlyph,
     RenderDiagnostic, Scene, StrokePaint, TextElement,
 };
+
