@@ -9,14 +9,25 @@ publish = false
 
 [features]
 default = ["render", "crypto", "seal"]
-render = ["dep:ofdbox-render"]
+render = ["ofd", "pdf", "cpu", "image"]
+ofd = ["dep:ofdbox-render", "ofdbox-render/ofd"]
+pdf = ["dep:ofdbox-render", "ofdbox-render/pdf"]
+cpu = ["dep:ofdbox-render", "ofdbox-render/cpu"]
+image = ["image-png", "image-jpeg", "image-bmp", "image-tiff", "image-jbig2", "image-ccitt"]
+image-png = ["dep:ofdbox-render", "ofdbox-render/image-png"]
+image-jpeg = ["dep:ofdbox-render", "ofdbox-render/image-jpeg"]
+image-bmp = ["dep:ofdbox-render", "ofdbox-render/image-bmp"]
+image-tiff = ["dep:ofdbox-render", "ofdbox-render/image-tiff"]
+image-jbig2 = ["dep:ofdbox-render", "ofdbox-render/image-jbig2"]
+image-ccitt = ["dep:ofdbox-render", "ofdbox-render/image-ccitt"]
 crypto = ["dep:ofdbox-crypto"]
 seal = ["dep:ofdbox-seal"]
 full = ["render", "crypto", "seal"]
 
 [dependencies]
 ofdbox-core = { path = "../ofdbox-core" }
-ofdbox-render = { path = "../ofdbox-render", optional = true }
+ofdbox-render = { path = "../ofdbox-render", optional = true, default-features = false }
 ofdbox-crypto = { path = "../ofdbox-crypto", optional = true }
 ofdbox-seal = { path = "../ofdbox-seal", optional = true }
 thiserror.workspace = true
+

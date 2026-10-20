@@ -77,6 +77,17 @@ ofdbox-render = { path = "...", default-features = false, features = ["ofd", "cp
 - OFD 的图片资源结构解析不依赖解码器；没有对应 `image-*` 时，图片渲染会返回“不支持”诊断。
 
 `ofdbox-cli` 默认使用全功能，不受最小集影响。`ofdbox-render` 已通过 `wasm32-unknown-unknown` 编译检查。
+门面同样支持细粒度裁剪：
+
+```toml
+ofdbox = { path = "...", default-features = false, features = ["pdf", "image-ccitt"] }
+ofdbox = { path = "...", default-features = false, features = ["ofd", "cpu", "image"] }
+ofdbox = { path = "...", default-features = false, features = ["crypto"] }
+```
+
+`ofdbox` 的 `render` 是 `ofd + pdf + cpu + image` 的合集；也可以只启用其中一项。
+
+`ofdbox-cli` 默认使用全功能，不受最小集影响。`ofdbox-render` 已通过 `wasm32-unknown-unknown` 编译检查。
 
 ## CLI 使用
 
@@ -154,6 +165,7 @@ MIT OR Apache-2.0，二选一。
 
 - [LICENSE-MIT](LICENSE-MIT)
 - [LICENSE-APACHE](LICENSE-APACHE)
+
 
 
 

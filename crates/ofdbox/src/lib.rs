@@ -9,12 +9,14 @@
 pub use ofdbox_core as core;
 pub use ofdbox_core::{CacheOptions, DocumentView, OfdError, OfdPackage, PageView, ReadOptions};
 
-#[cfg(feature = "render")]
+#[cfg(any(feature = "ofd", feature = "pdf", feature = "cpu", feature = "image"))]
 pub use ofdbox_render as render;
-#[cfg(feature = "render")]
-pub use ofdbox_render::{
-    OfdOptions, PdfOptions, PdfVersion, RenderOptions, Scene, Size, TextMode, UnsupportedPolicy,
-};
+#[cfg(feature = "ofd")]
+pub use ofdbox_render::OfdOptions;
+#[cfg(feature = "pdf")]
+pub use ofdbox_render::{PdfOptions, PdfVersion, TextMode};
+#[cfg(any(feature = "ofd", feature = "pdf", feature = "cpu", feature = "image"))]
+pub use ofdbox_render::{RenderOptions, Scene, Size, UnsupportedPolicy};
 
 #[cfg(feature = "crypto")]
 pub use ofdbox_crypto as crypto;
@@ -33,7 +35,7 @@ pub enum Error {
     #[error(transparent)]
     Core(#[from] OfdError),
     /// 渲染或格式转换失败。
-    #[cfg(feature = "render")]
+    #[cfg(any(feature = "ofd", feature = "pdf", feature = "cpu", feature = "image"))]
     #[error(transparent)]
     Render(#[from] ofdbox_render::RenderError),
     /// 文件 I/O 失败。
@@ -46,9 +48,11 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 /// 常用类型预导入。
 pub mod prelude {
+    #[cfg(feature = "ofd")]
+    pub use crate::OfdOptions;
     pub use crate::{CacheOptions, DocumentView, Error, OfdPackage, PageView, ReadOptions, Result};
-    #[cfg(feature = "render")]
-    pub use crate::{
-        OfdOptions, PdfOptions, PdfVersion, RenderOptions, Scene, Size, TextMode, UnsupportedPolicy,
-    };
+    #[cfg(feature = "pdf")]
+    pub use crate::{PdfOptions, PdfVersion, TextMode};
+    #[cfg(any(feature = "ofd", feature = "pdf", feature = "cpu", feature = "image"))]
+    pub use crate::{RenderOptions, Scene, Size, UnsupportedPolicy};
 }
