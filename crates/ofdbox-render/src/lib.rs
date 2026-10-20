@@ -23,16 +23,21 @@ mod resource;
 mod scene;
 
 pub use asset::{AssetId, FontAsset, ImageAsset};
+#[cfg(feature = "ofd")]
 pub use backend::ofd::{OfdBackend, OfdOptions};
+#[cfg(feature = "pdf")]
 pub use backend::pdf::{
     PdfBackend, PdfDocument, PdfMetadata, PdfOptions, PdfOutline, PdfVersion, TextMode,
 };
+#[cfg(feature = "cpu")]
 pub use backend::vello_cpu::{RasterTarget, VelloCpuBackend, VelloCpuFrame};
 pub use backend::wgpu::WgpuBackend;
 pub use backend::{Backend, BackendCapabilities, BackendFrame, BackendInfo};
 pub use error::RenderError;
 pub use font::{FnFontProvider, FontProvider, FontRequest};
+#[cfg(feature = "ofd")]
 pub use frontend::ofd::OfdFrontend;
+#[cfg(feature = "pdf")]
 pub use frontend::pdf::PdfFrontend;
 pub use geometry::{Matrix, Point, Rect, Size};
 pub use image::{DecodedImage, ImageFormat};

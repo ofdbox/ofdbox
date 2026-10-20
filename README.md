@@ -52,6 +52,24 @@ PDF ──PdfFrontend──┘             ├─→ PdfDocument（PDF）
 - [`crates/ofdbox-render/PDF_FRONTEND.md`](crates/ofdbox-render/PDF_FRONTEND.md)
 - [`crates/ofdbox-render/OFD_BACKEND.md`](crates/ofdbox-render/OFD_BACKEND.md)
 
+### Feature 裁剪
+
+默认全功能：`ofd + pdf + cpu + image`。可按需关闭：
+
+```toml
+ofdbox-render = { path = "...", default-features = false, features = ["ofd"] }
+ofdbox-render = { path = "...", default-features = false, features = ["pdf"] }
+ofdbox-render = { path = "...", default-features = false, features = ["ofd", "cpu", "image-ccitt"] }
+```
+
+- `ofd`：OFD 结构/前端/后端，含 ZIP；图片解码按 `image-*` 选择。
+- `pdf`：PDF 前端/后端，包含 PNG 编码；CCITT 扫描页需 `image-ccitt`。
+- `cpu`：`vello_cpu` 位图后端。
+- `image`：全部图片编码器；也可单独启用 `image-png`、`image-jpeg`、`image-bmp`、`image-tiff`、`image-jbig2`、`image-ccitt`。
+- OFD 的图片资源结构解析不依赖解码器；没有对应 `image-*` 时，图片渲染会返回“不支持”诊断。
+
+`ofdbox-cli` 默认使用全功能，不受最小集影响。`ofdbox-render` 已通过 `wasm32-unknown-unknown` 编译检查。
+
 ## CLI 使用
 
 ```bash
@@ -128,4 +146,6 @@ MIT OR Apache-2.0，二选一。
 
 - [LICENSE-MIT](LICENSE-MIT)
 - [LICENSE-APACHE](LICENSE-APACHE)
+
+
 

@@ -19,8 +19,9 @@
 - 未实现签章、注释、附件、书签、文档元数据。
 - 尚未做 XSD 严格校验，只通过包结构和回读 XML 测试。
 
-## 验证
+## Feature\n\n- `ofd`：启用 OFD 前端/后端和 ZIP 写出；不强制启用图片解码。\n- OFD 图片资源可解析，但要渲染图片需对应 `image-*`。\n\n## 验证
 
 ```powershell
 cargo test -p ofdbox-render --lib backend::ofd
 ```
+

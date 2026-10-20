@@ -884,6 +884,7 @@ impl PdfFrontend {
         );
     }
 
+    #[cfg(feature = "image-ccitt")]
     fn ccitt_image(
         &self,
         stream: &lopdf::Stream,
@@ -952,6 +953,17 @@ impl PdfFrontend {
         writer.write_image_data(&rgba).ok()?;
         writer.finish().ok()?;
         pool.embedded_image(ImageFormat::Png, &png_bytes, None).ok()
+    }
+
+    #[cfg(not(feature = "image-ccitt"))]
+    fn ccitt_image(
+        &self,
+        _: &lopdf::Stream,
+        _: u32,
+        _: u32,
+        _: &ResourcePool,
+    ) -> Option<Arc<crate::asset::ImageAsset>> {
+        None
     }
 
     fn image_asset(
@@ -1062,10 +1074,12 @@ impl PdfFrontend {
     }
 }
 
+#[cfg(feature = "image-ccitt")]
 struct BitmapDecoder {
     pixels: Vec<bool>,
 }
 
+#[cfg(feature = "image-ccitt")]
 impl hayro_ccitt::Decoder for BitmapDecoder {
     fn push_pixel(&mut self, white: bool) {
         self.pixels.push(white);

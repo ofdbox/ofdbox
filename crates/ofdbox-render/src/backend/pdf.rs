@@ -1071,10 +1071,10 @@ impl<'a> ContentBuilder<'a> {
     }
 
     fn arc(&mut self, rx: f64, ry: f64, rotation: f64, large_arc: bool, sweep: bool, to: Point) {
-        use vello_cpu::kurbo::{Arc as KurboArc, SvgArc, Vec2};
+        use kurbo::{Arc as KurboArc, SvgArc, Vec2};
         let arc = SvgArc {
-            from: vello_cpu::kurbo::Point::new(self.current.x, self.current.y),
-            to: vello_cpu::kurbo::Point::new(to.x, to.y),
+            from: kurbo::Point::new(self.current.x, self.current.y),
+            to: kurbo::Point::new(to.x, to.y),
             radii: Vec2::new(rx, ry),
             x_rotation: rotation,
             large_arc,

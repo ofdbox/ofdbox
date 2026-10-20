@@ -1,3 +1,4 @@
+#[cfg(feature = "ofd")]
 use ofdbox_core::OfdError;
 
 /// 渲染错误。
@@ -5,6 +6,7 @@ use ofdbox_core::OfdError;
 pub enum RenderError {
     /// OFD 结构读取或解析失败。
     #[error("OFD 结构错误: {0}")]
+    #[cfg(feature = "ofd")]
     Ofd(#[from] OfdError),
     /// 当前实现无法表达的场景特性。
     #[error("不支持的渲染特性: {0}")]

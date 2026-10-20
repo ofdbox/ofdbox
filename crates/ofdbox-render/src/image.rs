@@ -1,5 +1,7 @@
+#[allow(unused_imports)]
 use std::io::Cursor;
 
+#[cfg(feature = "image-jpeg")]
 use jpeg_decoder::PixelFormat;
 
 use crate::error::RenderError;
@@ -129,6 +131,7 @@ pub fn decode_image(
     Ok(image)
 }
 
+#[cfg(feature = "image-png")]
 fn decode_png(data: &[u8], max_pixels: u64) -> Result<DecodedImage, RenderError> {
     let mut decoder = png::Decoder::new(Cursor::new(data));
     decoder.set_transformations(png::Transformations::normalize_to_color8());
@@ -179,6 +182,7 @@ fn decode_png(data: &[u8], max_pixels: u64) -> Result<DecodedImage, RenderError>
     })
 }
 
+#[cfg(feature = "image-jpeg")]
 fn decode_jpeg(data: &[u8], max_pixels: u64) -> Result<DecodedImage, RenderError> {
     let mut decoder = jpeg_decoder::Decoder::new(Cursor::new(data));
     decoder
@@ -236,6 +240,7 @@ fn decode_jpeg(data: &[u8], max_pixels: u64) -> Result<DecodedImage, RenderError
     })
 }
 
+#[cfg(feature = "image-bmp")]
 fn decode_bmp(data: &[u8]) -> Result<DecodedImage, RenderError> {
     let image = bmp::from_reader(&mut Cursor::new(data))
         .map_err(|error| RenderError::Image(error.to_string()))?;
@@ -255,6 +260,7 @@ fn decode_bmp(data: &[u8]) -> Result<DecodedImage, RenderError> {
     })
 }
 
+#[cfg(feature = "image-tiff")]
 fn decode_tiff(data: &[u8], max_pixels: u64) -> Result<DecodedImage, RenderError> {
     let mut decoder = tiff::decoder::Decoder::new(Cursor::new(data))
         .map_err(|error| RenderError::Image(error.to_string()))?;
@@ -324,6 +330,7 @@ fn decode_tiff(data: &[u8], max_pixels: u64) -> Result<DecodedImage, RenderError
     })
 }
 
+#[cfg(feature = "image-jbig2")]
 fn decode_jbig2(data: &[u8]) -> Result<DecodedImage, RenderError> {
     let pages = justbig2::decode(data)
         .or_else(|_| justbig2::decode_embedded(data))
@@ -439,6 +446,7 @@ mod tests {
 
     #[test]
     fn decodes_rgb_tiff() {
+        #[allow(unused_imports)]
         use std::io::Cursor;
 
         let mut bytes = Vec::new();
@@ -462,4 +470,29 @@ mod tests {
     fn rejects_invalid_jbig2() {
         assert!(decode_image(&ImageFormat::Jbig2, b"not-jbig2", 100).is_err());
     }
+}
+
+#[cfg(not(feature = "image-png"))]
+fn decode_png(_: &[u8], _: u64) -> Result<DecodedImage, RenderError> {
+    Err(RenderError::Unsupported("PNG 解码未启用".to_owned()))
+}
+
+#[cfg(not(feature = "image-jpeg"))]
+fn decode_jpeg(_: &[u8], _: u64) -> Result<DecodedImage, RenderError> {
+    Err(RenderError::Unsupported("JPEG 解码未启用".to_owned()))
+}
+
+#[cfg(not(feature = "image-bmp"))]
+fn decode_bmp(_: &[u8]) -> Result<DecodedImage, RenderError> {
+    Err(RenderError::Unsupported("BMP 解码未启用".to_owned()))
+}
+
+#[cfg(not(feature = "image-tiff"))]
+fn decode_tiff(_: &[u8], _: u64) -> Result<DecodedImage, RenderError> {
+    Err(RenderError::Unsupported("TIFF 解码未启用".to_owned()))
+}
+
+#[cfg(not(feature = "image-jbig2"))]
+fn decode_jbig2(_: &[u8]) -> Result<DecodedImage, RenderError> {
+    Err(RenderError::Unsupported("JBIG2 解码未启用".to_owned()))
 }

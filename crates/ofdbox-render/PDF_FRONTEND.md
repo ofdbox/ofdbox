@@ -23,12 +23,13 @@
 - Form XObject 的 BBox 裁剪、透明度组、SMask 矩阵尚未实现。
 - 复杂裁剪在 CTM 变化后的语义按当前用户空间近似处理。
 
-## 验证
+## Feature\n\n- `pdf`：启用 PDF 前端/后端，包含 `image-png`。\n- `image-ccitt`：PDF 扫描页 CCITT G3/G4；未启用时图片跳过。\n- 其余图片编码器按 `image-*` 独立启用。\n\n## 验证
 
 ```powershell
 cargo test -p ofdbox-render --lib frontend::pdf
 cargo run -p ofdbox-cli -- convert <PDF目录> -t png -o <PNG输出目录>
 ```
+
 
 
 

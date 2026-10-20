@@ -59,7 +59,10 @@ pub trait Backend {
     ) -> Result<Self::Frame<'a>, crate::error::RenderError>;
 }
 
+#[cfg(feature = "ofd")]
 pub mod ofd;
+#[cfg(feature = "pdf")]
 pub mod pdf;
+#[cfg(feature = "cpu")]
 pub mod vello_cpu;
 pub mod wgpu;
