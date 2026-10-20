@@ -89,6 +89,17 @@ ofdbox = { path = "...", default-features = false, features = ["crypto"] }
 
 `ofdbox-cli` 默认使用全功能，不受最小集影响。`ofdbox-render` 已通过 `wasm32-unknown-unknown` 编译检查。
 
+## 平台
+
+| 平台 | 状态 | 说明 |
+| --- | --- | --- |
+| Windows x86_64 | 已验证 | CLI 主要平台 |
+| Linux x86_64 | 已验证 | glibc/musl 均可 |
+| macOS x86_64 / arm64 | 预期可用 | 需 CI 实机验证 |
+| HarmonyOS / OpenHarmony aarch64 | 编译检查通过 | `aarch64-unknown-linux-ohos`；打包 HAP/HAR 需要 OHOS SDK/NAPI 封装 |
+| wasm32-unknown-unknown | 库编译通过 | `ofdbox-render` 库；CLI 不适合浏览器 |
+
+HarmonyOS 字体查找已加入 `/system/fonts` 和 `/system/fonts/zh_CN`，并优先尝试 HarmonyOS Sans / Noto CJK。
 ## CLI 使用
 
 ```bash
@@ -165,6 +176,7 @@ MIT OR Apache-2.0，二选一。
 
 - [LICENSE-MIT](LICENSE-MIT)
 - [LICENSE-APACHE](LICENSE-APACHE)
+
 
 
 

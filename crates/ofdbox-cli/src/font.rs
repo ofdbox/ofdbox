@@ -77,7 +77,16 @@ fn select_font(request: &FontRequest<'_>) -> Option<PathBuf> {
     if request.fixed_width {
         candidates.extend(["consola.ttf", "cour.ttf"]);
     }
-    candidates.extend(["arial.ttf", "times.ttf", "msyh.ttc", "simsun.ttc"]);
+    candidates.extend([
+        "HarmonyOS_Sans_SC_Regular.ttf",
+        "HarmonyOS_Sans_SC_Bold.ttf",
+        "NotoSansCJK-Regular.ttc",
+        "NotoSansSC-Regular.otf",
+        "arial.ttf",
+        "times.ttf",
+        "msyh.ttc",
+        "simsun.ttc",
+    ]);
     for root in font_roots() {
         for candidate in &candidates {
             let path = root.join(candidate);
