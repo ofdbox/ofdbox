@@ -13,7 +13,7 @@ flate2 = "1"
 hayro-ccitt = "0.3.0"
 jpeg-decoder = "0.3"
 justbig2 = "0.2"
-lopdf = "0.45.0"
+lopdf = { version = "0.45.0", features = ["wasm_js"] }
 ofdbox-core = { path = "../ofdbox-core" }
 png = "0.18"
 skrifa = "0.44"
@@ -26,4 +26,5 @@ zip.workspace = true
 
 [dev-dependencies]
 dotenvy.workspace = true
+
 
