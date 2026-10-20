@@ -3,9 +3,9 @@ use std::sync::{Arc, Mutex};
 
 use ofdbox_core::{OfdPackage, ReadOptions};
 use ofdbox_render::{
-    Backend, BackendFrame, Element, Group, Matrix, OfdFrontend, Paint, PdfBackend, PdfFrontend,
-    Point, PoolBudget, RasterTarget, RenderOptions, ResourcePool, Rgba, Scene, Size,
-    VelloCpuBackend, WgpuBackend,
+    Backend, BackendFrame, Element, Group, Matrix, OfdFrontend, Paint, PdfFrontend, Point,
+    PoolBudget, RasterTarget, RenderOptions, ResourcePool, Rgba, Scene, Size, VelloCpuBackend,
+    WgpuBackend,
 };
 use zip::ZipWriter;
 use zip::write::SimpleFileOptions;
@@ -700,13 +700,12 @@ fn cgtransform_many_to_many() {
 }
 
 #[test]
-fn placeholders_report_unsupported() {
+fn unsupported_backends_report_errors() {
     let scene = Scene {
         size: Size::new(1.0, 1.0),
         root: Group::default(),
         diagnostics: Vec::new(),
     };
-    assert!(PdfBackend::new().render(&scene).is_err());
     assert!(WgpuBackend::new().draw(&scene).is_err());
     assert!(PdfFrontend::new().build_scene().is_err());
 }
