@@ -10,8 +10,19 @@ permissions:
   contents: write
 
 jobs:
+  test:
+    name: test before release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --workspace --locked
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+
   build:
     name: build (${{ matrix.target }})
+    needs: test
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -51,7 +62,7 @@ jobs:
           cp "target/${{ matrix.target }}/release/ofdbox" "dist/${NAME}/"
           cp README.md CHANGELOG.md LICENSE-MIT LICENSE-APACHE "dist/${NAME}/"
           tar -czf "dist/${NAME}.tar.gz" -C "dist/${NAME}" .
-          (cd dist && sha256sum "${NAME}.tar.gz" > "${NAME}.tar.gz.sha256")
+          (cd dist && (sha256sum "${NAME}.tar.gz" 2>/dev/null || shasum -a 256 "${NAME}.tar.gz") > "${NAME}.tar.gz.sha256")
 
       - name: Package (Windows)
         if: runner.os == 'Windows'
