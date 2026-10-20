@@ -1,4 +1,4 @@
-name: Release
+﻿name: Release
 
 on:
   push:
@@ -97,6 +97,7 @@ jobs:
       - uses: softprops/action-gh-release@v2
         with:
           files: artifacts/*
-          prerelease: true
+          prerelease: ${{ contains(github.ref_name, '-') }}
           generate_release_notes: true
           name: OFDBox ${{ github.ref_name }}
+
