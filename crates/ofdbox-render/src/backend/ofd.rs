@@ -45,6 +45,7 @@ struct ImageEntry {
     bytes: Arc<[u8]>,
 }
 
+#[allow(dead_code)]
 struct PageWriter<'a> {
     next_id: &'a mut u32,
     fonts: &'a mut HashMap<AssetId, u32>,
@@ -52,6 +53,8 @@ struct PageWriter<'a> {
     images: &'a mut HashMap<AssetId, u32>,
     image_entries: &'a mut Vec<ImageEntry>,
     content: String,
+    page_width: f64,
+    page_height: f64,
 }
 
 impl OfdBackend {
@@ -92,6 +95,8 @@ impl OfdBackend {
                 images: &mut images,
                 image_entries: &mut image_entries,
                 content: String::new(),
+                page_width: scene.size.width,
+                page_height: scene.size.height,
             };
             writer.group(&scene.root, Matrix::IDENTITY);
             let content = writer.content;
@@ -225,16 +230,17 @@ impl PageWriter<'_> {
             return;
         }
         let id = self.id();
-        let boundary = path_boundary(&element.path, transform);
+        let boundary = (0.0, 0.0, self.page_width, self.page_height);
         let mut attributes = format!(
             "ID=\"{id}\" Boundary=\"{}\" CTM=\"{}\"",
             box_text(boundary),
-            matrix_text(transform)
+            matrix_text(transform.linear())
         );
+        let mut colors = String::new();
         if let Some(fill) = &element.fill {
             attributes.push_str(" Fill=\"true\"");
             if let Some(color) = solid_color(fill) {
-                attributes.push_str(&format!(" FillColor=\"{}\"", color_text(color)));
+                colors.push_str(&format!("<ofd:FillColor Value=\"{}\"/>", color_text(color)));
             }
         } else {
             attributes.push_str(" Fill=\"false\"");
@@ -242,80 +248,92 @@ impl PageWriter<'_> {
         if let Some(stroke) = &element.stroke {
             attributes.push_str(" Stroke=\"true\"");
             if let Some(color) = solid_color(&stroke.paint) {
-                attributes.push_str(&format!(" StrokeColor=\"{}\"", color_text(color)));
+                colors.push_str(&format!(
+                    "<ofd:StrokeColor Value=\"{}\"/>",
+                    color_text(color)
+                ));
             }
             attributes.push_str(&stroke_attributes(&stroke.style));
         } else {
             attributes.push_str(" Stroke=\"false\"");
         }
         self.content.push_str(&format!(
-            "<ofd:PathObject {attributes}><ofd:AbbreviatedData>{}</ofd:AbbreviatedData></ofd:PathObject>",
-            path_data(&element.path, element.fill_rule)
+            "<ofd:PathObject {attributes}>{colors}<ofd:AbbreviatedData>{}</ofd:AbbreviatedData></ofd:PathObject>",
+            path_data_transformed(&element.path, transform, boundary)
         ));
     }
 
     fn text(&mut self, element: &TextElement, transform: Matrix) {
-        if element.glyphs.is_empty() {
-            return;
-        }
-        let Some(chars) = glyph_text(&element.font, &element.glyphs) else {
+        let Ok(face) = ttf_parser::Face::parse(element.font.data(), element.font.face_index())
+        else {
             return;
         };
-        let id = self.id();
-        let font = self.font(&element.font);
-        let ctm = element.transform.then(transform);
-        let first = element
-            .glyphs
-            .first()
-            .copied()
-            .unwrap_or(crate::scene::PositionedGlyph {
-                id: 0,
-                x: 0.0,
-                y: 0.0,
-            });
-        let width = element
-            .glyphs
-            .last()
-            .map(|glyph| f64::from(glyph.x) + element.size)
-            .unwrap_or(element.size);
-        let boundary = transform_bounds(
-            ctm,
-            (
-                f64::from(first.x),
-                f64::from(first.y),
-                width,
-                element.size * 1.2,
-            ),
-        );
-        let mut attributes = format!(
-            "ID=\"{id}\" Boundary=\"{}\" CTM=\"{}\" Font=\"{font}\" Size=\"{}\"",
-            box_text(boundary),
-            matrix_text(ctm),
-            number(element.size)
-        );
-        if let Some(fill) = &element.fill
-            && let Some(color) = solid_color(fill)
-        {
-            attributes.push_str(&format!(" FillColor=\"{}\"", color_text(color)));
+        let units = f64::from(face.units_per_em());
+        if units == 0.0 {
+            return;
         }
-        if let Some(stroke) = &element.stroke
-            && let Some(color) = solid_color(&stroke.paint)
-        {
-            attributes.push_str(&format!(" StrokeColor=\"{}\"", color_text(color)));
+        let scale = element.size / units;
+        for glyph in &element.glyphs {
+            let Ok(id) = u16::try_from(glyph.id) else {
+                continue;
+            };
+            let mut builder = GlyphPathBuilder::default();
+            if face
+                .outline_glyph(ttf_parser::GlyphId(id), &mut builder)
+                .is_none()
+                || builder.path.is_empty()
+            {
+                continue;
+            }
+            let glyph_transform = Matrix::scale(scale, -scale)
+                .then(Matrix::translate(f64::from(glyph.x), f64::from(glyph.y)))
+                .then(element.transform)
+                .then(transform);
+            let boundary = (0.0, 0.0, self.page_width, self.page_height);
+            let mut attributes = String::new();
+            let mut colors = String::new();
+            if let Some(fill) = &element.fill {
+                attributes.push_str(" Fill=\"true\"");
+                if let Some(color) = solid_color(fill) {
+                    colors.push_str(&format!("<ofd:FillColor Value=\"{}\"/>", color_text(color)));
+                }
+            }
+            if let Some(stroke) = &element.stroke {
+                attributes.push_str(" Stroke=\"true\"");
+                if let Some(color) = solid_color(&stroke.paint) {
+                    colors.push_str(&format!(
+                        "<ofd:StrokeColor Value=\"{}\"/>",
+                        color_text(color)
+                    ));
+                }
+                attributes.push_str(&stroke_attributes(&stroke.style));
+            }
+            let object = self.id();
+            self.content.push_str(&format!(
+                "<ofd:PathObject ID=\"{object}\" Boundary=\"{}\" CTM=\"1 0 0 1 0 0\"{attributes}>{colors}<ofd:AbbreviatedData>{}</ofd:AbbreviatedData></ofd:PathObject>",
+                box_text(boundary),
+                path_data_transformed(&builder.path, glyph_transform, boundary)
+            ));
         }
-        self.content.push_str(&format!(
-            "<ofd:TextObject {attributes}><ofd:TextCode X=\"{}\" Y=\"{}\">{}</ofd:TextCode></ofd:TextObject>",
-            number(f64::from(first.x)),
-            number(f64::from(first.y)),
-            xml_escape(&chars)
-        ));
     }
-
     fn image(&mut self, element: &ImageElement, transform: Matrix) {
         let id = self.id();
         let resource = self.image_resource(&element.image);
-        let boundary = transform_bounds(element.transform.then(transform), (0.0, 0.0, 1.0, 1.0));
-        let ctm = element.transform.then(transform);
+        let (width, height) = element
+            .image
+            .decoded(u64::MAX)
+            .map(|decoded| {
+                (
+                    f64::from(decoded.width.max(1)),
+                    f64::from(decoded.height.max(1)),
+                )
+            })
+            .unwrap_or((1.0, 1.0));
+        let boundary =
+            transform_bounds(element.transform.then(transform), (0.0, 0.0, width, height));
+        let ctm = Matrix::scale(width, height)
+            .then(element.transform)
+            .then(transform);
         self.content.push_str(&format!(
             "<ofd:ImageObject ID=\"{id}\" Boundary=\"{}\" CTM=\"{}\" ResourceID=\"{resource}\"/>",
             box_text(boundary),
@@ -329,6 +347,7 @@ impl PageWriter<'_> {
         id
     }
 
+    #[allow(dead_code)]
     fn font(&mut self, font: &Arc<FontAsset>) -> u32 {
         let id = font.id();
         if let Some(resource) = self.fonts.get(&id) {
@@ -378,6 +397,7 @@ fn page_xml(layer_id: u32, width: f64, height: f64, content: &str) -> String {
     )
 }
 
+#[allow(dead_code)]
 fn path_data(path: &Path, _rule: FillRule) -> String {
     let mut output = String::new();
     for segment in &path.segments {
@@ -437,6 +457,71 @@ fn path_data(path: &Path, _rule: FillRule) -> String {
     output.trim_end().to_owned()
 }
 
+#[derive(Default)]
+struct GlyphPathBuilder {
+    path: Path,
+}
+
+impl ttf_parser::OutlineBuilder for GlyphPathBuilder {
+    fn move_to(&mut self, x: f32, y: f32) {
+        self.path.move_to(Point::new(f64::from(x), f64::from(y)));
+    }
+    fn line_to(&mut self, x: f32, y: f32) {
+        self.path.line_to(Point::new(f64::from(x), f64::from(y)));
+    }
+    fn quad_to(&mut self, x1: f32, y1: f32, x: f32, y: f32) {
+        self.path.quadratic_to(
+            Point::new(f64::from(x1), f64::from(y1)),
+            Point::new(f64::from(x), f64::from(y)),
+        );
+    }
+    fn curve_to(&mut self, x1: f32, y1: f32, x2: f32, y2: f32, x: f32, y: f32) {
+        self.path.cubic_to(
+            Point::new(f64::from(x1), f64::from(y1)),
+            Point::new(f64::from(x2), f64::from(y2)),
+            Point::new(f64::from(x), f64::from(y)),
+        );
+    }
+    fn close(&mut self) {
+        self.path.close();
+    }
+}
+fn path_data_transformed(path: &Path, transform: Matrix, boundary: (f64, f64, f64, f64)) -> String {
+    let point = |value: Point| {
+        let value = transform.apply(value);
+        format!(
+            "{} {}",
+            number(value.x - boundary.0),
+            number(value.y - boundary.1)
+        )
+    };
+    let mut output = String::new();
+    for segment in &path.segments {
+        match segment {
+            PathSegment::MoveTo(value) => output.push_str(&format!("M {} ", point(*value))),
+            PathSegment::LineTo(value) => output.push_str(&format!("L {} ", point(*value))),
+            PathSegment::QuadraticTo { control, to } => {
+                output.push_str(&format!("Q {} {} ", point(*control), point(*to)))
+            }
+            PathSegment::CubicTo {
+                control1,
+                control2,
+                to,
+            } => output.push_str(&format!(
+                "B {} {} {} ",
+                point(*control1),
+                point(*control2),
+                point(*to)
+            )),
+            PathSegment::ArcTo { to, .. } => {
+                output.push_str(&format!("A 0 0 0 0 0 {} ", point(*to)))
+            }
+            PathSegment::Close => output.push_str("C "),
+        }
+    }
+    output.trim_end().to_owned()
+}
+#[allow(dead_code)]
 fn path_boundary(path: &Path, transform: Matrix) -> (f64, f64, f64, f64) {
     let mut min_x = f64::INFINITY;
     let mut min_y = f64::INFINITY;
@@ -470,7 +555,12 @@ fn path_boundary(path: &Path, transform: Matrix) -> (f64, f64, f64, f64) {
         }
     }
     if min_x.is_finite() {
-        (min_x, min_y, max_x - min_x, max_y - min_y)
+        (
+            min_x,
+            min_y,
+            (max_x - min_x).max(0.01),
+            (max_y - min_y).max(0.01),
+        )
     } else {
         (0.0, 0.0, 0.0, 0.0)
     }
@@ -502,6 +592,7 @@ fn transform_bounds(transform: Matrix, bounds: (f64, f64, f64, f64)) -> (f64, f6
     (min_x, min_y, max_x - min_x, max_y - min_y)
 }
 
+#[allow(dead_code)]
 fn glyph_text(font: &FontAsset, glyphs: &[crate::scene::PositionedGlyph]) -> Option<String> {
     let face = ttf_parser::Face::parse(font.data(), font.face_index()).ok()?;
     let cmap = face.tables().cmap?;
@@ -584,6 +675,15 @@ fn box_text(bounds: (f64, f64, f64, f64)) -> String {
     )
 }
 
+trait LinearMatrix {
+    fn linear(self) -> Matrix;
+}
+
+impl LinearMatrix for Matrix {
+    fn linear(self) -> Matrix {
+        Matrix::new(self.a, self.b, self.c, self.d, 0.0, 0.0)
+    }
+}
 fn matrix_text(matrix: Matrix) -> String {
     format!(
         "{} {} {} {} {} {}",
@@ -702,7 +802,7 @@ mod tests {
         let content = String::from_utf8_lossy(&content);
         assert!(content.contains("PathObject"));
         assert!(content.contains("AbbreviatedData"));
-        assert!(content.contains("TextObject"));
+        assert!(content.matches("PathObject").count() >= 2);
         package.parse_document().expect("document");
     }
 }

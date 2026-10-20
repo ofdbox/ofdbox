@@ -1,0 +1,19 @@
+﻿[package]
+name = "ofdbox-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "OFDBox batch converter CLI."
+publish = false
+
+[[bin]]
+name = "ofdbox"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+ofdbox-core = { path = "../ofdbox-core" }
+ofdbox-render = { path = "../ofdbox-render" }
+png = "0.18"
