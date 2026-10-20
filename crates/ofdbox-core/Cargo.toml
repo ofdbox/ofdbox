@@ -4,8 +4,12 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme = "../../README.md"
+keywords = ["ofd", "document", "parser", "xml", "office"]
+categories = ["parser-implementations", "text-processing"]
 description = "OFD 文档结构读取、解析与严格序列化。"
-publish = false
 
 [dependencies]
 base64.workspace = true

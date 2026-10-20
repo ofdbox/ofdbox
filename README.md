@@ -1,6 +1,6 @@
 ﻿# OFDBox
 
-OFDBox 是一个 Rust 实现的 OFD 文档工具箱，覆盖结构读写、加密验签、签章、页面渲染和格式转换。
+OFDBox 是一个 Rust 实现的 OFD 版式文档工具箱，依据 GB/T 33190—2016 与 GM/T 0099—2020，覆盖结构读写、加密验签、签章、页面渲染和格式转换。
 
 当前已实现 GB/T 33190—2016 结构读写、GM/T 0099—2020 加密与签名结构、SM2/SM3/SM4 密码原语、印章识别验签，以及 `ofdbox-render` 的 OFD/PDF 前端、统一 Scene IR、CPU 位图后端和 PDF/OFD 文档后端。wgpu 后端和文档生成仍为占位。
 
@@ -194,10 +194,3 @@ MIT OR Apache-2.0，二选一。
 
 - [LICENSE-MIT](LICENSE-MIT)
 - [LICENSE-APACHE](LICENSE-APACHE)
-
-
-
-
-
-
-

@@ -4,8 +4,12 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme = "../../README.md"
+keywords = ["ofd", "pdf", "rendering", "conversion"]
+categories = ["graphics", "text-processing"]
 description = "OFD 页面渲染与格式转换的统一 Scene IR、前后端和 CPU 光栅化。"
-publish = false
 
 [features]
 default = ["ofd", "pdf", "cpu", "image"]
@@ -35,7 +39,7 @@ jpeg-decoder = { version = "0.3", optional = true }
 justbig2 = { version = "0.2", optional = true }
 kurbo = { version = "0.13", optional = true }
 lopdf = { version = "0.45.0", features = ["wasm_js"], optional = true }
-ofdbox-core = { path = "../ofdbox-core", optional = true }
+ofdbox-core = { path = "../ofdbox-core", version = "0.0.1", optional = true }
 png = { version = "0.18", optional = true }
 skrifa = "0.44"
 sm3.workspace = true

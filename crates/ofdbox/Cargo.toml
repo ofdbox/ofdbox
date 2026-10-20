@@ -4,8 +4,12 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-description = "OFDBox facade for OFD/PDF rendering, conversion, crypto and seals."
-publish = false
+repository.workspace = true
+homepage.workspace = true
+readme = "../../README.md"
+keywords = ["ofd", "layout-document", "gb-t-33190", "gm-t-0099", "document"]
+categories = ["text-processing", "parser-implementations"]
+description = "基于 GB/T 33190—2016 与 GM/T 0099—2020 的 OFD 版式文档工具箱，覆盖结构读写、加密验签、签章、渲染与转换。"
 
 [features]
 default = ["render", "crypto", "seal"]

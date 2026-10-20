@@ -4,14 +4,18 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme = "../../README.md"
+keywords = ["ofd", "sm2", "sm3", "sm4", "cryptography"]
+categories = ["cryptography"]
 description = "GM/T 0099 密码原语与 OFD 密钥处理。"
-publish = false
 
 [dependencies]
 base64.workspace = true
 cbc.workspace = true
 cms.workspace = true
-ofdbox-core = { path = "../ofdbox-core" }
+ofdbox-core = { path = "../ofdbox-core", version = "0.0.1" }
 der.workspace = true
 sm2.workspace = true
 sm3.workspace = true

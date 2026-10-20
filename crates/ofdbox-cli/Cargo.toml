@@ -4,8 +4,12 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme = "README.md"
+keywords = ["ofd", "pdf", "conversion", "cli"]
+categories = ["command-line-utilities"]
 description = "OFDBox batch converter CLI."
-publish = false
 
 [[bin]]
 name = "ofdbox"
