@@ -431,7 +431,10 @@ fn rasterize(renderer: &mut VelloCpuBackend, scene: &Scene, pool: &ResourcePool)
     root.children
         .push(ofdbox_render::Element::Image(ofdbox_render::ImageElement {
             image,
-            transform: ofdbox_render::Matrix::scale(scene.size.width, scene.size.height),
+            transform: ofdbox_render::Matrix::scale(
+                scene.size.width / f64::from(target.width()),
+                scene.size.height / f64::from(target.height()),
+            ),
             alpha: 1.0,
         }));
     Ok(Scene {
