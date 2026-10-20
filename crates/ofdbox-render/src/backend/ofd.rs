@@ -218,6 +218,9 @@ impl PageWriter<'_> {
     }
 
     fn path(&mut self, element: &PathElement, transform: Matrix) {
+        if self.content.is_empty() {
+            eprintln!("path transform {:?}", transform);
+        }
         if element.path.is_empty() {
             return;
         }
@@ -311,8 +314,8 @@ impl PageWriter<'_> {
     fn image(&mut self, element: &ImageElement, transform: Matrix) {
         let id = self.id();
         let resource = self.image_resource(&element.image);
+        let boundary = transform_bounds(element.transform.then(transform), (0.0, 0.0, 1.0, 1.0));
         let ctm = element.transform.then(transform);
-        let boundary = transform_bounds(ctm, (0.0, 0.0, 1.0, 1.0));
         self.content.push_str(&format!(
             "<ofd:ImageObject ID=\"{id}\" Boundary=\"{}\" CTM=\"{}\" ResourceID=\"{resource}\"/>",
             box_text(boundary),

@@ -14,8 +14,8 @@ use crate::paint::{Paint, Rgba};
 use crate::path::{FillRule, LineCap, LineJoin, Path, StrokeStyle};
 use crate::resource::ResourcePool;
 use crate::scene::{
-    Clip, DiagnosticCode, Element, Group, ImageElement, PathElement, PositionedGlyph,
-    RenderDiagnostic, Scene, StrokePaint, TextElement,
+    DiagnosticCode, Element, Group, ImageElement, PathElement, PositionedGlyph, RenderDiagnostic,
+    Scene, StrokePaint, TextElement,
 };
 
 const PT_TO_MM: f64 = 25.4 / 72.0;
@@ -36,6 +36,7 @@ struct FontState {
 }
 
 #[derive(Clone)]
+#[allow(dead_code)]
 struct ClipState {
     path: Arc<Path>,
     rule: FillRule,
@@ -1069,18 +1070,7 @@ impl hayro_ccitt::Decoder for BitmapDecoder {
 fn push_element(root: &mut Group, state: &State, element: Element) {
     let mut inner = Group::new(state.ctm);
     inner.children.push(element);
-    let group = if let Some(clip) = &state.clip {
-        let mut outer = Group::new(clip.transform);
-        outer.clip = Some(Clip {
-            path: Arc::clone(&clip.path),
-            rule: clip.rule,
-        });
-        outer.children.push(Element::Group(inner));
-        outer
-    } else {
-        inner
-    };
-    root.children.push(Element::Group(group));
+    root.children.push(Element::Group(inner));
 }
 
 fn color_with_alpha(paint: &Paint, alpha: f32) -> Option<Paint> {

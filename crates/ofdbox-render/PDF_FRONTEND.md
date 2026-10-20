@@ -1,4 +1,4 @@
-# PDF 前端现状
+﻿# PDF 前端现状
 
 ## 已实现
 
@@ -16,7 +16,7 @@
 - 不支持 JPX、JBIG2、LZW 等图片编码；扫描件优先支持 CCITT/JPEG。
 - ToUnicode 只解析 `beginbfchar`，`beginbfrange`、多字符映射未处理。
 - 文本字距/宽度优先使用字体表，未完整读取 `/Widths`、`/W`、`/DW`。
-- 不支持 Shading、Type3 字体、注释、加密 PDF、页面 `/Rotate`。
+- 不支持 Shading、Type3 字体、注释、加密 PDF、页面 `/Rotate`。\n- 裁剪路径已解析但暂未应用（当前直接忽略，避免错误裁剪掉整页内容）。
 - Form XObject 的 BBox 裁剪、透明度组、SMask 矩阵尚未实现。
 - 复杂裁剪在 CTM 变化后的语义按当前用户空间近似处理。
 
@@ -26,3 +26,4 @@
 cargo test -p ofdbox-render --lib frontend::pdf
 cargo run -p ofdbox-render --release --example pdf_frontend_batch -- <PDF目录> <PNG输出目录>
 ```
+
