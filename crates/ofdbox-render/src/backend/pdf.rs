@@ -1517,9 +1517,9 @@ mod tests {
     use crate::paint::{GradientExtend, GradientStop, LinearGradient, Paint, Rgba};
     use crate::path::{FillRule, Path};
     use crate::resource::{PoolBudget, ResourcePool};
-    use crate::scene::{
-        Element, Group, ImageElement, PathElement, PositionedGlyph, Scene, TextElement,
-    };
+    use crate::scene::{Element, Group, ImageElement, PathElement, Scene};
+    #[cfg(windows)]
+    use crate::scene::{PositionedGlyph, TextElement};
 
     fn pdf_text(pdf: &[u8]) -> String {
         use std::io::Read as _;
