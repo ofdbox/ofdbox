@@ -492,7 +492,57 @@ fn collect_group(
                     });
                 }
             }
-            Element::Text(_) | Element::Image(_) => {}
+            Element::Text(text) => {
+                let Some(Paint::Solid(color)) = text.fill.as_ref() else {
+                    continue;
+                };
+                let Ok(face) = ttf_parser::Face::parse(text.font.data(), text.font.face_index())
+                else {
+                    continue;
+                };
+                let units = f64::from(face.units_per_em());
+                if units == 0.0 {
+                    continue;
+                }
+                let glyph_scale = text.size / units;
+                for glyph in &text.glyphs {
+                    let Ok(glyph_id) = u16::try_from(glyph.id) else {
+                        continue;
+                    };
+                    let mut builder = GlyphPathBuilder::default();
+                    if face
+                        .outline_glyph(ttf_parser::GlyphId(glyph_id), &mut builder)
+                        .is_none()
+                        || builder.path.is_empty()
+                    {
+                        continue;
+                    }
+                    let glyph_transform = Matrix::scale(glyph_scale, -glyph_scale)
+                        .then(Matrix::translate(f64::from(glyph.x), f64::from(glyph.y)))
+                        .then(text.transform)
+                        .then(transform);
+                    let start = u32::try_from(edges.len()).unwrap_or(u32::MAX);
+                    flatten_path(&builder.path, glyph_transform, scale, edges);
+                    let count = u32::try_from(edges.len()).unwrap_or(u32::MAX) - start;
+                    if count == 0 {
+                        continue;
+                    }
+                    paths.push(DrawPath {
+                        start,
+                        count,
+                        rule: 0,
+                        kind: 0,
+                        color: [color.r, color.g, color.b, color.a * opacity],
+                        width: 0.0,
+                        clip_start: clip.map_or(0, |value| value.0),
+                        clip_count: clip.map_or(0, |value| value.1),
+                        clip_rule: clip.map_or(0, |value| value.2),
+                        end_color: [color.r, color.g, color.b, color.a * opacity],
+                        gradient: [0.0; 4],
+                    });
+                }
+            }
+            Element::Image(_) => {}
         }
     }
 }
@@ -579,6 +629,36 @@ fn cubic(from: Point, c1: Point, c2: Point, to: Point, t: f64) -> Point {
             + 3.0 * mt * t * t * c2.y
             + t * t * t * to.y,
     )
+}
+
+#[derive(Default)]
+struct GlyphPathBuilder {
+    path: crate::path::Path,
+}
+
+impl ttf_parser::OutlineBuilder for GlyphPathBuilder {
+    fn move_to(&mut self, x: f32, y: f32) {
+        self.path.move_to(Point::new(f64::from(x), f64::from(y)));
+    }
+    fn line_to(&mut self, x: f32, y: f32) {
+        self.path.line_to(Point::new(f64::from(x), f64::from(y)));
+    }
+    fn quad_to(&mut self, x1: f32, y1: f32, x: f32, y: f32) {
+        self.path.quadratic_to(
+            Point::new(f64::from(x1), f64::from(y1)),
+            Point::new(f64::from(x), f64::from(y)),
+        );
+    }
+    fn curve_to(&mut self, x1: f32, y1: f32, x2: f32, y2: f32, x: f32, y: f32) {
+        self.path.cubic_to(
+            Point::new(f64::from(x1), f64::from(y1)),
+            Point::new(f64::from(x2), f64::from(y2)),
+            Point::new(f64::from(x), f64::from(y)),
+        );
+    }
+    fn close(&mut self) {
+        self.path.close();
+    }
 }
 
 const SHADER: &str = r#"
