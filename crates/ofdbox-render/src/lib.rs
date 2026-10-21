@@ -31,7 +31,10 @@ pub use backend::pdf::{
 };
 #[cfg(feature = "cpu")]
 pub use backend::vello_cpu::{RasterTarget, VelloCpuBackend, VelloCpuFrame};
+#[cfg(not(feature = "wgpu"))]
 pub use backend::wgpu::WgpuBackend;
+#[cfg(feature = "wgpu")]
+pub use backend::wgpu::{WgpuBackend, WgpuContext, WgpuTarget};
 pub use backend::{Backend, BackendCapabilities, BackendFrame, BackendInfo};
 pub use error::RenderError;
 pub use font::{FnFontProvider, FontProvider, FontRequest};

@@ -1,23 +1,11 @@
-//! wgpu 后端占位。
-//!
-//! 设计上由调用方提供 `&wgpu::Device`、`&wgpu::Queue` 和 `&wgpu::TextureView`，
-//! 后端只在帧内借用；当前尚未实现。
+//! wgpu 后端（W0：context、target、compute 实色路径）。
 
-use crate::error::RenderError;
-use crate::scene::Scene;
+#[cfg(not(feature = "wgpu"))]
+mod disabled;
+#[cfg(feature = "wgpu")]
+mod enabled;
 
-/// wgpu 后端占位类型。
-#[derive(Debug, Default)]
-pub struct WgpuBackend;
-
-impl WgpuBackend {
-    /// 创建占位后端。
-    pub fn new() -> Self {
-        Self
-    }
-
-    /// 尚未实现。
-    pub fn draw(&mut self, _scene: &Scene) -> Result<(), RenderError> {
-        Err(RenderError::Unsupported("wgpu 后端尚未实现".to_owned()))
-    }
-}
+#[cfg(not(feature = "wgpu"))]
+pub use disabled::WgpuBackend;
+#[cfg(feature = "wgpu")]
+pub use enabled::{WgpuBackend, WgpuContext, WgpuTarget};

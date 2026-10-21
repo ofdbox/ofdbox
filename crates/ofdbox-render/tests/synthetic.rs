@@ -2,10 +2,11 @@ use std::io::{Cursor, Write};
 use std::sync::{Arc, Mutex};
 
 use ofdbox_core::{OfdPackage, ReadOptions};
+#[cfg(not(feature = "wgpu"))]
+use ofdbox_render::WgpuBackend;
 use ofdbox_render::{
     Backend, BackendFrame, Element, Group, Matrix, OfdFrontend, Paint, PdfFrontend, Point,
     PoolBudget, RasterTarget, RenderOptions, ResourcePool, Rgba, Scene, Size, VelloCpuBackend,
-    WgpuBackend,
 };
 use zip::ZipWriter;
 use zip::write::SimpleFileOptions;
@@ -706,6 +707,8 @@ fn unsupported_backends_report_errors() {
         root: Group::default(),
         diagnostics: Vec::new(),
     };
+    let _ = &scene;
+    #[cfg(not(feature = "wgpu"))]
     assert!(WgpuBackend::new().draw(&scene).is_err());
     assert!(PdfFrontend::new().build_scene().is_err());
 }
