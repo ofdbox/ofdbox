@@ -66,6 +66,25 @@ impl WgpuContext {
     }
 }
 
+/// wgpu 当前能力。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct WgpuCapabilities {
+    /// 实色路径。
+    pub solid_paths: bool,
+    /// 描边。
+    pub strokes: bool,
+    /// 线性渐变。
+    pub linear_gradients: bool,
+    /// 裁剪路径。
+    pub clips: bool,
+    /// 文本轮廓。
+    pub text_outlines: bool,
+    /// 图片。
+    pub images: bool,
+    /// 混合模式。
+    pub blend_modes: bool,
+}
+
 /// wgpu 渲染目标。
 pub struct WgpuTarget {
     texture: wgpu::Texture,

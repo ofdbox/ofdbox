@@ -8,4 +8,4 @@ mod enabled;
 #[cfg(not(feature = "wgpu"))]
 pub use disabled::WgpuBackend;
 #[cfg(feature = "wgpu")]
-pub use enabled::{WgpuBackend, WgpuContext, WgpuTarget};
+pub use enabled::{WgpuBackend, WgpuCapabilities, WgpuContext, WgpuTarget};
