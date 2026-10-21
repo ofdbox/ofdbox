@@ -19,6 +19,9 @@ struct DrawPath {
     kind: u32,
     color: [f32; 4],
     width: f32,
+    clip_start: u32,
+    clip_count: u32,
+    clip_rule: u32,
 }
 
 /// wgpu 设备上下文。
@@ -260,7 +263,8 @@ impl WgpuBackend {
             for value in path.color {
                 path_data.extend_from_slice(&value.to_ne_bytes());
             }
-            for value in [path.width, 0.0, 0.0, 0.0] {
+            path_data.extend_from_slice(&path.width.to_ne_bytes());
+            for value in [path.clip_start, path.clip_count, path.clip_rule] {
                 path_data.extend_from_slice(&value.to_ne_bytes());
             }
         }
@@ -373,7 +377,14 @@ fn collect_paths(scene: &Scene, dpi: f64) -> (Vec<[f32; 4]>, Vec<DrawPath>) {
     let scale = dpi / 25.4;
     let mut edges = Vec::new();
     let mut paths = Vec::new();
-    collect_group(&scene.root, Matrix::IDENTITY, scale, &mut edges, &mut paths);
+    collect_group(
+        &scene.root,
+        Matrix::IDENTITY,
+        scale,
+        None,
+        &mut edges,
+        &mut paths,
+    );
     (edges, paths)
 }
 
@@ -381,13 +392,22 @@ fn collect_group(
     group: &Group,
     parent: Matrix,
     scale: f64,
+    inherited_clip: Option<(u32, u32, u32)>,
     edges: &mut Vec<[f32; 4]>,
     paths: &mut Vec<DrawPath>,
 ) {
     let transform = group.transform.then(parent);
+    let clip = if let Some(clip) = &group.clip {
+        let start = u32::try_from(edges.len()).unwrap_or(u32::MAX);
+        flatten_path(&clip.path, transform, scale, edges);
+        let count = u32::try_from(edges.len()).unwrap_or(u32::MAX) - start;
+        Some((start, count, u32::from(clip.rule == FillRule::EvenOdd)))
+    } else {
+        inherited_clip
+    };
     for element in &group.children {
         match element {
-            Element::Group(child) => collect_group(child, transform, scale, edges, paths),
+            Element::Group(child) => collect_group(child, transform, scale, clip, edges, paths),
             Element::Path(path) => {
                 let start = u32::try_from(edges.len()).unwrap_or(u32::MAX);
                 flatten_path(&path.path, transform, scale, edges);
@@ -403,6 +423,9 @@ fn collect_group(
                         kind: 0,
                         color: [color.r, color.g, color.b, color.a],
                         width: 0.0,
+                        clip_start: clip.map_or(0, |value| value.0),
+                        clip_count: clip.map_or(0, |value| value.1),
+                        clip_rule: clip.map_or(0, |value| value.2),
                     });
                 }
                 if let Some(stroke) = &path.stroke
@@ -415,6 +438,9 @@ fn collect_group(
                         kind: 1,
                         color: [color.r, color.g, color.b, color.a],
                         width: (stroke.style.width * scale) as f32,
+                        clip_start: clip.map_or(0, |value| value.0),
+                        clip_count: clip.map_or(0, |value| value.1),
+                        clip_rule: clip.map_or(0, |value| value.2),
                     });
                 }
             }
@@ -509,7 +535,7 @@ fn cubic(from: Point, c1: Point, c2: Point, to: Point, t: f64) -> Point {
 
 const SHADER: &str = r#"
 struct Edge { a: vec2f, b: vec2f };
-struct PathInfo { start: u32, count: u32, rule: u32, kind: u32, color: vec4f, width: f32, pad0: f32, pad1: f32, pad2: f32 };
+struct PathInfo { start: u32, count: u32, rule: u32, kind: u32, color: vec4f, width: f32, clip_start: u32, clip_count: u32, clip_rule: u32 };
 struct Params { width: u32, height: u32, count: u32, scale: f32 };
 
 @group(0) @binding(0) var<storage, read> edges: array<Edge>;
@@ -517,10 +543,10 @@ struct Params { width: u32, height: u32, count: u32, scale: f32 };
 @group(0) @binding(2) var<storage, read> params: Params;
 @group(0) @binding(3) var output: texture_storage_2d<rgba8unorm, write>;
 
-fn inside_fill(p: vec2f, info: PathInfo) -> bool {
+fn inside_range(p: vec2f, start: u32, count: u32, rule: u32) -> bool {
     var winding: i32 = 0;
-    for (var ei = 0u; ei < info.count; ei = ei + 1u) {
-        let e = edges[info.start + ei];
+    for (var ei = 0u; ei < count; ei = ei + 1u) {
+        let e = edges[start + ei];
         let ay = e.a.y;
         let by = e.b.y;
         if ((ay <= p.y && by > p.y) || (by <= p.y && ay > p.y)) {
@@ -531,8 +557,17 @@ fn inside_fill(p: vec2f, info: PathInfo) -> bool {
             }
         }
     }
-    if (info.rule != 0u) { return (winding & 1) != 0; }
+    if (rule != 0u) { return (winding & 1) != 0; }
     return winding != 0;
+}
+
+fn inside_fill(p: vec2f, info: PathInfo) -> bool {
+    return inside_range(p, info.start, info.count, info.rule);
+}
+
+fn inside_clip(p: vec2f, info: PathInfo) -> bool {
+    if (info.clip_count == 0u) { return true; }
+    return inside_range(p, info.clip_start, info.clip_count, info.clip_rule);
 }
 
 fn stroke_coverage(p: vec2f, info: PathInfo) -> f32 {
@@ -561,10 +596,13 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
             let offsets = array<vec2f, 4>(vec2f(0.25, 0.25), vec2f(0.75, 0.25), vec2f(0.25, 0.75), vec2f(0.75, 0.75));
             for (var si = 0u; si < 4u; si = si + 1u) {
                 let p = vec2f(f32(id.x), f32(id.y)) + offsets[si];
-                if (inside_fill(p, info)) { coverage = coverage + 0.25; }
+                if (inside_fill(p, info) && inside_clip(p, info)) { coverage = coverage + 0.25; }
             }
         } else {
-            coverage = stroke_coverage(vec2f(f32(id.x) + 0.5, f32(id.y) + 0.5), info);
+            let center = vec2f(f32(id.x) + 0.5, f32(id.y) + 0.5);
+            if (inside_clip(center, info)) {
+                coverage = stroke_coverage(center, info);
+            }
         }
         if (coverage > 0.0) {
             let a = info.color.a * coverage;
