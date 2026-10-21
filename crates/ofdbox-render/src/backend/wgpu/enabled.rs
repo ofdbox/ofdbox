@@ -22,6 +22,8 @@ struct DrawPath {
     clip_start: u32,
     clip_count: u32,
     clip_rule: u32,
+    end_color: [f32; 4],
+    gradient: [f32; 4],
 }
 
 /// wgpu 设备上下文。
@@ -255,7 +257,7 @@ impl WgpuBackend {
                 edge_data.extend_from_slice(&value.to_ne_bytes());
             }
         }
-        let mut path_data = Vec::with_capacity(paths.len() * 48);
+        let mut path_data = Vec::with_capacity(paths.len() * 80);
         for path in &paths {
             for value in [path.start, path.count, path.rule, path.kind] {
                 path_data.extend_from_slice(&value.to_ne_bytes());
@@ -265,6 +267,12 @@ impl WgpuBackend {
             }
             path_data.extend_from_slice(&path.width.to_ne_bytes());
             for value in [path.clip_start, path.clip_count, path.clip_rule] {
+                path_data.extend_from_slice(&value.to_ne_bytes());
+            }
+            for value in path.end_color {
+                path_data.extend_from_slice(&value.to_ne_bytes());
+            }
+            for value in path.gradient {
                 path_data.extend_from_slice(&value.to_ne_bytes());
             }
         }
@@ -415,17 +423,50 @@ fn collect_group(
                 if count == 0 {
                     continue;
                 }
-                if let Some(Paint::Solid(color)) = path.fill.as_ref() {
+                if let Some(fill) = &path.fill {
+                    let (kind, color, end_color, gradient) = match fill {
+                        Paint::Solid(color) => (0, *color, *color, [0.0, 0.0, 0.0, 0.0]),
+                        Paint::Linear(linear) => {
+                            let start_color = linear
+                                .stops
+                                .first()
+                                .map_or(crate::paint::Rgba::BLACK, |stop| stop.color);
+                            let end_color =
+                                linear.stops.last().map_or(start_color, |stop| stop.color);
+                            let a = transform.apply(linear.start);
+                            let b = transform.apply(linear.end);
+                            (
+                                2,
+                                start_color,
+                                end_color,
+                                [
+                                    (a.x * scale) as f32,
+                                    (a.y * scale) as f32,
+                                    (b.x * scale) as f32,
+                                    (b.y * scale) as f32,
+                                ],
+                            )
+                        }
+                        Paint::Radial(radial) => {
+                            let color = radial
+                                .stops
+                                .first()
+                                .map_or(crate::paint::Rgba::BLACK, |stop| stop.color);
+                            (0, color, color, [0.0; 4])
+                        }
+                    };
                     paths.push(DrawPath {
                         start,
                         count,
                         rule: u32::from(path.fill_rule == FillRule::EvenOdd),
-                        kind: 0,
+                        kind,
                         color: [color.r, color.g, color.b, color.a],
                         width: 0.0,
                         clip_start: clip.map_or(0, |value| value.0),
                         clip_count: clip.map_or(0, |value| value.1),
                         clip_rule: clip.map_or(0, |value| value.2),
+                        end_color: [end_color.r, end_color.g, end_color.b, end_color.a],
+                        gradient,
                     });
                 }
                 if let Some(stroke) = &path.stroke
@@ -441,6 +482,8 @@ fn collect_group(
                         clip_start: clip.map_or(0, |value| value.0),
                         clip_count: clip.map_or(0, |value| value.1),
                         clip_rule: clip.map_or(0, |value| value.2),
+                        end_color: [color.r, color.g, color.b, color.a],
+                        gradient: [0.0; 4],
                     });
                 }
             }
@@ -535,7 +578,7 @@ fn cubic(from: Point, c1: Point, c2: Point, to: Point, t: f64) -> Point {
 
 const SHADER: &str = r#"
 struct Edge { a: vec2f, b: vec2f };
-struct PathInfo { start: u32, count: u32, rule: u32, kind: u32, color: vec4f, width: f32, clip_start: u32, clip_count: u32, clip_rule: u32 };
+struct PathInfo { start: u32, count: u32, rule: u32, kind: u32, color: vec4f, width: f32, clip_start: u32, clip_count: u32, clip_rule: u32, end_color: vec4f, gradient: vec4f };
 struct Params { width: u32, height: u32, count: u32, scale: f32 };
 
 @group(0) @binding(0) var<storage, read> edges: array<Edge>;
@@ -559,6 +602,15 @@ fn inside_range(p: vec2f, start: u32, count: u32, rule: u32) -> bool {
     }
     if (rule != 0u) { return (winding & 1) != 0; }
     return winding != 0;
+}
+
+fn paint_color(info: PathInfo, p: vec2f) -> vec4f {
+    if (info.kind == 2u) {
+        let axis = info.gradient.zw - info.gradient.xy;
+        let t = clamp(dot(p - info.gradient.xy, axis) / max(dot(axis, axis), 0.0001), 0.0, 1.0);
+        return mix(info.color, info.end_color, t);
+    }
+    return info.color;
 }
 
 fn inside_fill(p: vec2f, info: PathInfo) -> bool {
@@ -605,8 +657,9 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
             }
         }
         if (coverage > 0.0) {
-            let a = info.color.a * coverage;
-            result = vec4f(info.color.rgb * a + result.rgb * (1.0 - a), 1.0);
+            let color = paint_color(info, vec2f(f32(id.x) + 0.5, f32(id.y) + 0.5));
+            let a = color.a * coverage;
+            result = vec4f(color.rgb * a + result.rgb * (1.0 - a), 1.0);
         }
     }
     textureStore(output, vec2i(i32(id.x), i32(id.y)), result);
