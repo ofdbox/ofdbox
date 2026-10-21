@@ -89,6 +89,13 @@ ofdbox = { path = "...", default-features = false, features = ["crypto"] }
 
 `ofdbox-cli` 默认使用全功能，不受最小集影响。`ofdbox-render` 已通过 `wasm32-unknown-unknown` 编译检查。
 
+## OFD 查看器
+
+```bash
+cargo run -p ofdbox-render --release --example ofd_viewer
+```
+
+启动后弹出文件选择框，选择 `.ofd` 后显示第一页；解析和栅格化都在后台线程执行，界面显示加载状态。顶部可重新打开文件、缩放；缩放时会按新尺寸重新渲染，而不是只放大旧位图。
 ## 平台
 
 | 平台 | 状态 | 说明 |
@@ -194,3 +201,6 @@ MIT OR Apache-2.0，二选一。
 
 - [LICENSE-MIT](LICENSE-MIT)
 - [LICENSE-APACHE](LICENSE-APACHE)
+
+
+

@@ -1,4 +1,4 @@
-﻿[package]
+[package]
 name = "ofdbox-render"
 version.workspace = true
 edition.workspace = true
@@ -54,6 +54,8 @@ zip = { workspace = true, optional = true }
 
 [dev-dependencies]
 dotenvy.workspace = true
+eframe = "0.33"
+rfd = "0.17"
 
 
 

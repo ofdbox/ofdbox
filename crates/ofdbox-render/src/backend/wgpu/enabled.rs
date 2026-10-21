@@ -376,6 +376,19 @@ impl WgpuBackend {
 
 impl WgpuBackend {
     /// 返回共享的 wgpu 上下文。
+    pub fn capabilities(&self) -> WgpuCapabilities {
+        WgpuCapabilities {
+            solid_paths: true,
+            strokes: true,
+            linear_gradients: true,
+            clips: true,
+            text_outlines: true,
+            images: false,
+            blend_modes: false,
+        }
+    }
+
+    /// 返回共享的 wgpu 上下文。
     pub fn context(&self) -> &WgpuContext {
         &self.context
     }
