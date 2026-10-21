@@ -390,6 +390,7 @@ fn collect_paths(scene: &Scene, dpi: f64) -> (Vec<[f32; 4]>, Vec<DrawPath>) {
         Matrix::IDENTITY,
         scale,
         None,
+        1.0,
         &mut edges,
         &mut paths,
     );
@@ -401,10 +402,12 @@ fn collect_group(
     parent: Matrix,
     scale: f64,
     inherited_clip: Option<(u32, u32, u32)>,
+    inherited_opacity: f32,
     edges: &mut Vec<[f32; 4]>,
     paths: &mut Vec<DrawPath>,
 ) {
     let transform = group.transform.then(parent);
+    let opacity = inherited_opacity * group.opacity.clamp(0.0, 1.0);
     let clip = if let Some(clip) = &group.clip {
         let start = u32::try_from(edges.len()).unwrap_or(u32::MAX);
         flatten_path(&clip.path, transform, scale, edges);
@@ -415,7 +418,9 @@ fn collect_group(
     };
     for element in &group.children {
         match element {
-            Element::Group(child) => collect_group(child, transform, scale, clip, edges, paths),
+            Element::Group(child) => {
+                collect_group(child, transform, scale, clip, opacity, edges, paths)
+            }
             Element::Path(path) => {
                 let start = u32::try_from(edges.len()).unwrap_or(u32::MAX);
                 flatten_path(&path.path, transform, scale, edges);
@@ -460,12 +465,12 @@ fn collect_group(
                         count,
                         rule: u32::from(path.fill_rule == FillRule::EvenOdd),
                         kind,
-                        color: [color.r, color.g, color.b, color.a],
+                        color: [color.r, color.g, color.b, color.a * opacity],
                         width: 0.0,
                         clip_start: clip.map_or(0, |value| value.0),
                         clip_count: clip.map_or(0, |value| value.1),
                         clip_rule: clip.map_or(0, |value| value.2),
-                        end_color: [end_color.r, end_color.g, end_color.b, end_color.a],
+                        end_color: [end_color.r, end_color.g, end_color.b, end_color.a * opacity],
                         gradient,
                     });
                 }
@@ -477,12 +482,12 @@ fn collect_group(
                         count,
                         rule: 0,
                         kind: 1,
-                        color: [color.r, color.g, color.b, color.a],
+                        color: [color.r, color.g, color.b, color.a * opacity],
                         width: (stroke.style.width * scale) as f32,
                         clip_start: clip.map_or(0, |value| value.0),
                         clip_count: clip.map_or(0, |value| value.1),
                         clip_rule: clip.map_or(0, |value| value.2),
-                        end_color: [color.r, color.g, color.b, color.a],
+                        end_color: [color.r, color.g, color.b, color.a * opacity],
                         gradient: [0.0; 4],
                     });
                 }
