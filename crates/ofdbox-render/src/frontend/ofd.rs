@@ -28,6 +28,7 @@ pub struct OfdFrontend<'a> {
     options: RenderOptions,
     font_provider: Option<Box<dyn FontProvider>>,
     font_cache: HashMap<String, Option<Arc<crate::asset::FontAsset>>>,
+    fallback_font: Option<Arc<crate::asset::FontAsset>>,
 }
 
 impl<'a> OfdFrontend<'a> {
@@ -43,7 +44,14 @@ impl<'a> OfdFrontend<'a> {
             options,
             font_provider: None,
             font_cache: HashMap::new(),
+            fallback_font: None,
         }
+    }
+
+    /// 设置最终兜底字体。仅在文字带有 Unicode 信息时使用。
+    pub fn with_fallback_font(mut self, bytes: Arc<[u8]>) -> Self {
+        self.fallback_font = self.pool.embedded_font_shared(bytes, 0).ok();
+        self
     }
 
     /// 注入系统字体或自定义字体来源。
@@ -70,6 +78,7 @@ impl<'a> OfdFrontend<'a> {
             &self.options,
             provider,
             &mut self.font_cache,
+            self.fallback_font.clone(),
             page,
         )
     }
@@ -85,8 +94,9 @@ impl<'a> OfdFrontend<'a> {
         let options = &self.options;
         let provider = &mut self.font_provider;
         let fonts = &mut self.font_cache;
+        let fallback_font = self.fallback_font.clone();
         pool.scene(key, || {
-            build_scene(package, pool, options, provider, fonts, page)
+            build_scene(package, pool, options, provider, fonts, fallback_font, page)
         })
     }
 }
@@ -97,6 +107,7 @@ fn build_scene(
     options: &RenderOptions,
     font_provider: &mut Option<Box<dyn FontProvider>>,
     font_cache: &mut HashMap<String, Option<Arc<crate::asset::FontAsset>>>,
+    fallback_font: Option<Arc<crate::asset::FontAsset>>,
     page: &PageView,
 ) -> Result<Scene, RenderError> {
     let document = package.parse_document()?;
@@ -178,6 +189,7 @@ fn build_scene(
         default_color_space,
         font_provider,
         font_cache,
+        fallback_font,
         diagnostics: Vec::new(),
         depth: 0,
         composites: HashSet::new(),
@@ -448,6 +460,7 @@ struct Builder<'a> {
     default_color_space: Option<String>,
     font_provider: &'a mut Option<Box<dyn FontProvider>>,
     font_cache: &'a mut HashMap<String, Option<Arc<crate::asset::FontAsset>>>,
+    fallback_font: Option<Arc<crate::asset::FontAsset>>,
     diagnostics: Vec<crate::scene::RenderDiagnostic>,
     depth: usize,
     composites: HashSet<String>,
@@ -1068,12 +1081,21 @@ impl Builder<'_> {
         if all_chars.is_empty() {
             return Vec::new();
         }
-        let font = match self.font(font_id) {
+        let exact_font = self.font(font_id);
+        let used_fallback = exact_font.is_none();
+        let font = match exact_font {
             Some(font) => font,
-            None => {
-                self.diagnostic(DiagnosticCode::Font, object.id(), "字体资源缺失");
-                return Vec::new();
-            }
+            None => match self.fallback_font.clone() {
+                Some(font) => {
+                    // 兜底字体无法复用原字体的 glyph index，
+                    // 所以下面会清空 CGTransform，改为按 Unicode 重新取字形。
+                    font
+                }
+                None => {
+                    self.diagnostic(DiagnosticCode::Font, object.id(), "字体资源缺失");
+                    return Vec::new();
+                }
+            },
         };
         let face = ttf_parser::Face::parse(font.data(), font.face_index()).ok();
         let h_scale = object
@@ -1123,7 +1145,10 @@ impl Builder<'_> {
             None
         };
 
-        let slots = glyph_slots(object, all_chars.len());
+        let mut slots = glyph_slots(object, all_chars.len());
+        if used_fallback {
+            slots.fill(None);
+        }
 
         let mut elements = Vec::new();
         let mut offset = 0usize;
