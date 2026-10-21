@@ -16,7 +16,9 @@ struct DrawPath {
     start: u32,
     count: u32,
     rule: u32,
+    kind: u32,
     color: [f32; 4],
+    width: f32,
 }
 
 /// wgpu 设备上下文。
@@ -250,12 +252,15 @@ impl WgpuBackend {
                 edge_data.extend_from_slice(&value.to_ne_bytes());
             }
         }
-        let mut path_data = Vec::with_capacity(paths.len() * 32);
+        let mut path_data = Vec::with_capacity(paths.len() * 48);
         for path in &paths {
-            for value in [path.start, path.count, path.rule, 0] {
+            for value in [path.start, path.count, path.rule, path.kind] {
                 path_data.extend_from_slice(&value.to_ne_bytes());
             }
             for value in path.color {
+                path_data.extend_from_slice(&value.to_ne_bytes());
+            }
+            for value in [path.width, 0.0, 0.0, 0.0] {
                 path_data.extend_from_slice(&value.to_ne_bytes());
             }
         }
@@ -384,21 +389,34 @@ fn collect_group(
         match element {
             Element::Group(child) => collect_group(child, transform, scale, edges, paths),
             Element::Path(path) => {
-                let Some(Paint::Solid(color)) = path.fill.as_ref() else {
-                    continue;
-                };
                 let start = u32::try_from(edges.len()).unwrap_or(u32::MAX);
                 flatten_path(&path.path, transform, scale, edges);
                 let count = u32::try_from(edges.len()).unwrap_or(u32::MAX) - start;
                 if count == 0 {
                     continue;
                 }
-                paths.push(DrawPath {
-                    start,
-                    count,
-                    rule: u32::from(path.fill_rule == FillRule::EvenOdd),
-                    color: [color.r, color.g, color.b, color.a],
-                });
+                if let Some(Paint::Solid(color)) = path.fill.as_ref() {
+                    paths.push(DrawPath {
+                        start,
+                        count,
+                        rule: u32::from(path.fill_rule == FillRule::EvenOdd),
+                        kind: 0,
+                        color: [color.r, color.g, color.b, color.a],
+                        width: 0.0,
+                    });
+                }
+                if let Some(stroke) = &path.stroke
+                    && let Paint::Solid(color) = &stroke.paint
+                {
+                    paths.push(DrawPath {
+                        start,
+                        count,
+                        rule: 0,
+                        kind: 1,
+                        color: [color.r, color.g, color.b, color.a],
+                        width: (stroke.style.width * scale) as f32,
+                    });
+                }
             }
             Element::Text(_) | Element::Image(_) => {}
         }
@@ -491,7 +509,7 @@ fn cubic(from: Point, c1: Point, c2: Point, to: Point, t: f64) -> Point {
 
 const SHADER: &str = r#"
 struct Edge { a: vec2f, b: vec2f };
-struct PathInfo { start: u32, count: u32, rule: u32, pad: u32, color: vec4f };
+struct PathInfo { start: u32, count: u32, rule: u32, kind: u32, color: vec4f, width: f32, pad0: f32, pad1: f32, pad2: f32 };
 struct Params { width: u32, height: u32, count: u32, scale: f32 };
 
 @group(0) @binding(0) var<storage, read> edges: array<Edge>;
@@ -499,30 +517,57 @@ struct Params { width: u32, height: u32, count: u32, scale: f32 };
 @group(0) @binding(2) var<storage, read> params: Params;
 @group(0) @binding(3) var output: texture_storage_2d<rgba8unorm, write>;
 
+fn inside_fill(p: vec2f, info: PathInfo) -> bool {
+    var winding: i32 = 0;
+    for (var ei = 0u; ei < info.count; ei = ei + 1u) {
+        let e = edges[info.start + ei];
+        let ay = e.a.y;
+        let by = e.b.y;
+        if ((ay <= p.y && by > p.y) || (by <= p.y && ay > p.y)) {
+            let t = (p.y - ay) / (by - ay);
+            let x = e.a.x + t * (e.b.x - e.a.x);
+            if (x > p.x) {
+                if (by > ay) { winding = winding + 1; } else { winding = winding - 1; }
+            }
+        }
+    }
+    if (info.rule != 0u) { return (winding & 1) != 0; }
+    return winding != 0;
+}
+
+fn stroke_coverage(p: vec2f, info: PathInfo) -> f32 {
+    var coverage = 0.0;
+    let half_width = max(info.width * 0.5, 0.5);
+    for (var ei = 0u; ei < info.count; ei = ei + 1u) {
+        let e = edges[info.start + ei];
+        let ab = e.b - e.a;
+        let length_sq = max(dot(ab, ab), 0.0001);
+        let t = clamp(dot(p - e.a, ab) / length_sq, 0.0, 1.0);
+        let nearest = e.a + ab * t;
+        let distance = length(p - nearest);
+        coverage = max(coverage, clamp(half_width + 0.75 - distance, 0.0, 1.0));
+    }
+    return coverage;
+}
+
 @compute @workgroup_size(8, 8)
 fn main(@builtin(global_invocation_id) id: vec3u) {
     if (id.x >= params.width || id.y >= params.height) { return; }
-    let p = vec2f(f32(id.x) + 0.5, f32(id.y) + 0.5);
     var result = vec4f(1.0, 1.0, 1.0, 1.0);
     for (var pi = 0u; pi < params.count; pi = pi + 1u) {
         let info = paths[pi];
-        var winding: i32 = 0;
-        for (var ei = 0u; ei < info.count; ei = ei + 1u) {
-            let e = edges[info.start + ei];
-            let ay = e.a.y;
-            let by = e.b.y;
-            if ((ay <= p.y && by > p.y) || (by <= p.y && ay > p.y)) {
-                let t = (p.y - ay) / (by - ay);
-                let x = e.a.x + t * (e.b.x - e.a.x);
-                if (x > p.x) {
-                    if (by > ay) { winding = winding + 1; } else { winding = winding - 1; }
-                }
+        var coverage = 0.0;
+        if (info.kind == 0u) {
+            let offsets = array<vec2f, 4>(vec2f(0.25, 0.25), vec2f(0.75, 0.25), vec2f(0.25, 0.75), vec2f(0.75, 0.75));
+            for (var si = 0u; si < 4u; si = si + 1u) {
+                let p = vec2f(f32(id.x), f32(id.y)) + offsets[si];
+                if (inside_fill(p, info)) { coverage = coverage + 0.25; }
             }
+        } else {
+            coverage = stroke_coverage(vec2f(f32(id.x) + 0.5, f32(id.y) + 0.5), info);
         }
-        var inside = winding != 0;
-        if (info.rule != 0u) { inside = (winding & 1) != 0; }
-        if (inside) {
-            let a = info.color.a;
+        if (coverage > 0.0) {
+            let a = info.color.a * coverage;
             result = vec4f(info.color.rgb * a + result.rgb * (1.0 - a), 1.0);
         }
     }
