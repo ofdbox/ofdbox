@@ -99,6 +99,20 @@ impl OfdPackage {
         Self::from_bytes_with_options(bytes, ReadOptions::LENIENT, CacheOptions::default())
     }
 
+    /// 探测字节是否为 OFD 包。
+    ///
+    /// 只读取 ZIP 索引并查找 `OFD.xml`，不解析 XML；与正常读取共用同一套
+    /// ZIP 容错，因此能接受前置字节、空 EOCD 等非标准封装。
+    pub fn probe(bytes: &[u8]) -> Result<bool, OfdError> {
+        let archive = ZipArchive::new(std::io::Cursor::new(bytes))?;
+        for name in archive.file_names() {
+            if name?.eq_ignore_ascii_case("OFD.xml") {
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
+
     /// 从内存字节打开包，并指定读取模式和缓存配置。
     pub fn from_bytes_with_options(
         bytes: Vec<u8>,
@@ -1131,4 +1145,38 @@ fn decryption_order(
         return Err(OfdError::Crypto("多重加密 Relative 链不完整".to_owned()));
     }
     Ok(order)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::OfdPackage;
+    use std::io::{Cursor, Write};
+    use zip::write::SimpleFileOptions;
+
+    fn zip_with_ofd_xml() -> Vec<u8> {
+        let mut writer = zip::ZipWriter::new(Cursor::new(Vec::new()));
+        writer
+            .start_file("OFD.xml", SimpleFileOptions::default())
+            .expect("start file");
+        writer.write_all(b"<ofd:OFD/>").expect("write entry");
+        writer.finish().expect("finish zip").into_inner()
+    }
+
+    #[test]
+    fn probe_detects_ofd_package() {
+        assert!(OfdPackage::probe(&zip_with_ofd_xml()).expect("probe"));
+    }
+
+    #[test]
+    fn probe_rejects_empty_zip() {
+        let empty = [
+            0x50, 0x4b, 0x05, 0x06, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        ];
+        assert!(!OfdPackage::probe(&empty).expect("probe"));
+    }
+
+    #[test]
+    fn probe_rejects_non_zip() {
+        assert!(OfdPackage::probe(b"not a zip").is_err());
+    }
 }
