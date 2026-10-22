@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### 变更
+
+- 渲染、格式转换与文档生成迁至独立仓库 `ofdbox-folio`。
+- 批量转换命令行迁至 `ofdbox-reader`，删除 `ofdbox-cli`。
+- 删除 `ofdbox-render`；`ofdbox` 门面移除 render/ofd/pdf/cpu/image feature 与相关导出，只保留 core、crypto、seal。
+
 ## 0.0.1 - 2026-10-21
 
 首个 alpha 版本。

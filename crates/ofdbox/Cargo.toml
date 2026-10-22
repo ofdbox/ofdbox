@@ -1,4 +1,4 @@
-﻿[package]
+[package]
 name = "ofdbox"
 version.workspace = true
 edition.workspace = true
@@ -9,30 +9,16 @@ homepage.workspace = true
 readme = "../../README.md"
 keywords = ["ofd", "layout-document", "gb-t-33190", "gm-t-0099", "document"]
 categories = ["text-processing", "parser-implementations"]
-description = "基于 GB/T 33190—2016 与 GM/T 0099—2020 的 OFD 版式文档工具箱，覆盖结构读写、加密验签、签章、渲染与转换。"
+description = "基于 GB/T 33190—2016 与 GM/T 0099—2020 的 OFD 结构、加密与签章工具箱。"
 
 [features]
-default = ["render", "crypto", "seal"]
-render = ["ofd", "pdf", "cpu", "image"]
-ofd = ["dep:ofdbox-render", "ofdbox-render/ofd"]
-pdf = ["dep:ofdbox-render", "ofdbox-render/pdf"]
-cpu = ["dep:ofdbox-render", "ofdbox-render/cpu"]
-image = ["image-png", "image-jpeg", "image-bmp", "image-tiff", "image-jbig2", "image-ccitt"]
-image-png = ["dep:ofdbox-render", "ofdbox-render/image-png"]
-image-jpeg = ["dep:ofdbox-render", "ofdbox-render/image-jpeg"]
-image-bmp = ["dep:ofdbox-render", "ofdbox-render/image-bmp"]
-image-tiff = ["dep:ofdbox-render", "ofdbox-render/image-tiff"]
-image-jbig2 = ["dep:ofdbox-render", "ofdbox-render/image-jbig2"]
-image-ccitt = ["dep:ofdbox-render", "ofdbox-render/image-ccitt"]
+default = ["crypto", "seal"]
 crypto = ["dep:ofdbox-crypto"]
 seal = ["dep:ofdbox-seal"]
-full = ["render", "crypto", "seal"]
+full = ["crypto", "seal"]
 
 [dependencies]
 ofdbox-core = { path = "../ofdbox-core", version = "0.0.1" }
-ofdbox-render = { path = "../ofdbox-render", version = "0.0.1", optional = true, default-features = false }
 ofdbox-crypto = { path = "../ofdbox-crypto", version = "0.0.1", optional = true }
 ofdbox-seal = { path = "../ofdbox-seal", version = "0.0.1", optional = true }
 thiserror.workspace = true
-
-
