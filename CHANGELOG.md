@@ -7,12 +7,16 @@
 - `ofdbox-core`：`OfdPackage::write_to` / `write_with` / `to_bytes` / `save` 重打包与编辑写出。未修改的 entry 直接复制压缩数据并保留压缩方式、时间、权限、extra field、文件注释与包注释；非 UTF-8 名称改用原始名称字节复制。
 - `ofdbox-core`：`OfdPackage::write_decrypted_to` 解密另存为未加密包，返回被移除条目与签名/完整性引用告警。
 - `ofdbox-core`：`PackageEdits`（替换/删除/新增）与 `PackageWriteOptions`（保留条目、压缩方式、时间、目录条目）。
+- `ofdbox-core`：`canonical_digest_method` 把 `CheckMethod` 的 OID、子弧、大小写写法归一化为 `SM3`/`MD5`/`SHA1`。
+- `ofdbox-crypto`：摘要校验支持 MD5 与 SHA1，用于历史文档的 `References`。
 
 ### 修复
 
 - 按 GM/T 0099 附录 C.1，`UserInfo` 缺少 `IVValue` 时按 16 个 0 处理，不再跳过该用户。
 - 按 GM/T 0099 附录 C.4 与图 C.3，`EncryptEntry/@DecryptSeedLoc` 改为属性读写（仍接受子元素旧写法），解密时按条目取独立密钥；单个条目解不开不再影响其他条目。
 - `zip` 依赖启用 `unreserved` 特性，可读取并复制含 Info-ZIP Unix extra field 的包。
+- `Provider` 属性缺失时回退读取同名子元素（`ProviderName`/`Version`/`Company`），真实样本有 3 份使用子元素写法。
+- CI 的 feature matrix 改用现存 crate 与 feature，删除已无二进制目标的 release 工作流。
 
 ### 变更
 
