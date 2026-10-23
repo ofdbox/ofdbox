@@ -108,6 +108,51 @@ fn canonical_signature_parses_in_both_modes() {
     }
 }
 
+const PROVIDER_CHILD_SIGNATURE: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<ofd:Signature xmlns:ofd="http://www.ofdspec.org/2016">
+  <ofd:SignedInfo>
+    <ofd:Provider>
+      <ofd:ProviderName>iOFD</ofd:ProviderName>
+      <ofd:Version>2.1.1</ofd:Version>
+      <ofd:Company>dms360.cn</ofd:Company>
+    </ofd:Provider>
+    <ofd:SignatureMethod>SM3WithSM2</ofd:SignatureMethod>
+    <ofd:SignatureDateTime>2023-01-17</ofd:SignatureDateTime>
+    <ofd:References CheckMethod="1.2.156.10197.1.401">
+      <ofd:Reference FileRef="/OFD.xml"><ofd:CheckValue>AAAA</ofd:CheckValue></ofd:Reference>
+    </ofd:References>
+  </ofd:SignedInfo>
+  <ofd:SignedValue>Sign_0/SignedValue.dat</ofd:SignedValue>
+</ofd:Signature>"#;
+
+#[test]
+fn provider_reads_child_elements_when_attributes_missing() {
+    let view =
+        parse_signature(PROVIDER_CHILD_SIGNATURE, ReadOptions::LENIENT).expect("provider children");
+    let provider = view
+        .signed_info()
+        .expect("SignedInfo")
+        .provider()
+        .expect("Provider");
+    assert_eq!(provider.provider_name(), Some("iOFD"));
+    assert_eq!(provider.version(), Some("2.1.1"));
+    assert_eq!(provider.company(), Some("dms360.cn"));
+}
+
+#[test]
+fn provider_attribute_wins_over_child_element() {
+    let both =
+        PROVIDER_CHILD_SIGNATURE.replace("<ofd:Provider>", r#"<ofd:Provider ProviderName="attr">"#);
+    let view = parse_signature(&both, ReadOptions::LENIENT).expect("provider attribute");
+    let provider = view
+        .signed_info()
+        .expect("SignedInfo")
+        .provider()
+        .expect("Provider");
+    assert_eq!(provider.provider_name(), Some("attr"));
+    assert_eq!(provider.version(), Some("2.1.1"));
+}
+
 #[test]
 fn signature_writer_roundtrips() {
     let view = parse_signature(SIGNATURE, ReadOptions::LENIENT).unwrap();

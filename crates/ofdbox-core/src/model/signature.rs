@@ -297,18 +297,21 @@ pub struct ProviderView {
 
 impl ProviderView {
     /// 提供者名称。
+    ///
+    /// 标准写法是 `Provider@ProviderName`；真实样本也有写成同名子元素的，
+    /// 属性缺失时回退到子元素。
     pub fn provider_name(&self) -> Option<&str> {
-        self.doc.attribute(self.node, "ProviderName")
+        self.attribute_or_child("ProviderName")
     }
 
     /// 提供者版本。
     pub fn version(&self) -> Option<&str> {
-        self.doc.attribute(self.node, "Version")
+        self.attribute_or_child("Version")
     }
 
     /// 提供者制造商。
     pub fn company(&self) -> Option<&str> {
-        self.doc.attribute(self.node, "Company")
+        self.attribute_or_child("Company")
     }
 
     /// 接口协议版本（0099 新增）。
@@ -321,6 +324,15 @@ impl ProviderView {
         self.doc
             .find_child(self.node, "ExtendData")
             .map(|node| self.doc.text(node).trim())
+    }
+
+    fn attribute_or_child(&self, name: &str) -> Option<&str> {
+        self.doc.attribute(self.node, name).or_else(|| {
+            self.doc
+                .find_child(self.node, name)
+                .map(|node| self.doc.text(node).trim())
+                .filter(|value| !value.is_empty())
+        })
     }
 }
 
