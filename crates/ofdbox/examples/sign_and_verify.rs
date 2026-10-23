@@ -3,6 +3,7 @@
 //! 运行：`cargo run -p ofdbox --example sign_and_verify`
 
 use std::io::{Cursor, Write};
+use std::path::Path;
 use std::str::FromStr;
 use std::time::Duration;
 
@@ -79,7 +80,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // 4. 验签。
-    let mut document = OfdPackage::from_bytes(signed)?;
+    let mut document = OfdPackage::from_bytes(signed.clone())?;
     let index = document.parse_signatures()?;
     let entry = index.signatures().next().expect("签名记录");
     let base_loc = entry.base_loc().expect("BaseLoc").to_owned();
@@ -95,6 +96,31 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .filter(|check| check.expected == check.actual)
         .count();
     println!("5. 引用摘要 {matched}/{} 一致", checks.len());
+
+    // 6. 把签名后的文件写到 target 目录。
+    let target_dir = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .join("target");
+    std::fs::create_dir_all(&target_dir)?;
+    let output = target_dir.join("signed-example.ofd");
+    std::fs::write(&output, &signed)?;
+    let output = std::fs::canonicalize(&output)?;
+    let display = output.to_string_lossy();
+    let display = display.strip_prefix(r"\\?\").unwrap_or(&display);
+    println!("6. 已写入 {display}");
+
+    // 7. 从磁盘重新打开并验签，确认落盘文件可用。
+    let mut saved = OfdPackage::open(&output)?;
+    let index = saved.parse_signatures()?;
+    let entry = index.signatures().next().expect("签名记录");
+    let signature = saved.parse_signature(entry.base_loc().expect("BaseLoc"))?;
+    saved.verify_signature(&signature, &verifiers)?;
+    let checks = saved.verify_references(&signature, &PasswordBackend::new(""))?;
+    println!(
+        "7. 重新打开验签通过，引用摘要 {}/{} 一致",
+        checks.iter().filter(|c| c.expected == c.actual).count(),
+        checks.len()
+    );
     Ok(())
 }
 
