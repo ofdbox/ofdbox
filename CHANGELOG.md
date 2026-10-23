@@ -23,6 +23,7 @@
 - GB/T 35275（沿用 GM/T 0010）的标识 `1.2.156.10197.6.1.4.2.2`（signedData）与纯 SM2 签名算法标识 `1.2.156.10197.1.301.1` 均被接受；四份铁路电子客票 `Sign` 样本通过端到端验签。
 - `CheckMethod` 按 GB/T 33190 表 68 作为自由字符串校验，不再限定 `MD5`/`SHA1`/`SM3`（真实文件大量写 SM3 的 OID 与子弧写法）；生成的签名默认写 `1.2.156.10197.1.401`，与真实文件一致。
 - 示例与签名用例的 `SignatureDateTime` 改为 14 位 `YYYYMMDDHHMMSS`，与真实签名文件一致。
+- `signedAttrs` 补充 `signingTime`（UTCTime），与真实签名文件的属性集合一致（contentType + signingTime + messageDigest）。
 - CI 的 feature matrix 改用现存 crate 与 feature，删除已无二进制目标的 release 工作流。
 
 ### 变更

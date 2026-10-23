@@ -18,6 +18,7 @@ use crate::signature::{DEFAULT_DIST_ID, sign_sm3};
 const ID_DATA: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.156.10197.6.1.4.2.1");
 const ID_SIGNED_DATA: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.156.10197.6.1.4.2.2");
 const ID_CONTENT_TYPE: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.113549.1.9.3");
+const ID_SIGNING_TIME: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.113549.1.9.5");
 const ID_MESSAGE_DIGEST: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.113549.1.9.4");
 const ID_SM3: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.156.10197.1.401");
 const ID_SM2_SIGN_ALG: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.156.10197.1.301.1");
@@ -85,6 +86,20 @@ impl SignedValueProducer for Sm2SignedDataProducer {
         attributes
             .insert(digest)
             .map_err(|_| OfdError::Crypto("签名属性排序失败".to_owned()))?;
+        // 真实签名文件普遍带 signingTime（UTCTime），按 signed_at 的 14 位写法生成。
+        if let Some(signing_time) = utc_time(context.signed_at) {
+            let attribute = Attribute {
+                oid: ID_SIGNING_TIME,
+                values: SetOfVec::try_from(vec![
+                    Any::new(Tag::UtcTime, signing_time.into_bytes())
+                        .map_err(|_| OfdError::Crypto("signingTime 属性无效".to_owned()))?,
+                ])
+                .map_err(|_| OfdError::Crypto("signingTime 属性无效".to_owned()))?,
+            };
+            attributes
+                .insert(attribute)
+                .map_err(|_| OfdError::Crypto("签名属性排序失败".to_owned()))?;
+        }
         let attributes: Attributes = attributes;
 
         // 35275 规定签名对象是 signedAttrs 的 DER（SET OF 编码）。
@@ -145,5 +160,18 @@ fn algorithm(oid: ObjectIdentifier) -> x509_cert::spki::AlgorithmIdentifierOwned
     x509_cert::spki::AlgorithmIdentifierOwned {
         oid,
         parameters: None,
+    }
+}
+
+/// 把 14 位 `YYYYMMDDHHMMSS` 转成 DER UTCTime 的 `YYMMDDHHMMSSZ`。
+fn utc_time(signed_at: &str) -> Option<String> {
+    let digits: String = signed_at
+        .chars()
+        .filter(|character| character.is_ascii_digit())
+        .collect();
+    if digits.len() == 14 {
+        Some(format!("{}Z", &digits[2..]))
+    } else {
+        None
     }
 }

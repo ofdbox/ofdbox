@@ -2,8 +2,8 @@ use std::io::{Cursor, Write};
 use std::str::FromStr;
 use std::time::Duration;
 
-use der::Encode;
 use der::asn1::{BitString, ObjectIdentifier};
+use der::{Decode, Encode};
 use ofdbox_core::{
     DEFAULT_SIGNATURE_METHOD, OfdPackage, ReadOptions, SignatureVerifiers, SigningRequest,
 };
@@ -201,6 +201,22 @@ fn signs_and_verifies_package() {
     for check in checks {
         assert_eq!(check.expected, check.actual, "{}", check.file_ref);
     }
+
+    // signedAttrs 应包含 contentType、signingTime、messageDigest。
+    let value = document
+        .read_entry("/Doc_0/Signs/Sign_0/SignedValue.dat")
+        .expect("signed value");
+    let info = cms::content_info::ContentInfo::from_der(&value).expect("content info");
+    let signed_data: cms::signed_data::SignedData = info.content.decode_as().expect("signed data");
+    let signer = signed_data.signer_infos.0.iter().next().expect("signer");
+    let attributes = signer.signed_attrs.as_ref().expect("signed attrs");
+    let oids: Vec<String> = attributes.iter().map(|attr| attr.oid.to_string()).collect();
+    assert!(
+        oids.contains(&"1.2.840.113549.1.9.5".to_owned()),
+        "缺少 signingTime: {oids:?}"
+    );
+    assert!(oids.contains(&"1.2.840.113549.1.9.4".to_owned()));
+    assert!(oids.contains(&"1.2.840.113549.1.9.3".to_owned()));
 }
 
 #[test]
