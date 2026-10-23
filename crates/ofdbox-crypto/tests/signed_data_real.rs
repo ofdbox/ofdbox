@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use ofdbox_core::OfdPackage;
+use ofdbox_core::{OfdPackage, SignatureVerifiers};
 use ofdbox_crypto::Sm2SignedDataVerifier;
 
 fn corpus_dir() -> Option<PathBuf> {
@@ -25,8 +25,9 @@ fn verify_sample(path: &Path) -> Result<(), String> {
     let signature = package
         .parse_signature(&base_loc)
         .map_err(|error| error.to_string())?;
+    let verifiers = SignatureVerifiers::new().with(Box::new(Sm2SignedDataVerifier::new()));
     package
-        .verify_signature(&signature, &Sm2SignedDataVerifier::new())
+        .verify_signature(&signature, &verifiers)
         .map_err(|error| error.to_string())
 }
 

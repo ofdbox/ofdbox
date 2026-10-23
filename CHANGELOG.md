@@ -8,6 +8,8 @@
 - `ofdbox-core`：`OfdPackage::write_decrypted_to` 解密另存为未加密包，返回被移除条目与签名/完整性引用告警。
 - `ofdbox-core`：`PackageEdits`（替换/删除/新增）与 `PackageWriteOptions`（保留条目、压缩方式、时间、目录条目）。
 - `ofdbox-core`：`canonical_digest_method` 把 `CheckMethod` 的 OID、子弧、大小写写法归一化为 `SM3`/`MD5`/`SHA1`。
+- `ofdbox-core`：`SignedValueFormat` 与 `detect_signed_value_format`，按内容嗅探 GB/T 35275 `SignedData`、GB/T 38540 `SES_Signature` 与厂商自定义格式。
+- `ofdbox-core`：`SignatureVerifiers` 注册表，`verify_signature` 按「格式 → 字节认领 → 签名方法」分派到自定义验签器。
 - `ofdbox-crypto`：摘要校验支持 MD5 与 SHA1，用于历史文档的 `References`。
 
 ### 修复

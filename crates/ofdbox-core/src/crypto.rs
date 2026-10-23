@@ -176,10 +176,99 @@ impl CryptoBackend for CryptoRegistry {
     }
 }
 
+/// 签名值容器格式。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SignedValueFormat {
+    /// GB/T 35275（沿用 GM/T 0010）或 PKCS#7 的 `SignedData`。
+    SignedData,
+    /// GB/T 38540 的 `SES_Signature`。
+    SesSignature,
+    /// 其他或无法识别的厂商自定义结构。
+    Other,
+}
+
+/// GB/T 35275 的 `signedData` OID 内容（1.2.156.10197.6.1.4.2.2）。
+const OID_SIGNED_DATA_GMT: &[u8] = &[0x2A, 0x81, 0x1C, 0xCF, 0x55, 0x06, 0x01, 0x04, 0x02, 0x02];
+/// PKCS#7 的 `signedData` OID 内容（1.2.840.113549.1.7.2）。
+const OID_SIGNED_DATA_PKCS7: &[u8] = &[0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01, 0x07, 0x02];
+
+/// 读取一个 DER TLV，返回 `(tag, 内容, 总长度)`。
+fn read_tlv(bytes: &[u8]) -> Option<(u8, &[u8], usize)> {
+    let tag = *bytes.first()?;
+    let first = *bytes.get(1)?;
+    let (length, header) = if first < 0x80 {
+        (first as usize, 2)
+    } else {
+        let count = (first & 0x7F) as usize;
+        if count == 0 || count > 4 || bytes.len() < 2 + count {
+            return None;
+        }
+        let mut length = 0usize;
+        for byte in &bytes[2..2 + count] {
+            length = (length << 8) | *byte as usize;
+        }
+        (length, 2 + count)
+    };
+    let end = header.checked_add(length)?;
+    if end > bytes.len() {
+        return None;
+    }
+    Some((tag, &bytes[header..end], end))
+}
+
+/// 按内容嗅探签名值格式。
+///
+/// `Signature/@Type` 在真实文件里可能缺失，因此不能只靠类型字段分派。
+pub fn detect_signed_value_format(value: &[u8]) -> SignedValueFormat {
+    let Some((tag, content, _)) = read_tlv(value) else {
+        return SignedValueFormat::Other;
+    };
+    if tag != 0x30 {
+        return SignedValueFormat::Other;
+    }
+    let Some((first_tag, first, first_len)) = read_tlv(content) else {
+        return SignedValueFormat::Other;
+    };
+    if first_tag == 0x06 {
+        if first == OID_SIGNED_DATA_GMT || first == OID_SIGNED_DATA_PKCS7 {
+            return SignedValueFormat::SignedData;
+        }
+        return SignedValueFormat::Other;
+    }
+    if first_tag == 0x30 {
+        // SES_Signature ::= SEQUENCE { toSign, cert OCTET STRING, alg OID, signature BIT STRING, ... }
+        let mut rest = &content[first_len..];
+        let mut tags = [0u8; 3];
+        for slot in &mut tags {
+            let Some((tag, _, len)) = read_tlv(rest) else {
+                return SignedValueFormat::Other;
+            };
+            *slot = tag;
+            rest = &rest[len..];
+        }
+        if tags == [0x04, 0x06, 0x03] {
+            return SignedValueFormat::SesSignature;
+        }
+    }
+    SignedValueFormat::Other
+}
+
 /// 签名值验签后端。
 ///
-/// 标准 GB/T 35275 和厂商自定义 SignedValue 都可以通过实现该 trait 接入。
+/// 标准 GB/T 35275、GB/T 38540 和厂商自定义 SignedValue 都可以通过实现该 trait 接入。
 pub trait SignatureVerifier {
+    /// 该实现处理的容器格式；默认按 `SignedData` 处理。
+    fn format(&self) -> SignedValueFormat {
+        SignedValueFormat::SignedData
+    }
+
+    /// 是否认领这段签名值字节。
+    ///
+    /// 同一格式下存在多个厂商变体时用它进一步区分；默认全部认领。
+    fn accepts(&self, _signed_value: &[u8]) -> bool {
+        true
+    }
+
     /// 是否支持指定签名方案标识。
     fn supports(&self, signature_method: &str) -> bool;
 
@@ -194,9 +283,103 @@ pub trait SignatureVerifier {
     ) -> Result<(), OfdError>;
 }
 
+/// 按「格式 → 字节认领 → 签名方法」顺序分发的验签器集合。
+#[derive(Default)]
+pub struct SignatureVerifiers {
+    verifiers: Vec<Box<dyn SignatureVerifier>>,
+}
+
+impl SignatureVerifiers {
+    /// 创建空集合。
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// 追加一个验签器，返回自身以便链式调用。
+    pub fn with(mut self, verifier: Box<dyn SignatureVerifier>) -> Self {
+        self.verifiers.push(verifier);
+        self
+    }
+
+    /// 追加一个验签器。
+    pub fn add(&mut self, verifier: Box<dyn SignatureVerifier>) {
+        self.verifiers.push(verifier);
+    }
+
+    /// 是否没有注册任何验签器。
+    pub fn is_empty(&self) -> bool {
+        self.verifiers.is_empty()
+    }
+
+    /// 已注册的验签器数量。
+    pub fn len(&self) -> usize {
+        self.verifiers.len()
+    }
+
+    /// 依次匹配格式、字节认领与签名方法，第一个命中的实现完成验签。
+    pub fn verify(
+        &self,
+        format: SignedValueFormat,
+        signature_method: &str,
+        content: &[u8],
+        signed_value: &[u8],
+    ) -> Result<(), OfdError> {
+        for verifier in &self.verifiers {
+            if verifier.format() != format
+                || !verifier.accepts(signed_value)
+                || !verifier.supports(signature_method)
+            {
+                continue;
+            }
+            return verifier.verify(signature_method, content, signed_value);
+        }
+        Err(OfdError::UnsupportedSignature(format!(
+            "{signature_method}（签名值格式 {format:?}）"
+        )))
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{CryptoBackend, FileKey, OfdError, canonical_digest_method};
+    use super::{
+        CryptoBackend, FileKey, OfdError, SignedValueFormat, canonical_digest_method,
+        detect_signed_value_format,
+    };
+
+    #[test]
+    fn detects_signed_value_formats() {
+        // GB/T 35275 signedData
+        assert_eq!(
+            detect_signed_value_format(&[
+                0x30, 0x0C, 0x06, 0x0A, 0x2A, 0x81, 0x1C, 0xCF, 0x55, 0x06, 0x01, 0x04, 0x02, 0x02,
+            ]),
+            SignedValueFormat::SignedData
+        );
+        // PKCS#7 signedData
+        assert_eq!(
+            detect_signed_value_format(&[
+                0x30, 0x0B, 0x06, 0x09, 0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01, 0x07, 0x02,
+            ]),
+            SignedValueFormat::SignedData
+        );
+        // SES_Signature 形状：SEQUENCE { SEQUENCE, OCTET STRING, OID, BIT STRING }
+        assert_eq!(
+            detect_signed_value_format(&[
+                0x30, 0x0D, 0x30, 0x02, 0x05, 0x00, 0x04, 0x01, 0x00, 0x06, 0x01, 0x2A, 0x03, 0x01,
+                0x00,
+            ]),
+            SignedValueFormat::SesSignature
+        );
+        // 厂商自定义 / 非 DER
+        assert_eq!(
+            detect_signed_value_format(&[0x30, 0x03, 0x02, 0x01, 0x01]),
+            SignedValueFormat::Other
+        );
+        assert_eq!(
+            detect_signed_value_format(b"signature"),
+            SignedValueFormat::Other
+        );
+    }
 
     #[test]
     fn normalizes_digest_method_aliases() {

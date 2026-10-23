@@ -1,6 +1,6 @@
 mod fixtures;
 
-use ofdbox_core::{OfdError, OfdPackage, SignatureVerifier};
+use ofdbox_core::{OfdError, OfdPackage, SignatureVerifier, SignatureVerifiers, SignedValueFormat};
 
 const SIGNATURE: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
 <ofd:Signature xmlns:ofd="http://www.ofdspec.org/2016">
@@ -17,6 +17,11 @@ const SIGNATURE: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
 struct FakeVerifier;
 
 impl SignatureVerifier for FakeVerifier {
+    fn format(&self) -> SignedValueFormat {
+        // 自定义格式：内容不是 DER，嗅探结果是 Other。
+        SignedValueFormat::Other
+    }
+
     fn supports(&self, method: &str) -> bool {
         method == "FAKE"
     }
@@ -40,8 +45,9 @@ fn injected_verifier_receives_signature_bytes() {
     let signature = package
         .parse_signature_file("Sig/Signature.xml")
         .expect("signature");
+    let verifiers = SignatureVerifiers::new().with(Box::new(FakeVerifier));
     package
-        .verify_signature(&signature, &FakeVerifier)
+        .verify_signature(&signature, &verifiers)
         .expect("verify");
 }
 
@@ -55,10 +61,11 @@ fn unsupported_signature_method_is_reported() {
     let signature = package
         .parse_signature_file("Sig/Signature.xml")
         .expect("signature");
-    match package.verify_signature(&signature, &FakeVerifier) {
-        Ok(()) => {}
-        Err(error) => panic!("unexpected error: {error:?}"),
-    }
+    let verifiers = SignatureVerifiers::new().with(Box::new(FakeVerifier));
+    package
+        .verify_signature(&signature, &verifiers)
+        .expect("fake verifier");
+
     struct Unsupported;
     impl SignatureVerifier for Unsupported {
         fn supports(&self, _method: &str) -> bool {
@@ -68,8 +75,9 @@ fn unsupported_signature_method_is_reported() {
             Ok(())
         }
     }
+    let verifiers = SignatureVerifiers::new().with(Box::new(Unsupported));
     assert!(matches!(
-        package.verify_signature(&signature, &Unsupported),
+        package.verify_signature(&signature, &verifiers),
         Err(OfdError::UnsupportedSignature(_))
     ));
 }

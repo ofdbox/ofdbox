@@ -22,7 +22,10 @@ mod write;
 mod xml;
 
 pub use crypto::canonical_digest_method;
-pub use crypto::{CryptoBackend, CryptoRegistry, FileKey, SignatureVerifier};
+pub use crypto::{
+    CryptoBackend, CryptoRegistry, FileKey, SignatureVerifier, SignatureVerifiers,
+    SignedValueFormat, detect_signed_value_format,
+};
 pub use error::{Diagnostic, DiagnosticCode, OfdError};
 pub use model::action::{
     ActionView, ActionsView, GotoAView, GotoView, MovieView, SoundView, UriView,

@@ -5,7 +5,7 @@ use std::sync::Arc;
 use zip::ZipArchive;
 
 use crate::cache::ByteLruCache;
-use crate::crypto::{CryptoBackend, FileKey, SignatureVerifier};
+use crate::crypto::{CryptoBackend, FileKey, SignatureVerifiers};
 use crate::error::OfdError;
 use crate::model::annotation::{AnnotationsView, PageAnnotView};
 use crate::model::attachment::AttachmentsView;
@@ -963,11 +963,13 @@ impl OfdPackage {
 
     /// 使用调用方提供的验签器验证签名值。
     ///
-    /// `content` 为 `Signature.xml` 原始字节，`signed_value` 为 `SignedValue.dat` 原始字节。
+    /// 先按签名值内容嗅探容器格式（`SignedData` / `SES_Signature` / 其他），
+    /// 再交给 [`SignatureVerifiers`] 中匹配的实现；未命中返回
+    /// [`OfdError::UnsupportedSignature`]。`Type` 缺失或与内容不一致时以内容为准。
     pub fn verify_signature(
         &mut self,
         signature: &SignatureView,
-        verifier: &dyn SignatureVerifier,
+        verifiers: &SignatureVerifiers,
     ) -> Result<(), OfdError> {
         let entry = self
             .signature_entry
@@ -977,16 +979,14 @@ impl OfdPackage {
             .signed_info()
             .and_then(|info| info.signature_method().map(str::to_owned))
             .ok_or_else(|| OfdError::InvalidStructure("签名缺少 SignatureMethod".to_owned()))?;
-        if !verifier.supports(&method) {
-            return Err(OfdError::UnsupportedSignature(method));
-        }
         let content = self.read_entry(&entry)?;
         let signed_value_loc = signature
             .signed_value()
             .ok_or_else(|| OfdError::InvalidStructure("签名缺少 SignedValue".to_owned()))?;
         let signed_entry = resolve_loc(parent_dir(&entry).unwrap_or(""), signed_value_loc)?;
         let signed_value = self.read_entry(&signed_entry)?;
-        verifier.verify(&method, &content, &signed_value)
+        let format = crate::crypto::detect_signed_value_format(&signed_value);
+        verifiers.verify(format, &method, &content, &signed_value)
     }
 
     /// 校验一个签名描述中的 `References` 文件摘要。
