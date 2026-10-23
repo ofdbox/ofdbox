@@ -11,6 +11,7 @@ OFDBox 是一个 Rust 实现的 OFD 版式文档工具箱，依据 GB/T 33190—
 | 文档结构读取/写出 | 已完成 | GB/T 33190—2016 全量文件与结构模型，宽松读取、严格写出、缓存 |
 | GM/T 0099 加密结构 | 已完成 | 签名扩展、`Encryptions.xml`、`DecryptSeed`、`EncryptedEntries`、`OFDEntries.xml` |
 | 文档加密/解密 | 结构层完成 | 密码/证书、SM4、流式解密；密钥随会话释放 |
+| 包写出/重打包 | 已完成 | `write_to`/`write_with` 原样复制 ZIP 元数据，可替换/删除/新增 entry；加密包可 `write_decrypted_to` 另存为未加密包 |
 | 签名/验签 | 结构层完成 | References 摘要校验、SM2DSA、SignedData、印章注解 |
 | 印章识别/验签 | 已完成 | GM/T 0031 与 GB/T 38540 印章格式识别、图片提取、签名验证 |
 
