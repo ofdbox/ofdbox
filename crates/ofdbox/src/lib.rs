@@ -12,13 +12,16 @@
 pub use ofdbox_core as core;
 pub use ofdbox_core::{
     CacheOptions, DocumentView, OfdError, OfdPackage, PackageDateTime, PackageEdits,
-    PackageWriteOptions, PageView, ReadOptions,
+    PackageWriteOptions, PageView, ProtectScope, ProviderInfo, ReadOptions, SignedValueProducer,
+    SigningReport, SigningRequest,
 };
 
 #[cfg(feature = "crypto")]
 pub use ofdbox_crypto as crypto;
 #[cfg(feature = "crypto")]
-pub use ofdbox_crypto::{CertificateBackend, PasswordBackend};
+pub use ofdbox_crypto::{
+    CertificateBackend, PasswordBackend, Sm2SignedDataProducer, Sm2SignedDataVerifier,
+};
 
 #[cfg(feature = "seal")]
 pub use ofdbox_seal as seal;

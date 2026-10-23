@@ -26,6 +26,9 @@ use crate::package_write::{
     DecryptedWriteReport, ExistingEntry, PackageEdits, PackageWriteOptions, PlanItem, copy_raw,
     write_plain_entry,
 };
+use crate::sign::{
+    ProtectScope, SignedValueProducer, SigningContext, SigningReport, SigningRequest,
+};
 use crate::xml::parser::parse_xml;
 use crate::xml::tree::XmlDocument;
 
@@ -1248,6 +1251,179 @@ impl OfdPackage {
         })
     }
 
+    /// 生成一个数字签名（`Type=Sign`）。
+    ///
+    /// 结构层完成：选取保护文件、计算 `References`、组装 `Signature.xml` 与
+    /// `Signatures.xml`、必要时给 `OFD.xml` 补 `Signatures` 链接，最后通过
+    /// `PackageEdits` 写包。签名值由 `producer` 产出（SM2 → GB/T 35275）。
+    ///
+    /// 加密包请先 [`Self::write_decrypted_to`] 另存为未加密包。
+    pub fn sign_package(
+        &mut self,
+        request: &SigningRequest<'_>,
+        producer: &dyn SignedValueProducer,
+        writer: &mut (impl Write + Seek),
+    ) -> Result<SigningReport, OfdError> {
+        if self.contains("Encryptions.xml") {
+            return Err(OfdError::Crypto(
+                "加密包不支持直接签名，请先 write_decrypted_to 另存为未加密包".to_owned(),
+            ));
+        }
+        if !producer.supports(request.signature_method) {
+            return Err(OfdError::UnsupportedSignature(
+                request.signature_method.to_owned(),
+            ));
+        }
+        if request.signed_at.trim().is_empty() {
+            return Err(OfdError::InvalidStructure("缺少签名时间".to_owned()));
+        }
+
+        self.parse_document()?;
+        let doc_entry = self
+            .document_entry
+            .clone()
+            .ok_or_else(|| OfdError::InvalidStructure("尚未定位 Document.xml".to_owned()))?;
+        let doc_dir = parent_dir(&doc_entry).unwrap_or("").to_owned();
+
+        let root = self.parse_root()?;
+        let link = root
+            .doc_bodies()
+            .next()
+            .and_then(|body| body.signatures().map(str::to_owned));
+        let (signatures_entry, root_edit) = match link {
+            Some(loc) => (resolve_loc("", &loc)?, None),
+            None => {
+                let entry = format!("{doc_dir}/Signs/Signatures.xml");
+                let updated =
+                    crate::sign::insert_signatures_link(&self.read_entry(ROOT_ENTRY)?, &entry)?;
+                (entry, Some(updated))
+            }
+        };
+
+        let existing = self.signature_entries();
+        let id = next_signature_id(&existing);
+        let mut index = existing.len();
+        loop {
+            let dir = format!("{doc_dir}/Signs/Sign_{index}");
+            let used = existing
+                .iter()
+                .any(|(_, base)| base.starts_with(&format!("Sign_{index}/")));
+            if !used && !self.contains(&format!("{dir}/Signature.xml")) {
+                break;
+            }
+            index += 1;
+        }
+        let sign_dir = format!("{doc_dir}/Signs/Sign_{index}");
+        let signature_entry = format!("{sign_dir}/Signature.xml");
+        let signed_value_entry = format!("{sign_dir}/{}", producer.value_name());
+        let base_loc = format!("Sign_{index}/Signature.xml");
+
+        let mut protected: Vec<String> = match &request.scope {
+            ProtectScope::AllContent => self
+                .entry_names()?
+                .into_iter()
+                .filter(|name| !name.ends_with('/'))
+                .filter_map(|name| normalize_entry_name(&name).ok())
+                .collect(),
+            ProtectScope::Custom(paths) => paths
+                .iter()
+                .filter_map(|path| normalize_entry_name(path).ok())
+                .collect(),
+        };
+        let signatures_key = entry_key(&signatures_entry);
+        let sign_dir_key = entry_key(&sign_dir);
+        protected.retain(|path| {
+            let key = entry_key(path);
+            if matches!(
+                key.as_str(),
+                "encryptions.xml" | "decryptseed.dat" | "entriesmap.dat"
+            ) {
+                return false;
+            }
+            if request.allow_append && key == signatures_key {
+                return false;
+            }
+            !key.starts_with(&format!("{sign_dir_key}/"))
+        });
+        protected.sort();
+        protected.dedup_by(|left, right| entry_key(left) == entry_key(right));
+        if let ProtectScope::Custom(paths) = &request.scope {
+            for path in paths {
+                let normalized = normalize_entry_name(path)?;
+                if !self.contains(&normalized) {
+                    return Err(OfdError::InvalidStructure(format!(
+                        "保护文件不存在: {path}"
+                    )));
+                }
+            }
+        }
+
+        let mut references = Vec::with_capacity(protected.len());
+        for path in &protected {
+            let bytes: Arc<[u8]> = if entry_key(path) == entry_key(ROOT_ENTRY)
+                && let Some(updated) = root_edit.as_deref()
+            {
+                Arc::from(updated)
+            } else {
+                self.read_entry(path)?
+            };
+            let digest = producer.digest(&bytes)?;
+            references.push(ReferenceDigest {
+                file_ref: format!("/{path}"),
+                check_method: crate::sign::DEFAULT_CHECK_METHOD.to_owned(),
+                expected: digest.clone(),
+                actual: digest,
+            });
+        }
+
+        let signed_value_path = format!("/{signed_value_entry}");
+        let signature_xml =
+            crate::sign::write_signature_xml(request, &references, &signed_value_path)?;
+        let context = SigningContext {
+            content: signature_xml.as_bytes(),
+            signature_method: request.signature_method,
+            signed_at: &request.signed_at,
+            references: &references,
+        };
+        let signed_value = producer.produce(&context)?;
+
+        let signatures_xml = match self.read_entry(&signatures_entry) {
+            Ok(existing) => crate::sign::append_signature(&existing, &id, &base_loc, &id)?,
+            Err(_) => crate::sign::new_signatures_xml(&id, &base_loc).into_bytes(),
+        };
+
+        let mut edits = PackageEdits::new();
+        if let Some(updated) = root_edit {
+            edits.replace(ROOT_ENTRY, updated);
+        }
+        if self.contains(&signatures_entry) {
+            edits.replace(&signatures_entry, signatures_xml);
+        } else {
+            edits.add(&signatures_entry, signatures_xml);
+        }
+        edits.add(&signature_entry, signature_xml.into_bytes());
+        edits.add(&signed_value_entry, signed_value);
+        self.write_with(writer, &edits, &PackageWriteOptions::default())?;
+
+        Ok(SigningReport {
+            signature_id: id,
+            signature_entry: format!("/{signature_entry}"),
+            signed_value_entry: signed_value_path,
+            signatures_entry: format!("/{signatures_entry}"),
+            protected: protected.iter().map(|path| format!("/{path}")).collect(),
+        })
+    }
+
+    /// 读取已有签名记录的 `(ID, BaseLoc)`，失败时视为空。
+    fn signature_entries(&mut self) -> Vec<(String, String)> {
+        let Ok(view) = self.parse_signatures() else {
+            return Vec::new();
+        };
+        view.signatures()
+            .filter_map(|entry| Some((entry.id()?.to_owned(), entry.base_loc()?.to_owned())))
+            .collect()
+    }
+
     /// 便利：重打包到内存。
     pub fn to_bytes(&mut self) -> Result<Vec<u8>, OfdError> {
         let mut cursor = Cursor::new(Vec::new());
@@ -1387,6 +1563,17 @@ impl OfdPackage {
             .find(|name| name.eq_ignore_ascii_case(ROOT_ENTRY))
             .ok_or_else(|| OfdError::MissingEntry(ROOT_ENTRY.to_owned()))
     }
+}
+
+fn next_signature_id(existing: &[(String, String)]) -> String {
+    let used: HashSet<&str> = existing.iter().map(|(id, _)| id.as_str()).collect();
+    for number in 1..=9999 {
+        let candidate = format!("s{number:03}");
+        if !used.contains(candidate.as_str()) {
+            return candidate;
+        }
+    }
+    format!("s{}", existing.len() + 1)
 }
 
 fn resolve_loc(base: &str, loc: &str) -> Result<String, OfdError> {

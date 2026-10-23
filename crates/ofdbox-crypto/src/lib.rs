@@ -20,6 +20,7 @@ mod encrypt;
 mod error;
 mod kdf;
 mod password;
+mod producer;
 mod signature;
 mod signed_data;
 
@@ -38,5 +39,6 @@ pub use kdf::sm3_kdf;
 pub use password::{
     FILE_KEY_LEN, PASSWORD_KEK_LEN, derive_password_kek, unwrap_file_key, wrap_file_key,
 };
+pub use producer::Sm2SignedDataProducer;
 pub use signature::{DEFAULT_DIST_ID, sign_sm3, verify_sm3, verify_sm3_raw};
 pub use signed_data::{Sm2SignedDataVerifier, verify_signed_data};

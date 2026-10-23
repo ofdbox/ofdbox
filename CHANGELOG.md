@@ -10,6 +10,8 @@
 - `ofdbox-core`：`canonical_digest_method` 把 `CheckMethod` 的 OID、子弧、大小写写法归一化为 `SM3`/`MD5`/`SHA1`。
 - `ofdbox-core`：`SignedValueFormat` 与 `detect_signed_value_format`，按内容嗅探 GB/T 35275 `SignedData`、GB/T 38540 `SES_Signature` 与厂商自定义格式。
 - `ofdbox-core`：`SignatureVerifiers` 注册表，`verify_signature` 按「格式 → 字节认领 → 签名方法」分派到自定义验签器。
+- `ofdbox-core`：`sign_package` 生成 `Type=Sign` 数字签名：按 `ProtectScope` 选文件、算 `References`、组装 `Signature.xml`、更新 `Signatures.xml`、必要时给 `OFD.xml` 补链接，再经 `PackageEdits` 写包；签名值由 `SignedValueProducer` 产出。
+- `ofdbox-crypto`：`Sm2SignedDataProducer` 产出 GB/T 35275 `SignedData`（`.2.2`、SM3、纯 SM2 `.301.1`），并内置 `messageDigest`/`contentType` 签名属性。
 - `ofdbox-crypto`：摘要校验支持 MD5 与 SHA1，用于历史文档的 `References`。
 
 ### 修复

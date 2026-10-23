@@ -18,6 +18,7 @@ mod model;
 mod options;
 mod package;
 mod package_write;
+mod sign;
 mod write;
 mod xml;
 
@@ -75,6 +76,10 @@ pub use options::{CacheOptions, ReadOptions};
 pub use package::{CacheStats, OfdPackage, ROOT_ENTRY};
 pub use package_write::{
     DecryptedWriteReport, EntryCompression, PackageDateTime, PackageEdits, PackageWriteOptions,
+};
+pub use sign::{
+    DEFAULT_CHECK_METHOD, DEFAULT_SIGNATURE_METHOD, ProtectScope, ProviderInfo,
+    SignedValueProducer, SigningContext, SigningReport, SigningRequest,
 };
 pub use xml::namespace::OFD_NAMESPACE;
 pub use xml::parser::parse_xml;

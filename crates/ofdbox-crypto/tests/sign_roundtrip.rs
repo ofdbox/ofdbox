@@ -1,0 +1,290 @@
+use std::io::{Cursor, Write};
+use std::str::FromStr;
+use std::time::Duration;
+
+use der::Encode;
+use der::asn1::{BitString, ObjectIdentifier};
+use ofdbox_core::{
+    DEFAULT_SIGNATURE_METHOD, OfdPackage, ReadOptions, SignatureVerifiers, SigningRequest,
+};
+use ofdbox_crypto::{PasswordBackend, Sm2SignedDataProducer, Sm2SignedDataVerifier};
+use sm2::SecretKey;
+use sm2::dsa::DerSignature;
+use sm2::dsa::signature::{Keypair, Signer};
+use x509_cert::Certificate;
+use x509_cert::builder::{Builder, CertificateBuilder, profile::BuilderProfile};
+use x509_cert::name::Name;
+use x509_cert::serial_number::SerialNumber;
+use x509_cert::spki::{
+    AlgorithmIdentifierOwned, DynSignatureAlgorithmIdentifier, SubjectPublicKeyInfoOwned,
+};
+use x509_cert::time::Validity;
+use zip::ZipWriter;
+use zip::write::SimpleFileOptions;
+
+const SM2_CURVE_OID: &str = "1.2.156.10197.1.301";
+const SM2_SIGN_OID: &str = "1.2.156.10197.1.501";
+const DIST_ID: &str = "1234567812345678";
+
+const OFD_XML: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<ofd:OFD xmlns:ofd="http://www.ofdspec.org/2016" Version="1.0" DocType="OFD">
+  <ofd:DocBody>
+    <ofd:DocInfo><ofd:DocID>sign-test</ofd:DocID></ofd:DocInfo>
+    <ofd:DocRoot>Doc_0/Document.xml</ofd:DocRoot>
+  </ofd:DocBody>
+</ofd:OFD>"#;
+
+const DOCUMENT: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<ofd:Document xmlns:ofd="http://www.ofdspec.org/2016">
+  <ofd:CommonData>
+    <ofd:MaxUnitID>2</ofd:MaxUnitID>
+    <ofd:PageArea><ofd:PhysicalBox>0 0 210 297</ofd:PhysicalBox></ofd:PageArea>
+  </ofd:CommonData>
+  <ofd:Pages><ofd:Page ID="1" BaseLoc="Pages/Page_0/Content.xml"/></ofd:Pages>
+</ofd:Document>"#;
+
+const CONTENT: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<ofd:Page xmlns:ofd="http://www.ofdspec.org/2016">
+  <ofd:Content><ofd:Layer ID="1"/></ofd:Content>
+</ofd:Page>"#;
+
+struct TestProfile {
+    subject: Name,
+}
+
+impl BuilderProfile for TestProfile {
+    fn get_issuer(&self, _subject: &Name) -> Name {
+        self.subject.clone()
+    }
+
+    fn get_subject(&self) -> Name {
+        self.subject.clone()
+    }
+
+    fn build_extensions(
+        &self,
+        _spk: x509_cert::spki::SubjectPublicKeyInfoRef<'_>,
+        _issuer_spk: x509_cert::spki::SubjectPublicKeyInfoRef<'_>,
+        _tbs: &x509_cert::certificate::TbsCertificate,
+    ) -> x509_cert::builder::Result<Vec<x509_cert::ext::Extension>> {
+        Ok(Vec::new())
+    }
+}
+
+struct Sm2Signer {
+    key: sm2::dsa::SigningKey,
+}
+
+impl Keypair for Sm2Signer {
+    type VerifyingKey = sm2::dsa::VerifyingKey;
+
+    fn verifying_key(&self) -> Self::VerifyingKey {
+        self.key.verifying_key().clone()
+    }
+}
+
+impl DynSignatureAlgorithmIdentifier for Sm2Signer {
+    fn signature_algorithm_identifier(&self) -> x509_cert::spki::Result<AlgorithmIdentifierOwned> {
+        Ok(AlgorithmIdentifierOwned {
+            oid: ObjectIdentifier::new_unwrap(SM2_SIGN_OID),
+            parameters: None,
+        })
+    }
+}
+
+impl Signer<DerSignature> for Sm2Signer {
+    fn try_sign(&self, msg: &[u8]) -> sm2::dsa::signature::Result<DerSignature> {
+        let signature: sm2::dsa::Signature = self.key.try_sign(msg)?;
+        Ok(signature.to_der())
+    }
+}
+
+fn make_certificate() -> (Vec<u8>, SecretKey) {
+    let secret = SecretKey::from_slice(&[0x66u8; 32]).expect("secret");
+    let signing = sm2::dsa::SigningKey::new(DIST_ID, &secret).expect("signing");
+    let public = secret.public_key().to_sec1_bytes();
+    let spki = SubjectPublicKeyInfoOwned {
+        algorithm: AlgorithmIdentifierOwned {
+            oid: ObjectIdentifier::new_unwrap(SM2_CURVE_OID),
+            parameters: None,
+        },
+        subject_public_key: BitString::from_bytes(&public).expect("bit string"),
+    };
+    let builder = CertificateBuilder::new(
+        TestProfile {
+            subject: Name::from_str("CN=OFDBox Signing Test").expect("name"),
+        },
+        SerialNumber::from(7u32),
+        Validity::from_now(Duration::from_secs(3600)).expect("validity"),
+        spki,
+    )
+    .expect("builder");
+    let certificate: Certificate = builder
+        .build::<_, DerSignature>(&Sm2Signer { key: signing })
+        .expect("certificate");
+    (certificate.to_der().expect("der"), secret)
+}
+
+fn package() -> Vec<u8> {
+    let mut writer = ZipWriter::new(Cursor::new(Vec::new()));
+    for (name, data) in [
+        ("OFD.xml", OFD_XML.as_bytes()),
+        ("Doc_0/Document.xml", DOCUMENT.as_bytes()),
+        ("Doc_0/Pages/Page_0/Content.xml", CONTENT.as_bytes()),
+    ] {
+        writer
+            .start_file(name, SimpleFileOptions::default())
+            .expect("start");
+        writer.write_all(data).expect("write");
+    }
+    writer.finish().expect("finish").into_inner()
+}
+
+fn sign(package: &[u8], certificate: &[u8], secret: &SecretKey) -> (Vec<u8>, String) {
+    let mut document = OfdPackage::from_bytes(package.to_vec()).expect("open");
+    let request = SigningRequest::new(DEFAULT_SIGNATURE_METHOD, "2026-10-24T04:00:00Z");
+    let producer = Sm2SignedDataProducer::new(certificate.to_vec(), secret.to_bytes().to_vec());
+    let mut output = Vec::new();
+    let report = document
+        .sign_package(&request, &producer, &mut Cursor::new(&mut output))
+        .expect("sign package");
+    (output, report.signature_id)
+}
+
+#[test]
+fn signs_and_verifies_package() {
+    let (certificate, secret) = make_certificate();
+    let (signed, id) = sign(&package(), &certificate, &secret);
+    assert_eq!(id, "s001");
+
+    let mut document = OfdPackage::from_bytes(signed).expect("open signed");
+    let root = document.parse_root().expect("root");
+    let body = root.doc_bodies().next().expect("doc body");
+    assert_eq!(
+        body.signatures(),
+        Some("Doc_0/Signs/Signatures.xml"),
+        "OFD.xml 应补上 Signatures 链接"
+    );
+
+    let index = document.parse_signatures().expect("signatures");
+    let entry = index.signatures().next().expect("signature entry");
+    assert_eq!(entry.id(), Some("s001"));
+    assert_eq!(entry.signature_type(), Some("Sign"));
+
+    let signature = document
+        .parse_signature("Sign_0/Signature.xml")
+        .expect("signature");
+    let info = signature.signed_info().expect("signed info");
+    assert_eq!(info.signature_method(), Some(SM2_SIGN_OID));
+    let provider = info.provider().expect("provider");
+    assert_eq!(provider.provider_name(), Some("ofdbox"));
+    assert_eq!(
+        signature.signed_value(),
+        Some("/Doc_0/Signs/Sign_0/SignedValue.dat")
+    );
+    let references: Vec<_> = info
+        .references()
+        .expect("references")
+        .references()
+        .collect();
+    assert_eq!(references.len(), 3);
+
+    let verifiers = SignatureVerifiers::new().with(Box::new(Sm2SignedDataVerifier::new()));
+    document
+        .verify_signature(&signature, &verifiers)
+        .expect("verify signed data");
+
+    let checks = document
+        .verify_references(&signature, &PasswordBackend::new(""))
+        .expect("references");
+    assert_eq!(checks.len(), 3);
+    for check in checks {
+        assert_eq!(check.expected, check.actual, "{}", check.file_ref);
+    }
+}
+
+#[test]
+fn appending_second_signature_keeps_first_valid() {
+    let (certificate, secret) = make_certificate();
+    let (first, first_id) = sign(&package(), &certificate, &secret);
+    let (second, second_id) = sign(&first, &certificate, &secret);
+    assert_eq!(first_id, "s001");
+    assert_eq!(second_id, "s002");
+
+    let mut document = OfdPackage::from_bytes(second).expect("open");
+    let index = document.parse_signatures().expect("signatures");
+    let entries: Vec<_> = index.signatures().collect();
+    assert_eq!(entries.len(), 2);
+    assert_eq!(index.max_sign_id(), Some("s002"));
+
+    let verifiers = SignatureVerifiers::new().with(Box::new(Sm2SignedDataVerifier::new()));
+    for loc in ["Sign_0/Signature.xml", "Sign_1/Signature.xml"] {
+        let signature = document.parse_signature(loc).expect("signature");
+        document
+            .verify_signature(&signature, &verifiers)
+            .unwrap_or_else(|error| panic!("{loc}: {error}"));
+        let checks = document
+            .verify_references(&signature, &PasswordBackend::new(""))
+            .expect("references");
+        for check in checks {
+            assert_eq!(check.expected, check.actual, "{loc}: {}", check.file_ref);
+        }
+    }
+}
+
+#[test]
+fn strict_reparse_accepts_generated_structure() {
+    let (certificate, secret) = make_certificate();
+    let (signed, _) = sign(&package(), &certificate, &secret);
+    let mut strict = OfdPackage::from_bytes_with_options(
+        signed,
+        ReadOptions::STRICT,
+        ofdbox_core::CacheOptions::default(),
+    )
+    .expect("strict open");
+    strict.parse_root().expect("strict root");
+    strict.parse_document().expect("strict document");
+    strict.parse_signatures().expect("strict signatures");
+    strict
+        .parse_signature("Sign_0/Signature.xml")
+        .expect("strict signature");
+}
+
+#[test]
+fn signs_real_document() {
+    let _ = dotenvy::dotenv();
+    let Some(dir) = std::env::var_os("OFDBOX_TESTDATA_DIR").map(std::path::PathBuf::from) else {
+        return;
+    };
+    let path = dir.join("ofd-files").join("samples").join("图元对象.ofd");
+    if !path.is_file() {
+        return;
+    }
+    let bytes = std::fs::read(path).expect("read sample");
+    let (certificate, secret) = make_certificate();
+    let (signed, id) = sign(&bytes, &certificate, &secret);
+    assert_eq!(id, "s001");
+
+    let mut document = OfdPackage::from_bytes(signed).expect("open signed");
+    let root = document.parse_root().expect("root");
+    let has_link = root
+        .doc_bodies()
+        .next()
+        .map(|body| body.signatures().is_some())
+        .unwrap_or(false);
+    assert!(has_link);
+    let signature = document
+        .parse_signature("Sign_0/Signature.xml")
+        .expect("signature");
+    let verifiers = SignatureVerifiers::new().with(Box::new(Sm2SignedDataVerifier::new()));
+    document
+        .verify_signature(&signature, &verifiers)
+        .expect("verify");
+    let checks = document
+        .verify_references(&signature, &PasswordBackend::new(""))
+        .expect("references");
+    assert!(!checks.is_empty());
+    for check in checks {
+        assert_eq!(check.expected, check.actual, "{}", check.file_ref);
+    }
+}
