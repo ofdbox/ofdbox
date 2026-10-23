@@ -22,3 +22,9 @@ ofdbox-core = { path = "../ofdbox-core", version = "0.0.1" }
 ofdbox-crypto = { path = "../ofdbox-crypto", version = "0.0.1", optional = true }
 ofdbox-seal = { path = "../ofdbox-seal", version = "0.0.1", optional = true }
 thiserror.workspace = true
+
+[dev-dependencies]
+der.workspace = true
+sm2.workspace = true
+x509-cert = { workspace = true, features = ["builder"] }
+zip.workspace = true
