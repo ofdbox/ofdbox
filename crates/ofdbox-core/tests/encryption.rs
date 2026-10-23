@@ -152,7 +152,9 @@ fn encrypted_entries_parse_and_roundtrip() {
         EncryptedEntriesView::from_xml(ENTRIES_MAP.as_bytes(), ReadOptions::LENIENT).unwrap();
     let xml = view.to_xml().expect("strict writer");
     assert!(xml.contains(r#"Path="/Doc_0/Document.xml""#));
-    assert!(xml.contains("<ofd:DecryptSeedLoc>/decryptseed.xml</ofd:DecryptSeedLoc>"));
+    // 0099 图 C.3 把它定义为 EncryptEntry 的属性。
+    assert!(xml.contains(r#"DecryptSeedLoc="/decryptseed.xml""#));
+    assert!(!xml.contains("<ofd:DecryptSeedLoc>"));
     let reparsed = EncryptedEntriesView::from_xml(xml.as_bytes(), ReadOptions::STRICT)
         .expect("strict reparse");
     assert_eq!(reparsed.entries().count(), 2);

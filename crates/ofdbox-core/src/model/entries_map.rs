@@ -110,16 +110,27 @@ impl EncryptEntryView {
     }
 
     /// 该条目独有的密钥描述文件路径。
+    ///
+    /// 0099 附录 C.4 与图 C.3 把它定义为 `EncryptEntry` 的属性；早期实现和
+    /// 部分厂商写成子元素，这里两种都接受。
     pub fn decrypt_seed_loc(&self) -> Option<&str> {
-        self.doc
-            .find_child(self.node, "DecryptSeedLoc")
-            .map(|node| self.doc.text(node).trim())
+        self.doc.attribute(self.node, "DecryptSeedLoc").or_else(|| {
+            self.doc
+                .find_child(self.node, "DecryptSeedLoc")
+                .map(|node| self.doc.text(node).trim())
+        })
     }
 }
 
 fn validate_encrypt_entry(doc: &XmlDocument, node: NodeId, diagnostics: &mut Vec<Diagnostic>) {
     check_namespace(doc, node, diagnostics);
-    check_attributes(doc, node, &["Path", "EPath"], &["Path"], diagnostics);
+    check_attributes(
+        doc,
+        node,
+        &["Path", "EPath", "DecryptSeedLoc"],
+        &["Path"],
+        diagnostics,
+    );
     check_children_unordered(doc, node, &["DecryptSeedLoc"], &[], &[], diagnostics);
     if let Some(seed) = doc.find_child(node, "DecryptSeedLoc") {
         validate_text_element(doc, seed, true, diagnostics);

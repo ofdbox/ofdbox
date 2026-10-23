@@ -3,7 +3,7 @@ use quick_xml::events::{BytesDecl, BytesEnd, Event};
 
 use crate::error::OfdError;
 use crate::model::entries_map::EncryptedEntriesView;
-use crate::write::ofd::{missing, write_start, write_text_element};
+use crate::write::ofd::{missing, write_start};
 use crate::xml::namespace::OFD_NAMESPACE;
 
 pub(crate) fn write_entries_map(entries: &EncryptedEntriesView) -> Result<String, OfdError> {
@@ -27,10 +27,11 @@ pub(crate) fn write_entries_map(entries: &EncryptedEntriesView) -> Result<String
         if let Some(epath) = entry.epath() {
             attributes.push(("EPath", epath));
         }
-        write_start(&mut writer, "ofd:EncryptEntry", &attributes)?;
+        // 0099 附录 C.4 与图 C.3 把它定义为属性。
         if let Some(seed) = entry.decrypt_seed_loc() {
-            write_text_element(&mut writer, "ofd:DecryptSeedLoc", seed)?;
+            attributes.push(("DecryptSeedLoc", seed));
         }
+        write_start(&mut writer, "ofd:EncryptEntry", &attributes)?;
         writer.write_event(Event::End(BytesEnd::new("ofd:EncryptEntry")))?;
     }
 

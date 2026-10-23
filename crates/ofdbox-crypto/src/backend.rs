@@ -8,6 +8,8 @@ use zeroize::Zeroizing;
 pub const PASSWORD_CASE_ID: &str = "1.1.1";
 /// 证书方案标识。
 pub const CERTIFICATE_CASE_ID: &str = "1.1.2";
+/// 密钥描述文件缺省 IV：16 个 0（0099 附录 C.1）。
+const DEFAULT_IV: [u8; 16] = [0u8; 16];
 
 /// 口令解密后端。
 pub struct PasswordBackend {
@@ -48,13 +50,13 @@ impl CryptoBackend for PasswordBackend {
             {
                 continue;
             }
-            let Some(iv) = user.iv_value() else {
-                continue;
-            };
             let Some(wrapped) = user.encrypted_work_key() else {
                 continue;
             };
-            let iv = decode_base64(iv)?;
+            let iv = match user.iv_value() {
+                Some(value) => decode_base64(value)?,
+                None => DEFAULT_IV.to_vec(),
+            };
             let wrapped = decode_base64(wrapped)?;
             if let Ok(file_key) =
                 crate::password::unwrap_file_key(self.password.as_str(), &iv, &wrapped)
@@ -124,13 +126,13 @@ impl CryptoBackend for CertificateBackend {
             {
                 continue;
             }
-            let Some(iv) = user.iv_value() else {
-                continue;
-            };
             let Some(wrapped) = user.encrypted_work_key() else {
                 continue;
             };
-            let iv = decode_base64(iv)?;
+            let iv = match user.iv_value() {
+                Some(value) => decode_base64(value)?,
+                None => DEFAULT_IV.to_vec(),
+            };
             let wrapped = decode_base64(wrapped)?;
             if let Ok(file_key) = crate::certificate::decrypt_file_key_with_private_key(
                 self.private_key.as_slice(),

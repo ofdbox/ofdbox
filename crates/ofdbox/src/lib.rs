@@ -10,7 +10,10 @@
 //! 位于 `ofdbox-reader` 仓库。
 
 pub use ofdbox_core as core;
-pub use ofdbox_core::{CacheOptions, DocumentView, OfdError, OfdPackage, PageView, ReadOptions};
+pub use ofdbox_core::{
+    CacheOptions, DocumentView, OfdError, OfdPackage, PackageDateTime, PackageEdits,
+    PackageWriteOptions, PageView, ReadOptions,
+};
 
 #[cfg(feature = "crypto")]
 pub use ofdbox_crypto as crypto;
@@ -38,5 +41,8 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 /// 常用类型预导入。
 pub mod prelude {
-    pub use crate::{CacheOptions, DocumentView, Error, OfdPackage, PageView, ReadOptions, Result};
+    pub use crate::{
+        CacheOptions, DocumentView, Error, OfdPackage, PackageEdits, PackageWriteOptions, PageView,
+        ReadOptions, Result,
+    };
 }
