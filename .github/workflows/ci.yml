@@ -43,12 +43,11 @@ jobs:
         with:
           targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
-      - run: cargo check -p ofdbox-render --no-default-features
-      - run: cargo check -p ofdbox-render --no-default-features --features ofd
-      - run: cargo check -p ofdbox-render --no-default-features --features pdf
-      - run: cargo check -p ofdbox-render --no-default-features --features ofd,image-ccitt
-      - run: cargo check -p ofdbox-render --no-default-features --features pdf,image-ccitt,cpu
-      - run: cargo check -p ofdbox --no-default-features --features pdf
-      - run: cargo check -p ofdbox --no-default-features --features ofd,cpu,image
-      - run: cargo check -p ofdbox-render --target wasm32-unknown-unknown
-      - run: cargo check -p ofdbox-render --target wasm32-unknown-unknown --no-default-features --features ofd
+      - run: cargo check -p ofdbox --no-default-features
+      - run: cargo check -p ofdbox --no-default-features --features crypto
+      - run: cargo check -p ofdbox --no-default-features --features seal
+      - run: cargo check -p ofdbox --all-features
+      - run: cargo check -p ofdbox-core --target wasm32-unknown-unknown
+      - run: cargo check -p ofdbox-crypto --target wasm32-unknown-unknown
+      - run: cargo check -p ofdbox-seal --target wasm32-unknown-unknown
+      - run: cargo check -p ofdbox --target wasm32-unknown-unknown --no-default-features --features crypto
