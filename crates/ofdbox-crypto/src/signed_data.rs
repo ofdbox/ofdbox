@@ -10,9 +10,15 @@ use sm3::{Digest, Sm3};
 use crate::error::CryptoError;
 use crate::signature::{DEFAULT_DIST_ID, verify_sm3};
 
-const ID_SIGNED_DATA: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.113549.1.7.2");
+/// PKCS#7 的 signedData 标识，兼容外来文件。
+const ID_SIGNED_DATA_PKCS7: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.113549.1.7.2");
+/// GB/T 35275（沿用 GM/T 0010）的 signedData 标识。
+const ID_SIGNED_DATA: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.156.10197.6.1.4.2.2");
 const ID_SM3: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.156.10197.1.401");
+/// SM2 with SM3 的组合标识，OFD `SignatureMethod` 与 38540 用它。
 const ID_SM2_SIGN: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.156.10197.1.501");
+/// 纯 SM2 签名算法标识，35275 的 `SignerInfo.signatureAlgorithm` 用它。
+const ID_SM2_SIGN_ALG: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.156.10197.1.301.1");
 const ID_MESSAGE_DIGEST: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.113549.1.9.4");
 
 /// GB/T 35275 SignedData 的 SM2/SM3 验签器。
@@ -45,6 +51,7 @@ impl SignatureVerifier for Sm2SignedDataVerifier {
     fn supports(&self, signature_method: &str) -> bool {
         signature_method == "1.2.1"
             || signature_method == ID_SM2_SIGN.to_string()
+            || signature_method == ID_SM2_SIGN_ALG.to_string()
             || signature_method.contains("SM2")
     }
 
@@ -66,7 +73,7 @@ pub fn verify_signed_data(
     dist_id: &str,
 ) -> Result<(), CryptoError> {
     let info = ContentInfo::from_der(signed_value).map_err(|_| CryptoError::InvalidEncoding)?;
-    if info.content_type != ID_SIGNED_DATA {
+    if info.content_type != ID_SIGNED_DATA && info.content_type != ID_SIGNED_DATA_PKCS7 {
         return Err(CryptoError::InvalidEncoding);
     }
     let signed_data: SignedData = info
@@ -79,7 +86,11 @@ pub fn verify_signed_data(
         .iter()
         .next()
         .ok_or(CryptoError::InvalidSignature)?;
-    if signer.digest_alg.oid != ID_SM3 || signer.signature_algorithm.oid != ID_SM2_SIGN {
+    // 35275 的签名算法写纯 SM2（.301.1），部分实现写组合标识（.501），两者等价。
+    if signer.digest_alg.oid != ID_SM3
+        || (signer.signature_algorithm.oid != ID_SM2_SIGN
+            && signer.signature_algorithm.oid != ID_SM2_SIGN_ALG)
+    {
         return Err(CryptoError::InvalidSignature);
     }
 

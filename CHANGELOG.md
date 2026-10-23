@@ -16,6 +16,7 @@
 - 按 GM/T 0099 附录 C.4 与图 C.3，`EncryptEntry/@DecryptSeedLoc` 改为属性读写（仍接受子元素旧写法），解密时按条目取独立密钥；单个条目解不开不再影响其他条目。
 - `zip` 依赖启用 `unreserved` 特性，可读取并复制含 Info-ZIP Unix extra field 的包。
 - `Provider` 属性缺失时回退读取同名子元素（`ProviderName`/`Version`/`Company`），真实样本有 3 份使用子元素写法。
+- GB/T 35275（沿用 GM/T 0010）的标识 `1.2.156.10197.6.1.4.2.2`（signedData）与纯 SM2 签名算法标识 `1.2.156.10197.1.301.1` 均被接受；四份铁路电子客票 `Sign` 样本通过端到端验签。
 - CI 的 feature matrix 改用现存 crate 与 feature，删除已无二进制目标的 release 工作流。
 
 ### 变更
