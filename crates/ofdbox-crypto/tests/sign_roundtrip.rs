@@ -142,7 +142,7 @@ fn package() -> Vec<u8> {
 
 fn sign(package: &[u8], certificate: &[u8], secret: &SecretKey) -> (Vec<u8>, String) {
     let mut document = OfdPackage::from_bytes(package.to_vec()).expect("open");
-    let request = SigningRequest::new(DEFAULT_SIGNATURE_METHOD, "2026-10-24T04:00:00Z");
+    let request = SigningRequest::new(DEFAULT_SIGNATURE_METHOD, "20261024040000");
     let producer = Sm2SignedDataProducer::new(certificate.to_vec(), secret.to_bytes().to_vec());
     let mut output = Vec::new();
     let report = document

@@ -15,8 +15,8 @@ use crate::xml::namespace::OFD_NAMESPACE;
 
 /// 默认签名算法标识（SM2 with SM3）。
 pub const DEFAULT_SIGNATURE_METHOD: &str = "1.2.156.10197.1.501";
-/// 默认摘要方法名称。
-pub const DEFAULT_CHECK_METHOD: &str = "SM3";
+/// 默认摘要方法标识（SM3，OID 形式，与真实签名文件一致）。
+pub const DEFAULT_CHECK_METHOD: &str = "1.2.156.10197.1.401";
 
 /// 签名值生产者。
 ///

@@ -10,7 +10,6 @@ use crate::xml::parser::parse_xml;
 use crate::xml::tree::{NodeId, XmlDocument};
 
 const SIGNATURE_TYPES: &[&str] = &["Seal", "Sign"];
-const CHECK_METHODS: &[&str] = &["MD5", "SHA1", "SM3"];
 
 /// 签名列表文件的类型化视图。
 #[derive(Debug, Clone)]
@@ -558,13 +557,16 @@ fn validate_parameters(doc: &XmlDocument, node: NodeId, diagnostics: &mut Vec<Di
 fn validate_references(doc: &XmlDocument, node: NodeId, diagnostics: &mut Vec<Diagnostic>) {
     check_namespace(doc, node, diagnostics);
     check_attributes(doc, node, &["CheckMethod"], &[], diagnostics);
+    // GB/T 33190 表 68 把 CheckMethod 定义为 xs:string，真实文件里既有
+    // `MD5`/`SM3` 也有 OID、大小写变体，这里只拒绝空值，方法是否可识别由
+    // 验签时的 `canonical_digest_method` 判断。
     if let Some(check_method) = doc.attribute(node, "CheckMethod")
-        && !CHECK_METHODS.contains(&check_method)
+        && check_method.trim().is_empty()
     {
         diagnostics.push(Diagnostic::new(
             DiagnosticCode::InvalidValue,
             format!("{}/@CheckMethod", doc.path(node)),
-            "摘要方法不在允许范围内",
+            "摘要方法不能为空",
         ));
     }
     check_children_order(

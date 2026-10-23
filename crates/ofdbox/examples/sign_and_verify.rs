@@ -65,7 +65,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // 3. 签名。
     let mut document = OfdPackage::from_bytes(package)?;
-    let request = SigningRequest::new(DEFAULT_SIGNATURE_METHOD, "2026-10-24T05:00:00Z");
+    let request = SigningRequest::new(DEFAULT_SIGNATURE_METHOD, "20261024050000");
     let producer = Sm2SignedDataProducer::new(certificate, secret.to_bytes().to_vec());
     let mut signed = Vec::new();
     let report = document.sign_package(&request, &producer, &mut Cursor::new(&mut signed))?;
@@ -115,7 +115,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let entry = index.signatures().next().expect("签名记录");
     let signature = saved.parse_signature(entry.base_loc().expect("BaseLoc"))?;
     saved.verify_signature(&signature, &verifiers)?;
-    let checks = saved.verify_references(&signature, &PasswordBackend::new(""))?;
+    let checks = saved.verify_references(&signature, &PasswordBackend::new("123456"))?;
     println!(
         "7. 重新打开验签通过，引用摘要 {}/{} 一致",
         checks.iter().filter(|c| c.expected == c.actual).count(),

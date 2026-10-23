@@ -204,19 +204,25 @@ fn missing_provider_name_is_strict_error() {
 }
 
 #[test]
-fn unknown_check_method_is_strict_error() {
-    let unknown = SIGNATURE.replace(r#"CheckMethod="SHA1""#, r#"CheckMethod="SHA256""#);
-    assert!(parse_signature(&unknown, ReadOptions::LENIENT).is_ok());
-    match parse_signature(&unknown, ReadOptions::STRICT) {
-        Err(OfdError::Conformance(diagnostics)) => {
-            assert!(
-                diagnostics
-                    .iter()
-                    .any(|d| d.code == DiagnosticCode::InvalidValue)
-            );
-        }
-        other => panic!("expected Conformance, got {other:?}"),
-    }
+fn check_method_is_free_form_string() {
+    // 表 68 定义 CheckMethod 为 xs:string；真实文件里有 OID、子弧与大小写变体。
+    let unknown = SIGNATURE.replace(
+        r#"CheckMethod="SHA1""#,
+        r#"CheckMethod="1.2.156.10197.1.401""#,
+    );
+    let view = parse_signature(&unknown, ReadOptions::STRICT).expect("OID CheckMethod");
+    assert_eq!(
+        view.signed_info()
+            .and_then(|info| info.references())
+            .and_then(|references| references.check_method().map(str::to_owned)),
+        Some("1.2.156.10197.1.401".to_owned())
+    );
+
+    let empty = SIGNATURE.replace(r#"CheckMethod="SHA1""#, r#"CheckMethod="""#);
+    assert!(matches!(
+        parse_signature(&empty, ReadOptions::STRICT),
+        Err(OfdError::Conformance(_))
+    ));
 }
 
 #[test]
