@@ -6,6 +6,28 @@ use crate::error::OfdError;
 use crate::model::decrypt_seed::DecryptSeedView;
 use crate::model::encryption::EncryptInfoView;
 
+/// 把摘要方法写法归一化为标准名称。
+///
+/// 真实文件的 `Reference/@CheckMethod` 至少有 OID、子弧、大小写等写法：
+/// `1.2.156.10197.1.401`、`1.2.156.10197.1.401.1`、`1.2.156.10197.1.401.2`、
+/// `SM3`、`sm3`。返回 `None` 表示不是已知方法，调用方应保留原值交给后端。
+pub fn canonical_digest_method(method: &str) -> Option<&'static str> {
+    let method = method.trim();
+    if method.is_empty() {
+        return None;
+    }
+    match method.to_ascii_uppercase().as_str() {
+        "SM3" | "1.2.156.10197.1.401" | "1.2.156.10197.1.401.1" | "1.2.156.10197.1.401.2" => {
+            Some("SM3")
+        }
+        // 真实样本里出现过少写一段的 OID 笔误（1.2.156.197.401），仍按 SM3 处理。
+        "1.2.156.197.401" => Some("SM3"),
+        "MD5" | "1.2.840.113549.2.5" => Some("MD5"),
+        "SHA1" | "SHA-1" | "1.3.14.3.2.26" => Some("SHA1"),
+        _ => None,
+    }
+}
+
 /// 解密出的文件加密密钥、IV 和加密方案标识。
 #[derive(Clone)]
 pub struct FileKey {
@@ -170,4 +192,54 @@ pub trait SignatureVerifier {
         content: &[u8],
         signed_value: &[u8],
     ) -> Result<(), OfdError>;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{CryptoBackend, FileKey, OfdError, canonical_digest_method};
+
+    #[test]
+    fn normalizes_digest_method_aliases() {
+        for method in [
+            "SM3",
+            "sm3",
+            "1.2.156.10197.1.401",
+            "1.2.156.10197.1.401.1",
+            "1.2.156.10197.1.401.2",
+            "1.2.156.197.401",
+        ] {
+            assert_eq!(canonical_digest_method(method), Some("SM3"), "{method}");
+        }
+        assert_eq!(canonical_digest_method("MD5"), Some("MD5"));
+        assert_eq!(canonical_digest_method("1.2.840.113549.2.5"), Some("MD5"));
+        assert_eq!(canonical_digest_method("SHA1"), Some("SHA1"));
+        assert_eq!(canonical_digest_method("sha-1"), Some("SHA1"));
+        assert_eq!(canonical_digest_method("1.3.14.3.2.26"), Some("SHA1"));
+        assert_eq!(canonical_digest_method("SHA256"), None);
+        assert_eq!(canonical_digest_method(""), None);
+    }
+
+    struct EmptyBackend;
+
+    impl CryptoBackend for EmptyBackend {
+        fn unwrap_file_key(
+            &self,
+            _operation: &crate::model::encryption::EncryptInfoView,
+            _seed: &crate::model::decrypt_seed::DecryptSeedView,
+        ) -> Result<FileKey, OfdError> {
+            Err(OfdError::Crypto("unused".to_owned()))
+        }
+
+        fn decrypt(&self, _key: &FileKey, _data: &[u8]) -> Result<Vec<u8>, OfdError> {
+            Err(OfdError::Crypto("unused".to_owned()))
+        }
+    }
+
+    #[test]
+    fn empty_backend_rejects_digest_by_default() {
+        assert!(matches!(
+            EmptyBackend.digest("SM3", b"x"),
+            Err(OfdError::UnsupportedDigest(_))
+        ));
+    }
 }

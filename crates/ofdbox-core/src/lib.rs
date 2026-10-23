@@ -21,6 +21,7 @@ mod package_write;
 mod write;
 mod xml;
 
+pub use crypto::canonical_digest_method;
 pub use crypto::{CryptoBackend, CryptoRegistry, FileKey, SignatureVerifier};
 pub use error::{Diagnostic, DiagnosticCode, OfdError};
 pub use model::action::{

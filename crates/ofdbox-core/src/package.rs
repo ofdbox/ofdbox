@@ -1006,6 +1006,8 @@ impl OfdPackage {
             .references()
             .ok_or_else(|| OfdError::InvalidStructure("签名缺少 References".to_owned()))?;
         let method = references.check_method().unwrap_or("MD5");
+        // 真实文件的 CheckMethod 有 OID、子弧、大小写等写法，统一成标准名称再交给后端。
+        let method = crate::crypto::canonical_digest_method(method).unwrap_or(method);
         let mut checks = Vec::new();
         for reference in references.references() {
             let file_ref = reference
