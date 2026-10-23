@@ -165,9 +165,16 @@ impl CryptoBackend for CertificateBackend {
 }
 
 fn digest(method: &str, data: &[u8]) -> Result<Vec<u8>, OfdError> {
+    use md5::Md5;
+    use sha1::Sha1;
     use sm3::{Digest, Sm3};
+    // 真实文件的 CheckMethod 可能是 OID 或大小写变体，先归一化。
+    let method = ofdbox_core::canonical_digest_method(method).unwrap_or(method);
     match method {
         "SM3" => Ok(Sm3::digest(data).to_vec()),
+        // MD5/SHA1 只用于校验历史文档的 References，不用于新签名。
+        "MD5" => Ok(Md5::digest(data).to_vec()),
+        "SHA1" => Ok(Sha1::digest(data).to_vec()),
         other => Err(OfdError::UnsupportedDigest(other.to_owned())),
     }
 }
@@ -192,26 +199,57 @@ mod tests {
     use super::{CertificateBackend, PasswordBackend};
     use ofdbox_core::CryptoBackend;
 
+    fn hex(bytes: &[u8]) -> String {
+        bytes.iter().map(|byte| format!("{byte:02x}")).collect()
+    }
+
     #[test]
     fn sm3_digest_vector() {
         let digest = PasswordBackend::new("unused")
             .digest("SM3", b"abc")
             .expect("digest");
         assert_eq!(
-            digest
-                .iter()
-                .map(|byte| format!("{byte:02x}"))
-                .collect::<String>(),
+            hex(&digest),
             "66c7f0f462eeedd9d1f2d46bdc10e4e24167c4875cf2f7a2297da02b8f4ba8e0"
         );
     }
 
     #[test]
-    fn certificate_backend_rejects_unsupported_digest() {
-        assert!(
-            CertificateBackend::new(vec![0u8; 32])
-                .digest("MD5", b"data")
-                .is_err()
+    fn legacy_digest_vectors() {
+        let backend = PasswordBackend::new("unused");
+        assert_eq!(
+            hex(&backend.digest("MD5", b"abc").expect("md5")),
+            "900150983cd24fb0d6963f7d28e17f72"
         );
+        assert_eq!(
+            hex(&backend.digest("SHA1", b"abc").expect("sha1")),
+            "a9993e364706816aba3e25717850c26c9cd0d89d"
+        );
+    }
+
+    #[test]
+    fn digest_method_aliases_are_normalized() {
+        let backend = PasswordBackend::new("unused");
+        let expected = backend.digest("SM3", b"data").expect("sm3");
+        for alias in [
+            "sm3",
+            "1.2.156.10197.1.401",
+            "1.2.156.10197.1.401.1",
+            "1.2.156.10197.1.401.2",
+        ] {
+            assert_eq!(
+                backend.digest(alias, b"data").expect(alias),
+                expected,
+                "{alias}"
+            );
+        }
+    }
+
+    #[test]
+    fn certificate_backend_rejects_unsupported_digest() {
+        assert!(matches!(
+            CertificateBackend::new(vec![0u8; 32]).digest("SHA256", b"data"),
+            Err(ofdbox_core::OfdError::UnsupportedDigest(_))
+        ));
     }
 }
