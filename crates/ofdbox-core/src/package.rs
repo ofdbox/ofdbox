@@ -22,6 +22,10 @@ use crate::model::res::ResView;
 use crate::model::signature::{ReferenceDigest, SignatureView, SignaturesView};
 use crate::model::version::DocVersionView;
 use crate::options::{CacheOptions, ReadOptions};
+use crate::package_write::{
+    DecryptedWriteReport, ExistingEntry, PackageEdits, PackageWriteOptions, PlanItem, copy_raw,
+    write_plain_entry,
+};
 use crate::xml::parser::parse_xml;
 use crate::xml::tree::XmlDocument;
 
@@ -31,16 +35,29 @@ pub const ROOT_ENTRY: &str = "OFD.xml";
 trait ReadSeek: Read + Seek {}
 impl<T: Read + Seek> ReadSeek for T {}
 
+/// 一条逻辑条目的解密信息。
+struct DecryptionEntry {
+    /// 物理密文路径。
+    physical: String,
+    /// 条目独有的密钥描述文件路径（0099 附录 C.4 `EncryptEntry/@DecryptSeedLoc`）。
+    seed_loc: Option<String>,
+}
+
 struct DecryptionOperation {
-    file_key: FileKey,
-    /// 逻辑路径 -> 物理密文路径。
-    entries: HashMap<String, String>,
+    /// 所属加密操作，用于按条目解包包装密钥。
+    info: crate::model::encryption::EncryptInfoView,
+    /// 该次加密操作的通用文件密钥。
+    default_key: FileKey,
+    /// 逻辑路径 -> 解密信息。
+    entries: HashMap<String, DecryptionEntry>,
 }
 
 struct DecryptionContext {
     backend: Box<dyn CryptoBackend>,
     /// 解密顺序：最新一次加密在前。
     operations: Vec<DecryptionOperation>,
+    /// 已解出的条目级密钥，按密钥描述文件路径缓存。
+    entry_keys: HashMap<String, FileKey>,
 }
 
 /// 缓存统计。
@@ -219,49 +236,28 @@ impl OfdPackage {
     /// 按需读取一个 entry。
     ///
     /// 未启用解密时返回 ZIP 原始字节；启用后，映射中的逻辑路径会透明解密。
+    /// 条目声明了独立密钥描述文件时按条目取密钥，解不开只影响该条目。
     pub fn read_entry(&mut self, name: &str) -> Result<Arc<[u8]>, OfdError> {
         let name = normalize_entry_name(name)?;
         if let Some(bytes) = self.plain_cache.get(&name) {
             return Ok(bytes);
         }
-        let layer = self.decryption.as_ref().and_then(|context| {
-            context
-                .operations
-                .iter()
-                .position(|operation| operation.entries.contains_key(&name))
-        });
-        let Some(start) = layer else {
+        let Some(start) = self.decryption_layer(&name) else {
             return self.read_raw_entry(&name);
         };
-        let (physical, first_key) = {
-            let context = self.decryption.as_ref().expect("decryption context");
-            let operation = &context.operations[start];
-            (operation.entries[&name].clone(), operation.file_key.clone())
-        };
-        let ciphertext = self.read_raw_entry(&physical)?;
-        let mut plaintext = self
-            .decryption
-            .as_ref()
-            .expect("decryption context")
-            .backend
-            .decrypt(&first_key, &ciphertext)?;
-        for operation in self
-            .decryption
-            .as_ref()
-            .expect("decryption context")
-            .operations
-            .iter()
-            .skip(start + 1)
-        {
-            if !operation.entries.contains_key(&name) {
+        let mut plaintext = self.decrypt_layer(start, &name)?;
+        let total = self.decryption_operation_count();
+        for index in start + 1..total {
+            if !self.layer_contains(index, &name) {
                 break;
             }
+            let key = self.layer_key(index, &name)?;
             plaintext = self
                 .decryption
                 .as_ref()
                 .expect("decryption context")
                 .backend
-                .decrypt(&operation.file_key, &plaintext)?;
+                .decrypt(&key, &plaintext)?;
         }
         let plaintext: Arc<[u8]> = Arc::from(plaintext);
         self.plain_cache
@@ -278,64 +274,130 @@ impl OfdPackage {
             writer.write_all(&bytes)?;
             return Ok(());
         }
-        let layer = self.decryption.as_ref().and_then(|context| {
-            context
-                .operations
-                .iter()
-                .position(|operation| operation.entries.contains_key(&name))
-        });
-        let Some(start) = layer else {
+        let Some(start) = self.decryption_layer(&name) else {
             let bytes = self.read_raw_entry(&name)?;
             writer.write_all(&bytes)?;
             return Ok(());
         };
-        let (physical, first_key) = {
-            let context = self.decryption.as_ref().expect("decryption context");
-            let operation = &context.operations[start];
-            (operation.entries[&name].clone(), operation.file_key.clone())
-        };
-        let ciphertext = self.read_raw_entry(&physical)?;
-        let remaining = self
-            .decryption
-            .as_ref()
-            .expect("decryption context")
-            .operations
-            .len()
-            - start;
-        if remaining == 1 {
+        let total = self.decryption_operation_count();
+        if start + 1 == total {
+            let physical = self.layer_physical(start, &name)?;
+            let ciphertext = self.read_raw_entry(&physical)?;
+            let key = self.layer_key(start, &name)?;
             return self
                 .decryption
                 .as_ref()
                 .expect("decryption context")
                 .backend
-                .decrypt_to(&first_key, &ciphertext, writer);
+                .decrypt_to(&key, &ciphertext, writer);
         }
-        let mut plaintext = self
-            .decryption
-            .as_ref()
-            .expect("decryption context")
-            .backend
-            .decrypt(&first_key, &ciphertext)?;
-        for operation in self
-            .decryption
-            .as_ref()
-            .expect("decryption context")
-            .operations
-            .iter()
-            .skip(start + 1)
-        {
-            if !operation.entries.contains_key(&name) {
+        let mut plaintext = self.decrypt_layer(start, &name)?;
+        for index in start + 1..total {
+            if !self.layer_contains(index, &name) {
                 break;
             }
+            let key = self.layer_key(index, &name)?;
             plaintext = self
                 .decryption
                 .as_ref()
                 .expect("decryption context")
                 .backend
-                .decrypt(&operation.file_key, &plaintext)?;
+                .decrypt(&key, &plaintext)?;
         }
         writer.write_all(&plaintext)?;
         Ok(())
+    }
+
+    fn decryption_operation_count(&self) -> usize {
+        self.decryption
+            .as_ref()
+            .map(|context| context.operations.len())
+            .unwrap_or(0)
+    }
+
+    fn decryption_layer(&self, name: &str) -> Option<usize> {
+        self.decryption.as_ref().and_then(|context| {
+            context
+                .operations
+                .iter()
+                .position(|operation| operation.entries.contains_key(name))
+        })
+    }
+
+    fn layer_contains(&self, index: usize, name: &str) -> bool {
+        self.decryption
+            .as_ref()
+            .and_then(|context| context.operations.get(index))
+            .is_some_and(|operation| operation.entries.contains_key(name))
+    }
+
+    fn layer_physical(&self, index: usize, name: &str) -> Result<String, OfdError> {
+        self.decryption
+            .as_ref()
+            .and_then(|context| context.operations.get(index))
+            .and_then(|operation| operation.entries.get(name))
+            .map(|entry| entry.physical.clone())
+            .ok_or_else(|| OfdError::InvalidStructure(format!("解密层未映射 entry: {name}")))
+    }
+
+    /// 取某一层解密该条目所用的文件密钥。
+    ///
+    /// 条目声明了独立密钥描述文件时按需解包并缓存，否则用该次加密操作的通用密钥。
+    fn layer_key(&mut self, index: usize, name: &str) -> Result<FileKey, OfdError> {
+        let (seed_loc, info) =
+            {
+                let context = self.decryption.as_ref().expect("decryption context");
+                let operation = context.operations.get(index).ok_or_else(|| {
+                    OfdError::InvalidStructure(format!("解密层索引越界: {index}"))
+                })?;
+                let entry = operation.entries.get(name).ok_or_else(|| {
+                    OfdError::InvalidStructure(format!("解密层未映射 entry: {name}"))
+                })?;
+                (entry.seed_loc.clone(), operation.info.clone())
+            };
+        let Some(seed_loc) = seed_loc else {
+            return Ok(self
+                .decryption
+                .as_ref()
+                .expect("decryption context")
+                .operations[index]
+                .default_key
+                .clone());
+        };
+        if let Some(key) = self
+            .decryption
+            .as_ref()
+            .expect("decryption context")
+            .entry_keys
+            .get(&seed_loc)
+        {
+            return Ok(key.clone());
+        }
+        let seed = self.parse_decrypt_seed(&seed_loc)?;
+        let key = self
+            .decryption
+            .as_ref()
+            .expect("decryption context")
+            .backend
+            .unwrap_file_key(&info, &seed)?;
+        self.decryption
+            .as_mut()
+            .expect("decryption context")
+            .entry_keys
+            .insert(seed_loc, key.clone());
+        Ok(key)
+    }
+
+    /// 读取某一层密文并用该层密钥解密。
+    fn decrypt_layer(&mut self, index: usize, name: &str) -> Result<Vec<u8>, OfdError> {
+        let physical = self.layer_physical(index, name)?;
+        let ciphertext = self.read_raw_entry(&physical)?;
+        let key = self.layer_key(index, name)?;
+        self.decryption
+            .as_ref()
+            .expect("decryption context")
+            .backend
+            .decrypt(&key, &ciphertext)
     }
 
     fn resolve_zip_name(&self, name: &str) -> String {
@@ -809,8 +871,8 @@ impl OfdPackage {
 
     /// 启用文档解密。
     ///
-    /// 只解出文件密钥和明密文映射表；页面和资源在读取时按需解密。
-    /// 当前只支持单层加密。
+    /// 只解出各加密操作的文件密钥和明密文映射表；页面和资源在读取时按需解密。
+    /// 条目声明了独立密钥描述文件时，在首次读取该条目时按需解包。
     pub fn enable_decryption(&mut self, backend: Box<dyn CryptoBackend>) -> Result<(), OfdError> {
         if self.decryption.is_some() {
             return Ok(());
@@ -871,14 +933,29 @@ impl OfdPackage {
                     OfdError::InvalidStructure("EncryptEntry 缺少 Path".to_owned())
                 })?;
                 let epath = entry.epath().unwrap_or(path);
-                entries.insert(normalize_entry_name(path)?, normalize_entry_name(epath)?);
+                let seed_loc = match entry.decrypt_seed_loc() {
+                    Some(loc) => Some(normalize_entry_name(&resolve_loc("", loc)?)?),
+                    None => None,
+                };
+                entries.insert(
+                    normalize_entry_name(path)?,
+                    DecryptionEntry {
+                        physical: normalize_entry_name(epath)?,
+                        seed_loc,
+                    },
+                );
             }
-            operations.push(DecryptionOperation { file_key, entries });
+            operations.push(DecryptionOperation {
+                info: info.clone(),
+                default_key: file_key,
+                entries,
+            });
         }
 
         self.decryption = Some(DecryptionContext {
             backend,
             operations,
+            entry_keys: HashMap::new(),
         });
         self.plain_cache.clear();
         Ok(())
@@ -1015,6 +1092,284 @@ impl OfdPackage {
         }
     }
 
+    /// 原样重打包当前包。
+    ///
+    /// 未修改的 entry 直接复制压缩数据与 ZIP 元数据（压缩方式、时间、权限、
+    /// extra field、文件注释），包注释同样保留；条目顺序不变。
+    pub fn write_to(&mut self, writer: &mut (impl Write + Seek)) -> Result<(), OfdError> {
+        self.write_with(
+            writer,
+            &PackageEdits::new(),
+            &PackageWriteOptions::default(),
+        )
+    }
+
+    /// 带编辑重打包。
+    ///
+    /// 编辑只作用于指定 entry，其余条目原样复制。加密包不支持直接编辑：
+    /// 替换后的明文与 `Encryptions.xml` 的密钥、映射表不一致，请先
+    /// [`Self::write_decrypted_to`] 另存为未加密包。
+    pub fn write_with(
+        &mut self,
+        writer: &mut (impl Write + Seek),
+        edits: &PackageEdits,
+        options: &PackageWriteOptions,
+    ) -> Result<(), OfdError> {
+        if !edits.is_empty() && self.contains("Encryptions.xml") {
+            return Err(OfdError::Crypto(
+                "加密包不支持直接替换 entry，请先 write_decrypted_to 另存为未加密包".to_owned(),
+            ));
+        }
+        let existing = self.existing_entries()?;
+        let normalized = edits.normalized()?;
+        let plan = crate::package_write::plan(&existing, &normalized, options)?;
+        self.execute_plan(writer, plan, options)
+    }
+
+    /// 解密后另存为未加密包。
+    ///
+    /// 写出全部逻辑条目（已解密），并移除 `Encryptions.xml`、密钥描述文件、
+    /// 明密文映射表与中间密文条目。被移除条目仍被签名 `References` 或
+    /// `OFDEntries.xml` 引用时，只记入 [`DecryptedWriteReport::warnings`]，
+    /// 不阻断写出。
+    pub fn write_decrypted_to(
+        &mut self,
+        writer: &mut (impl Write + Seek),
+    ) -> Result<DecryptedWriteReport, OfdError> {
+        if self.decryption.is_none() {
+            return Err(OfdError::EncryptionRequired);
+        }
+
+        let mut skip: HashSet<String> = HashSet::new();
+        skip.insert(entry_key("Encryptions.xml"));
+        let encryptions = self.parse_encryptions()?;
+        for info in encryptions.encrypt_infos() {
+            for loc in [info.decrypt_seed_loc(), info.entries_map_loc()]
+                .into_iter()
+                .flatten()
+            {
+                skip.insert(entry_key(&normalize_entry_name(&resolve_loc("", loc)?)?));
+            }
+        }
+
+        let mut logical_by_physical: HashMap<String, String> = HashMap::new();
+        {
+            let context = self.decryption.as_ref().expect("decryption context");
+            for operation in &context.operations {
+                for (logical, entry) in &operation.entries {
+                    logical_by_physical
+                        .entry(entry_key(&entry.physical))
+                        .or_insert_with(|| logical.clone());
+                    if let Some(seed) = &entry.seed_loc {
+                        skip.insert(entry_key(seed));
+                    }
+                }
+            }
+        }
+
+        let options = PackageWriteOptions::default();
+        let comment = self.archive.comment().to_vec();
+        let mut zip = zip::ZipWriter::new(writer);
+        if !comment.is_empty() {
+            zip.set_raw_comment(comment.into())?;
+        }
+
+        let mut written: HashSet<String> = HashSet::new();
+        let mut removed = Vec::new();
+        let mut entries = 0usize;
+        for index in 0..self.archive.len() {
+            let (name, is_dir, modified) = {
+                let file = self.archive.by_index_raw(index)?;
+                (
+                    file.name()?.into_owned(),
+                    file.is_dir(),
+                    file.last_modified(),
+                )
+            };
+            let key = entry_key(&name);
+            if skip.contains(&key) {
+                removed.push(name);
+                continue;
+            }
+            if is_dir {
+                if !written.insert(key) {
+                    continue;
+                }
+                copy_raw(&mut zip, self.archive.by_index_raw(index)?, &name)?;
+                entries += 1;
+                continue;
+            }
+            if let Some(logical) = logical_by_physical.get(&key).cloned() {
+                if !written.insert(entry_key(&logical)) {
+                    continue;
+                }
+                let bytes = self.read_entry(&logical)?;
+                write_plain_entry(
+                    &mut zip,
+                    &logical,
+                    &bytes,
+                    &options,
+                    modified.unwrap_or_default(),
+                )?;
+                entries += 1;
+                continue;
+            }
+            if !written.insert(key) {
+                continue;
+            }
+            copy_raw(&mut zip, self.archive.by_index_raw(index)?, &name)?;
+            entries += 1;
+        }
+        zip.finish()?;
+
+        let references = self.referenced_entries();
+        let mut warnings = Vec::new();
+        for name in &removed {
+            if references.contains(&entry_key(name)) {
+                warnings.push(format!(
+                    "条目 {name} 被签名或完整性保护引用，解密另存后对应摘要将失效"
+                ));
+            }
+        }
+        for physical in logical_by_physical.keys() {
+            if references.contains(physical) {
+                warnings.push(format!(
+                    "密文条目 {physical} 被签名或完整性保护引用，解密另存后对应摘要将失效"
+                ));
+            }
+        }
+
+        Ok(DecryptedWriteReport {
+            entries,
+            removed,
+            warnings,
+        })
+    }
+
+    /// 便利：重打包到内存。
+    pub fn to_bytes(&mut self) -> Result<Vec<u8>, OfdError> {
+        let mut cursor = Cursor::new(Vec::new());
+        self.write_to(&mut cursor)?;
+        Ok(cursor.into_inner())
+    }
+
+    /// 便利：重打包到文件（非 wasm）。
+    ///
+    /// 直接覆盖目标文件；需要原子替换时由调用方先写临时文件再 `rename`。
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn save(&mut self, path: impl AsRef<std::path::Path>) -> Result<(), OfdError> {
+        let file = std::fs::File::create(path)?;
+        let mut writer = std::io::BufWriter::new(file);
+        self.write_to(&mut writer)?;
+        writer.flush()?;
+        Ok(())
+    }
+
+    fn existing_entries(&mut self) -> Result<Vec<ExistingEntry>, OfdError> {
+        let mut entries = Vec::with_capacity(self.archive.len());
+        for index in 0..self.archive.len() {
+            let file = self.archive.by_index_raw(index)?;
+            entries.push(ExistingEntry {
+                index,
+                name: file.name()?.into_owned(),
+                is_dir: file.is_dir(),
+                modified: file.last_modified(),
+            });
+        }
+        Ok(entries)
+    }
+
+    fn execute_plan(
+        &mut self,
+        writer: &mut (impl Write + Seek),
+        plan: Vec<PlanItem>,
+        options: &PackageWriteOptions,
+    ) -> Result<(), OfdError> {
+        let comment = self.archive.comment().to_vec();
+        let mut zip = zip::ZipWriter::new(writer);
+        if !comment.is_empty() {
+            zip.set_raw_comment(comment.into())?;
+        }
+        for item in plan {
+            match item {
+                PlanItem::CopyRaw { index, name } => {
+                    copy_raw(&mut zip, self.archive.by_index_raw(index)?, &name)?;
+                }
+                PlanItem::CopyDecoded { index, name, time } => {
+                    let mut data = Vec::new();
+                    self.archive.by_index(index)?.read_to_end(&mut data)?;
+                    write_plain_entry(&mut zip, &name, &data, options, time)?;
+                }
+                PlanItem::Replace { name, bytes, time } => {
+                    write_plain_entry(&mut zip, &name, &bytes, options, time)?
+                }
+                PlanItem::Add { name, bytes, time } => {
+                    write_plain_entry(&mut zip, &name, &bytes, options, time)?
+                }
+            }
+        }
+        zip.finish()?;
+        Ok(())
+    }
+
+    /// 收集签名 `References` 与完整性保护文件列表引用到的包内路径。
+    ///
+    /// 只用于解密另存时的失效提示，任何解析失败都静默忽略。
+    fn referenced_entries(&mut self) -> Vec<String> {
+        let mut paths = Vec::new();
+        if let Ok(signatures) = self.parse_signatures() {
+            let base = self
+                .signatures_entry
+                .as_deref()
+                .and_then(parent_dir)
+                .map(str::to_owned);
+            if let Some(base) = base {
+                let locs: Vec<String> = signatures
+                    .signatures()
+                    .filter_map(|entry| entry.base_loc().map(str::to_owned))
+                    .collect();
+                for loc in locs {
+                    let Ok(entry) = resolve_loc(&base, &loc) else {
+                        continue;
+                    };
+                    let Ok(bytes) = self.read_entry(&entry) else {
+                        continue;
+                    };
+                    let Ok(doc) = parse_xml(&bytes, self.options) else {
+                        continue;
+                    };
+                    let Ok(signature) = SignatureView::from_document(Arc::new(doc), self.options)
+                    else {
+                        continue;
+                    };
+                    let Some(info) = signature.signed_info() else {
+                        continue;
+                    };
+                    let Some(references) = info.references() else {
+                        continue;
+                    };
+                    for reference in references.references() {
+                        if let Some(file_ref) = reference.file_ref()
+                            && let Ok(normalized) = normalize_entry_name(file_ref)
+                        {
+                            paths.push(entry_key(&normalized));
+                        }
+                    }
+                }
+            }
+        }
+        if let Ok(entries) = self.parse_ofd_entries() {
+            for file in entries.files() {
+                if let Some(loc) = file.file_loc()
+                    && let Ok(normalized) = normalize_entry_name(loc)
+                {
+                    paths.push(entry_key(&normalized));
+                }
+            }
+        }
+        paths
+    }
+
     fn root_entry_name(&self) -> Result<String, OfdError> {
         if self.contains(ROOT_ENTRY) {
             return Ok(ROOT_ENTRY.to_owned());
@@ -1070,13 +1425,13 @@ fn looks_like_xml(bytes: &[u8]) -> bool {
         .is_some_and(|byte| *byte == b'<')
 }
 
-fn entry_key(name: &str) -> String {
+pub(crate) fn entry_key(name: &str) -> String {
     name.replace('\\', "/")
         .trim_start_matches('/')
         .to_ascii_lowercase()
 }
 
-fn normalize_entry_name(name: &str) -> Result<String, OfdError> {
+pub(crate) fn normalize_entry_name(name: &str) -> Result<String, OfdError> {
     let name = name.replace('\\', "/");
     let mut parts = Vec::new();
     for part in name.split('/') {

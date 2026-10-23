@@ -17,6 +17,7 @@ mod error;
 mod model;
 mod options;
 mod package;
+mod package_write;
 mod write;
 mod xml;
 
@@ -68,6 +69,9 @@ pub use model::signature::{
 pub use model::version::{DocVersionView, VersionFileView};
 pub use options::{CacheOptions, ReadOptions};
 pub use package::{CacheStats, OfdPackage, ROOT_ENTRY};
+pub use package_write::{
+    DecryptedWriteReport, EntryCompression, PackageDateTime, PackageEdits, PackageWriteOptions,
+};
 pub use xml::namespace::OFD_NAMESPACE;
 pub use xml::parser::parse_xml;
 pub use xml::tree::{NodeId, QName, Span, XmlAttribute, XmlDocument, XmlNode};
