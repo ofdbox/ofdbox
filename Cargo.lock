@@ -399,10 +399,14 @@ dependencies = [
 name = "ofdbox"
 version = "0.0.1"
 dependencies = [
+ "der",
  "ofdbox-core",
  "ofdbox-crypto",
  "ofdbox-seal",
+ "sm2",
  "thiserror",
+ "x509-cert",
+ "zip",
 ]
 
 [[package]]
