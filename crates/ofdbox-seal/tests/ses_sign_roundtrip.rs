@@ -5,7 +5,9 @@ use std::time::Duration;
 
 use der::Encode;
 use der::asn1::{BitString, ObjectIdentifier};
-use ofdbox_core::{DEFAULT_SIGNATURE_METHOD, OfdPackage, SignatureVerifiers, SigningRequest};
+use ofdbox_core::{
+    DEFAULT_SIGNATURE_METHOD, OfdPackage, SignatureVerifiers, SigningRequest, StampAppearance,
+};
 use ofdbox_crypto::PasswordBackend;
 use ofdbox_seal::{SesSignatureVerifier, Sm2SesSignatureProducer, parse_ses_signature};
 use sm2::SecretKey;
@@ -25,6 +27,7 @@ use zip::write::SimpleFileOptions;
 const SM2_CURVE_OID: &str = "1.2.156.10197.1.301";
 const SM2_SIGN_OID: &str = "1.2.156.10197.1.501";
 const DIST_ID: &str = "1234567812345678";
+const PNG: &[u8] = b"\x89PNG\r\n\x1a\nfictional-seal-image";
 
 const OFD_XML: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
 <ofd:OFD xmlns:ofd="http://www.ofdspec.org/2016" Version="1.0" DocType="OFD">
@@ -39,9 +42,17 @@ const DOCUMENT: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
   <ofd:CommonData>
     <ofd:MaxUnitID>2</ofd:MaxUnitID>
     <ofd:PageArea><ofd:PhysicalBox>0 0 210 297</ofd:PhysicalBox></ofd:PageArea>
+    <ofd:DocumentRes>DocumentRes.xml</ofd:DocumentRes>
   </ofd:CommonData>
   <ofd:Pages><ofd:Page ID="1" BaseLoc="Pages/Page_0/Content.xml"/></ofd:Pages>
+  <ofd:Annotations>Annotations.xml</ofd:Annotations>
 </ofd:Document>"#;
+
+const DOCUMENT_RES: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<ofd:Res xmlns:ofd="http://www.ofdspec.org/2016" BaseLoc="Res"><ofd:MultiMedias></ofd:MultiMedias></ofd:Res>"#;
+
+const ANNOTATIONS: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<ofd:Annotations xmlns:ofd="http://www.ofdspec.org/2016"></ofd:Annotations>"#;
 
 const CONTENT: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
 <ofd:Page xmlns:ofd="http://www.ofdspec.org/2016">
@@ -130,6 +141,8 @@ fn package() -> Vec<u8> {
     for (name, data) in [
         ("OFD.xml", OFD_XML.as_bytes()),
         ("Doc_0/Document.xml", DOCUMENT.as_bytes()),
+        ("Doc_0/DocumentRes.xml", DOCUMENT_RES.as_bytes()),
+        ("Doc_0/Annotations.xml", ANNOTATIONS.as_bytes()),
         ("Doc_0/Pages/Page_0/Content.xml", CONTENT.as_bytes()),
     ] {
         writer
@@ -196,6 +209,98 @@ fn stamps_with_real_seal_and_verifies() {
         .verify_references(&signature, &PasswordBackend::new(""))
         .expect("references");
     assert!(!checks.is_empty());
+    for check in checks {
+        assert_eq!(check.expected, check.actual, "{}", check.file_ref);
+    }
+}
+
+#[test]
+fn stamps_with_appearance() {
+    let Some(seal) = real_seal() else {
+        return;
+    };
+    let (certificate, secret) = make_certificate();
+    let producer = Sm2SesSignatureProducer::new(seal, certificate, secret.to_bytes().to_vec())
+        .expect("producer");
+
+    let stamp = StampAppearance {
+        page_id: "1".to_owned(),
+        boundary: [10.0, 20.0, 40.0, 40.0],
+        clip: None,
+        image: PNG.to_vec(),
+        image_format: "PNG".to_owned(),
+        image_width: 40.0,
+        image_height: 40.0,
+    };
+    let request = SigningRequest::new(DEFAULT_SIGNATURE_METHOD, "20261024050000").with_stamp(stamp);
+    let mut document = OfdPackage::from_bytes(package()).expect("open");
+    let mut output = Vec::new();
+    document
+        .sign_package(&request, &producer, &mut Cursor::new(&mut output))
+        .expect("stamp with appearance");
+
+    let mut signed = OfdPackage::from_bytes(output).expect("open stamped");
+    let document_xml = signed.read_entry("Doc_0/Document.xml").expect("document");
+    assert!(
+        std::str::from_utf8(&document_xml)
+            .expect("utf8")
+            .contains("<ofd:MaxUnitID>5</ofd:MaxUnitID>")
+    );
+    let resources = signed
+        .read_entry("Doc_0/DocumentRes.xml")
+        .expect("document res");
+    assert!(
+        std::str::from_utf8(&resources)
+            .expect("utf8")
+            .contains("MultiMedia ID=\"5\"")
+    );
+    let index = signed.read_entry("Doc_0/Annotations.xml").expect("index");
+    assert!(
+        std::str::from_utf8(&index)
+            .expect("utf8")
+            .contains("PageID=\"1\"")
+    );
+    let annotation = signed
+        .read_entry("Doc_0/PageAnnot_1.xml")
+        .expect("annotation");
+    let annotation = std::str::from_utf8(&annotation).expect("utf8");
+    assert!(annotation.contains("Type=\"Stamp\""));
+    assert!(annotation.contains("ResourceID=\"5\""));
+    assert!(signed.contains("Doc_0/Res/seal_1.png"));
+
+    let index = signed.parse_signatures().expect("signatures");
+    let entry = index.signatures().next().expect("entry");
+    let signature = signed
+        .parse_signature(entry.base_loc().expect("BaseLoc"))
+        .expect("signature");
+    let verifiers = SignatureVerifiers::new()
+        .with(Box::new(SesSignatureVerifier::new().without_signer_check()));
+    signed
+        .verify_signature(&signature, &verifiers)
+        .expect("verify signature");
+
+    let signature_xml = signed
+        .read_entry("Doc_0/Signs/Sign_0/Signature.xml")
+        .expect("signature xml");
+    assert!(
+        std::str::from_utf8(&signature_xml)
+            .expect("utf8")
+            .contains("StampAnnot")
+    );
+
+    let checks = signed
+        .verify_references(&signature, &PasswordBackend::new(""))
+        .expect("references");
+    assert!(
+        checks
+            .iter()
+            .any(|check| check.file_ref.contains("seal_1.png"))
+    );
+    assert!(
+        checks
+            .iter()
+            .any(|check| check.file_ref.contains("PageAnnot_1.xml"))
+    );
     for check in checks {
         assert_eq!(check.expected, check.actual, "{}", check.file_ref);
     }

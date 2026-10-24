@@ -14,6 +14,7 @@ pub use ofdbox_core::{
     CacheOptions, DEFAULT_SIGNATURE_METHOD, DocumentView, OfdError, OfdPackage, PackageDateTime,
     PackageEdits, PackageWriteOptions, PageView, ProtectScope, ProviderInfo, ReadOptions,
     SignatureVerifiers, SignedValueFormat, SignedValueProducer, SigningReport, SigningRequest,
+    StampAppearance,
 };
 
 #[cfg(feature = "crypto")]
@@ -28,9 +29,9 @@ pub use ofdbox_crypto::{
 pub use ofdbox_seal as seal;
 #[cfg(feature = "seal")]
 pub use ofdbox_seal::{
-    SealBuilder, SealPictureInput, SealSpec, SealStandard, SealVerifyOptions, SesSignatureVerifier,
-    SesVerifyOptions, Sm2SesSignatureProducer, parse_ses_signature, verify_seal,
-    verify_ses_signature,
+    SealBuilder, SealFormat, SealPictureInput, SealSpec, SealStandard, SealVerifyOptions,
+    SesSignatureVerifier, SesVerifyOptions, Sm2SesSignatureProducer, parse_seal_for_display,
+    parse_ses_signature, signer_in_seal, verify_seal, verify_ses_signature,
 };
 
 /// 门面统一错误。

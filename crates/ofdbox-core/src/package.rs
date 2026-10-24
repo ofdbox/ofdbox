@@ -1285,6 +1285,11 @@ impl OfdPackage {
             .ok_or_else(|| OfdError::InvalidStructure("尚未定位 Document.xml".to_owned()))?;
         let doc_dir = parent_dir(&doc_entry).unwrap_or("").to_owned();
 
+        let stamp_files = match request.stamp.as_ref() {
+            Some(stamp) => Some(crate::stamp::prepare(self, stamp, &doc_entry)?),
+            None => None,
+        };
+
         let root = self.parse_root()?;
         let link = root
             .doc_bodies()
@@ -1345,6 +1350,12 @@ impl OfdPackage {
             }
             !key.starts_with(&format!("{sign_dir_key}/"))
         });
+        if let Some(files) = &stamp_files {
+            protected.push(doc_entry.clone());
+            for (name, _) in &files.entries {
+                protected.push(name.clone());
+            }
+        }
         protected.sort();
         protected.dedup_by(|left, right| entry_key(left) == entry_key(right));
         if let ProtectScope::Custom(paths) = &request.scope {
@@ -1360,7 +1371,20 @@ impl OfdPackage {
 
         let mut references = Vec::with_capacity(protected.len());
         for path in &protected {
-            let bytes: Arc<[u8]> = if entry_key(path) == entry_key(ROOT_ENTRY)
+            let staged: Option<&[u8]> = stamp_files.as_ref().and_then(|files| {
+                if entry_key(path) == entry_key(&doc_entry) {
+                    Some(files.document_xml.as_slice())
+                } else {
+                    files
+                        .entries
+                        .iter()
+                        .find(|(name, _)| entry_key(name) == entry_key(path))
+                        .map(|(_, bytes)| bytes.as_slice())
+                }
+            });
+            let bytes: Arc<[u8]> = if let Some(bytes) = staged {
+                Arc::from(bytes)
+            } else if entry_key(path) == entry_key(ROOT_ENTRY)
                 && let Some(updated) = root_edit.as_deref()
             {
                 Arc::from(updated)
@@ -1378,8 +1402,12 @@ impl OfdPackage {
 
         let signed_value_path = format!("/{signed_value_entry}");
         let signed_entry_path = format!("/{signature_entry}");
-        let signature_xml =
-            crate::sign::write_signature_xml(request, &references, &signed_value_path)?;
+        let signature_xml = crate::sign::write_signature_xml(
+            request,
+            &references,
+            &signed_value_path,
+            stamp_files.as_ref().map(|files| &files.annot),
+        )?;
         let context = SigningContext {
             content: signature_xml.as_bytes(),
             signed_entry: &signed_entry_path,
@@ -1408,6 +1436,16 @@ impl OfdPackage {
         }
         edits.add(&signature_entry, signature_xml.into_bytes());
         edits.add(&signed_value_entry, signed_value);
+        if let Some(files) = &stamp_files {
+            edits.replace(&doc_entry, files.document_xml.clone());
+            for (name, bytes) in &files.entries {
+                if self.contains(name) {
+                    edits.replace(name, bytes.clone());
+                } else {
+                    edits.add(name, bytes.clone());
+                }
+            }
+        }
         self.write_with(writer, &edits, &PackageWriteOptions::default())?;
 
         Ok(SigningReport {
@@ -1581,7 +1619,7 @@ fn next_signature_id(existing: &[(String, String)]) -> String {
     format!("s{}", existing.len() + 1)
 }
 
-fn resolve_loc(base: &str, loc: &str) -> Result<String, OfdError> {
+pub(crate) fn resolve_loc(base: &str, loc: &str) -> Result<String, OfdError> {
     let loc = loc.replace('\\', "/");
     let mut parts: Vec<&str> = if loc.starts_with('/') {
         Vec::new()
@@ -1607,7 +1645,7 @@ fn resolve_loc(base: &str, loc: &str) -> Result<String, OfdError> {
     Ok(parts.join("/"))
 }
 
-fn parent_dir(path: &str) -> Option<&str> {
+pub(crate) fn parent_dir(path: &str) -> Option<&str> {
     Some(path.rfind('/').map(|index| &path[..index]).unwrap_or(""))
 }
 

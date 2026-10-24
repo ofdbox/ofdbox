@@ -19,6 +19,7 @@ mod options;
 mod package;
 mod package_write;
 mod sign;
+mod stamp;
 mod write;
 mod xml;
 
@@ -81,6 +82,7 @@ pub use sign::{
     DEFAULT_CHECK_METHOD, DEFAULT_SIGNATURE_METHOD, ProtectScope, ProviderInfo,
     SignedValueProducer, SigningContext, SigningReport, SigningRequest,
 };
+pub use stamp::StampAppearance;
 pub use xml::namespace::OFD_NAMESPACE;
 pub use xml::parser::parse_xml;
 pub use xml::tree::{NodeId, QName, Span, XmlAttribute, XmlDocument, XmlNode};

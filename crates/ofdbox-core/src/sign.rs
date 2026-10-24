@@ -10,6 +10,7 @@ use quick_xml::events::{BytesDecl, BytesEnd, BytesText, Event};
 
 use crate::error::OfdError;
 use crate::model::signature::ReferenceDigest;
+use crate::stamp::{StampAnnot, StampAppearance};
 use crate::write::ofd::write_start;
 use crate::xml::namespace::OFD_NAMESPACE;
 
@@ -128,6 +129,8 @@ pub struct SigningRequest<'a> {
     pub provider: ProviderInfo,
     /// `SignatureDateTime`，按原样写入。
     pub signed_at: String,
+    /// 盖章外观；提供时同时写注释、资源与 `StampAnnot`。
+    pub stamp: Option<StampAppearance>,
 }
 
 impl<'a> SigningRequest<'a> {
@@ -139,7 +142,14 @@ impl<'a> SigningRequest<'a> {
             signature_method,
             provider: ProviderInfo::ofdbox(),
             signed_at: signed_at.into(),
+            stamp: None,
         }
+    }
+
+    /// 指定盖章外观。
+    pub fn with_stamp(mut self, stamp: StampAppearance) -> Self {
+        self.stamp = Some(stamp);
+        self
     }
 }
 
@@ -163,6 +173,7 @@ pub(crate) fn write_signature_xml(
     request: &SigningRequest<'_>,
     references: &[ReferenceDigest],
     signed_value_path: &str,
+    stamp: Option<&StampAnnot>,
 ) -> Result<String, OfdError> {
     let mut writer = Writer::new(Vec::new());
     writer.write_event(Event::Decl(BytesDecl::new("1.0", Some("UTF-8"), None)))?;
@@ -208,6 +219,26 @@ pub(crate) fn write_signature_xml(
         writer.write_event(Event::End(BytesEnd::new("ofd:Reference")))?;
     }
     writer.write_event(Event::End(BytesEnd::new("ofd:References")))?;
+
+    if let Some(stamp) = stamp {
+        let boundary = format!(
+            "{} {} {} {}",
+            stamp.boundary[0], stamp.boundary[1], stamp.boundary[2], stamp.boundary[3]
+        );
+        let clip = stamp
+            .clip
+            .map(|clip| format!("{} {} {} {}", clip[0], clip[1], clip[2], clip[3]));
+        let mut attributes = vec![
+            ("ID", stamp.id.as_str()),
+            ("PageRef", stamp.page_id.as_str()),
+            ("Boundary", boundary.as_str()),
+        ];
+        if let Some(clip) = clip.as_deref() {
+            attributes.push(("Clip", clip));
+        }
+        write_start(&mut writer, "ofd:StampAnnot", &attributes)?;
+        writer.write_event(Event::End(BytesEnd::new("ofd:StampAnnot")))?;
+    }
 
     writer.write_event(Event::End(BytesEnd::new("ofd:SignedInfo")))?;
     text_element(&mut writer, "ofd:SignedValue", signed_value_path)?;

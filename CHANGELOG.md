@@ -4,6 +4,8 @@
 
 ### 新增
 
+- `ofdbox-core`：盖章外观 `StampAppearance` + `SigningRequest::with_stamp`：自动写 `StampAnnot`、页面注释（`Type="Stamp"`）、`DocumentRes` 图片资源与印模文件，并把它们纳入 `References`；要求 `Document.xml` 已声明 `DocumentRes` 与 `Annotations`。
+- `ofdbox`：示例 `seal_and_stamp` 演示制章 → 盖章 → 验章，写出印章、制章者/签章者证书、签章者公钥（PEM）与盖章文件到 `target/`。
 - `ofdbox-seal`：`SealBuilder` 按 GB/T 38540 或 GM/T 0031 生成 `SESeal`：印章图片（PNG/GIF/JPG/BMP/SVG + 毫米宽高）、证书列表或证书杂凑值列表、有效期，制章者 SM2 签名；生成结果可用 `verify_seal` 验回并做 `signer_in_seal` 匹配。
 - `ofdbox-seal`：`Sm2SesSignatureProducer` 用已有 `SESeal` + 签章者证书/私钥生成 GB/T 38540 `SES_Signature`；`sign_package` 按 `SignedValueProducer::signature_type()` 写出 `Type=Seal` 的签名记录。
 - `ofdbox-seal`：GB/T 38540 `SES_Signature` 解析与验签（`parse_ses_signature` / `verify_ses_signature` / `SesSignatureVerifier`），验证原文杂凑值、签章者签名、内嵌印章与签章者证书列表；43 份真实 `Type=Seal` 样本全部验通。
