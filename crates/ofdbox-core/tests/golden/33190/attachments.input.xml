@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ofd:Attachments xmlns:ofd="http://www.ofdspec.org/2016">
+  <ofd:Attachment ID="1" Name="a.txt" Size="5" CreationDate="2026-10-24"><ofd:FileLoc>Attachs/a.txt</ofd:FileLoc></ofd:Attachment>
+</ofd:Attachments>

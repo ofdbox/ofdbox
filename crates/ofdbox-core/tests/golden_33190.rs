@@ -1,6 +1,7 @@
 use ofdbox_core::{
-    AnnotationsView, DocumentView, OfdError, OfdRootView, PageAnnotView, ReadOptions, ResView,
-    SignatureView, SignaturesView,
+    AnnotationsView, AttachmentsView, CustomTagsView, DocVersionView, DocumentView, OfdError,
+    OfdRootView, PageAnnotView, PageContentView, ReadOptions, ResView, SignatureView,
+    SignaturesView,
 };
 
 const OFD_INPUT: &str = include_str!("golden/33190/ofd_root.input.xml");
@@ -17,6 +18,14 @@ const SIGNATURES_INPUT: &str = include_str!("golden/33190/signatures.input.xml")
 const SIGNATURES_EXPECTED: &str = include_str!("golden/33190/signatures.expected.xml");
 const SIGNATURE_INPUT: &str = include_str!("golden/33190/signature.input.xml");
 const SIGNATURE_EXPECTED: &str = include_str!("golden/33190/signature.expected.xml");
+const PAGE_INPUT: &str = include_str!("golden/33190/page.input.xml");
+const PAGE_EXPECTED: &str = include_str!("golden/33190/page.expected.xml");
+const ATTACHMENTS_INPUT: &str = include_str!("golden/33190/attachments.input.xml");
+const ATTACHMENTS_EXPECTED: &str = include_str!("golden/33190/attachments.expected.xml");
+const CUSTOM_TAGS_INPUT: &str = include_str!("golden/33190/custom_tags.input.xml");
+const CUSTOM_TAGS_EXPECTED: &str = include_str!("golden/33190/custom_tags.expected.xml");
+const DOC_VERSION_INPUT: &str = include_str!("golden/33190/doc_version.input.xml");
+const DOC_VERSION_EXPECTED: &str = include_str!("golden/33190/doc_version.expected.xml");
 
 fn parse<T>(input: &str, parse: impl Fn(&[u8], ReadOptions) -> Result<T, OfdError>) -> T {
     parse(input.as_bytes(), ReadOptions::STRICT).expect("strict parse")
@@ -95,6 +104,47 @@ fn signature_golden() {
     assert_eq!(stamp.page_ref(), Some("1"));
     assert_eq!(view.to_xml().expect("xml"), SIGNATURE_EXPECTED);
     parse(SIGNATURE_EXPECTED, SignatureView::from_xml);
+}
+
+#[test]
+fn page_content_golden() {
+    let view = parse(PAGE_INPUT, PageContentView::from_xml);
+    assert_eq!(view.content().expect("content").layers().count(), 1);
+    assert_eq!(view.to_xml().expect("xml"), PAGE_EXPECTED);
+    parse(PAGE_EXPECTED, PageContentView::from_xml);
+}
+
+#[test]
+fn attachments_golden() {
+    let view = parse(ATTACHMENTS_INPUT, AttachmentsView::from_xml);
+    let attachment = view.attachments().next().expect("attachment");
+    assert_eq!(attachment.id(), Some("1"));
+    assert_eq!(attachment.name(), Some("a.txt"));
+    assert_eq!(attachment.file_loc(), Some("Attachs/a.txt"));
+    assert_eq!(view.to_xml().expect("xml"), ATTACHMENTS_EXPECTED);
+    parse(ATTACHMENTS_EXPECTED, AttachmentsView::from_xml);
+}
+
+#[test]
+fn custom_tags_golden() {
+    let view = parse(CUSTOM_TAGS_INPUT, CustomTagsView::from_xml);
+    let tag = view.custom_tags().next().expect("tag");
+    assert_eq!(tag.type_id(), Some("tag"));
+    assert_eq!(tag.schema_loc(), Some("schema.xsd"));
+    assert_eq!(tag.file_loc(), Some("tags.xml"));
+    assert_eq!(view.to_xml().expect("xml"), CUSTOM_TAGS_EXPECTED);
+    parse(CUSTOM_TAGS_EXPECTED, CustomTagsView::from_xml);
+}
+
+#[test]
+fn doc_version_golden() {
+    let view = parse(DOC_VERSION_INPUT, DocVersionView::from_xml);
+    assert_eq!(view.id(), Some("1"));
+    assert_eq!(view.version(), Some("1.0"));
+    assert_eq!(view.files().count(), 1);
+    assert_eq!(view.doc_root(), Some("/Doc_0/Document.xml"));
+    assert_eq!(view.to_xml().expect("xml"), DOC_VERSION_EXPECTED);
+    parse(DOC_VERSION_EXPECTED, DocVersionView::from_xml);
 }
 
 #[test]

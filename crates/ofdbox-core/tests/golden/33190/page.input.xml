@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ofd:Page xmlns:ofd="http://www.ofdspec.org/2016">
+  <ofd:Area><ofd:PhysicalBox>0 0 210 297</ofd:PhysicalBox></ofd:Area>
+  <ofd:Content><ofd:Layer ID="1"><ofd:TextObject ID="2" Boundary="10 10 100 20" Font="3" Size="12"><ofd:TextCode X="10" Y="20">Hello</ofd:TextCode></ofd:TextObject></ofd:Layer></ofd:Content>
+</ofd:Page>
