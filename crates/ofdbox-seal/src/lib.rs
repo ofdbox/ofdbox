@@ -1,43 +1,37 @@
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 
-//! 电子印章（ESL）的结构识别与显示解析。
+//! 电子印章（ESL）的结构识别、制章、显示解析与验签。
 //!
 //! 印章标准没有声明格式的字段，因此本 crate 通过有界 DER 扫描生成结构指纹，
 //! 再结合印章头、属性字段和外层签名容器判断 GM/T 0031—2014 或 GB/T 38540—2020。
 //!
-//! 显示和验证是两条独立路径：显示只需要印章头和内嵌图片，不执行任何密码学运算；
-//! 格式未知时仍可提取图片，但不得据此认为印章有效。
+//! 模块按标准拆分：`eseal` 放两标准共用的容器、解析、制章入口与验章；
+//! `gbt38540` 与 `gmt0031` 只放各自的标准特有结构与编码。
 
-mod build;
 mod certificate;
 mod der;
 mod error;
+mod eseal;
 mod fingerprint;
+mod gbt38540;
+mod gmt0031;
 mod oids;
-mod seal;
-mod ses_producer;
-mod ses_signature;
 mod signature;
 mod time;
-mod verify;
 
-pub use build::{SealBuilder, SealPictureInput, SealSpec, SealStandard};
 pub use certificate::{
     CertificatePolicy, CertificateValidation, validate_certificate, validate_certificate_at,
 };
 pub use error::SealError;
+pub use eseal::{
+    SealBuilder, SealDisplay, SealHeader, SealPicture, SealPictureInput, SealProperty, SealSpec,
+    SealStandard, SealVerification, SealVerifyOptions, fingerprint_seal, identify_seal_format,
+    parse_seal_for_display, signer_in_seal, verify_seal, verify_seal_with_options,
+};
 pub use fingerprint::{OuterSignatureShape, SealFingerprint, SealFormat, TimeType};
+pub use gbt38540::{
+    SesSignature, SesSignatureVerifier, SesVerification, SesVerifyOptions, Sm2SesSignatureProducer,
+    parse_ses_signature, verify_ses_signature,
+};
 pub use oids::SM2_SM3_SIGNATURE_OID;
-pub use seal::{
-    SealDisplay, SealHeader, SealPicture, SealProperty, fingerprint_seal, identify_seal_format,
-    parse_seal_for_display,
-};
-pub use ses_producer::Sm2SesSignatureProducer;
-pub use ses_signature::{
-    SesSignature, SesSignatureVerifier, SesVerification, SesVerifyOptions, parse_ses_signature,
-    verify_ses_signature,
-};
-pub use verify::{
-    SealVerification, SealVerifyOptions, signer_in_seal, verify_seal, verify_seal_with_options,
-};

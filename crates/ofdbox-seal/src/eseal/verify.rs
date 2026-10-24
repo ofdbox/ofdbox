@@ -3,9 +3,9 @@ use ofdbox_crypto::{DEFAULT_DIST_ID, public_key_from_certificate, sm3_digest};
 use crate::certificate::{CertificatePolicy, validate_certificate_at};
 use crate::der;
 use crate::error::SealError;
+use crate::eseal::parse::{Layout, SignerList, parse_layout};
 use crate::fingerprint::SealFormat;
 use crate::oids::SM2_SM3_SIGNATURE_OID;
-use crate::seal::{Layout, SignerList, parse_layout};
 use crate::signature::verify_sm2;
 use crate::time::{parse_seal_time, resolve_time};
 

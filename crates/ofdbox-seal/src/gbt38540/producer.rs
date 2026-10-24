@@ -6,9 +6,9 @@ use zeroize::Zeroizing;
 
 use crate::der;
 use crate::error::SealError;
+use crate::eseal::parse::parse_seal_for_display;
 use crate::fingerprint::SealFormat;
 use crate::oids::SM2_SM3_SIGNATURE_OID;
-use crate::seal::parse_seal_for_display;
 
 /// SM2 with SM3 的 DER OID 内容（1.2.156.10197.1.501）。
 const OID_SM2_SM3: &[u8] = &[0x2A, 0x81, 0x1C, 0xCF, 0x55, 0x01, 0x83, 0x75];

@@ -26,11 +26,11 @@ use ofdbox_crypto::{DEFAULT_DIST_ID, public_key_from_certificate, sm3_digest};
 use crate::certificate::CertificatePolicy;
 use crate::der::{self, TAG_SEQUENCE};
 use crate::error::SealError;
+use crate::eseal::parse::identify_seal_format;
+use crate::eseal::verify::{SealVerifyOptions, verify_seal_with_options};
 use crate::fingerprint::SealFormat;
 use crate::oids::SM2_SM3_SIGNATURE_OID;
-use crate::seal::identify_seal_format;
 use crate::signature::verify_sm2;
-use crate::verify::{SealVerifyOptions, verify_seal_with_options};
 
 /// `SES_Signature` 的类型化视图。
 #[derive(Clone, Debug)]
@@ -209,7 +209,7 @@ pub fn verify_ses_signature(
         // 38540 只定义类型 1（证书）与 2（杂凑值）；厂商扩展类型无法比对时
         // 跳过“签章者证书在列表中”的检查，但仍验证印章签名。
         let check_signer = if options.check_signer {
-            match crate::verify::signer_in_seal(signature.seal, signature.certificate) {
+            match crate::eseal::verify::signer_in_seal(signature.seal, signature.certificate) {
                 Ok(true) => true,
                 Ok(false) => return Err(SealError::SignerNotInSeal),
                 Err(SealError::UnsupportedCertificateListType(_)) => false,
