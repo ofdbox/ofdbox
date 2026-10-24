@@ -52,6 +52,7 @@
 - 38540/0031 测试补齐负例：篡改原文/签名值、未知签名算法、截断、尾随非零字节、签章者不在印章列表、空证书列表、0031 不支持摘要列表。
 - 新增 33190 黄金对测试：`OFD.xml`、`Document.xml`、`Res`、`Annotations`、`PageAnnot`、`Signatures`、`Signature`、页面内容、`Attachments`、`CustomTags`、`DocVersion` 的严格解析、字段断言、`to_xml` 逐字节比对与严格负例。
 - 补充 OFDEntries 边界测试：`FileList` 重复、缺 `SignedValueLoc`、相对 `FileLoc`、大小写引用一致性；CI 增加手动触发、自托管 Runner 的语料兼容性 job（`workflow_dispatch` 输入 `corpus_dir`）。
+- 算法注册表接入：`ofdbox-core` 的 `SignatureVerifier` 移除 `supports`，按“容器格式 + 字节认领”分发，算法由 `ofdbox-algo::AlgorithmRegistry` 按 OID 解析；`ofdbox-crypto` 的 SM3、SM3-KDF、SM4-CBC 与 SM2 验签复用 `ofdbox-algo`；`ofdbox-seal` 的 38540 验签改用注册表；`ofdbox` 门面导出 `ofdbox_algo`。
 - 渲染、格式转换与文档生成迁至独立仓库 `ofdbox-folio`。
 - 批量转换命令行迁至 `ofdbox-reader`，删除 `ofdbox-cli`。
 - 删除 `ofdbox-render`；`ofdbox` 门面移除 render/ofd/pdf/cpu/image feature 与相关导出，只保留 core、crypto、seal。
