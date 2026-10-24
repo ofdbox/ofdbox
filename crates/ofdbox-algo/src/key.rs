@@ -22,3 +22,26 @@ impl<'a> PublicKeyRef<'a> {
         }
     }
 }
+
+/// 算法私钥的借用视图。
+///
+/// `key_bytes` 的编码由算法决定：
+/// - SM2：32 字节大端私钥标量；
+/// - 其他算法：对应算法约定的私钥字节。
+#[derive(Clone, Copy, Debug)]
+pub struct SecretKeyRef<'a> {
+    /// 私钥算法 OID。
+    pub algorithm_oid: &'a str,
+    /// 算法私钥字节。
+    pub key_bytes: &'a [u8],
+}
+
+impl<'a> SecretKeyRef<'a> {
+    /// 创建私钥视图。
+    pub const fn new(algorithm_oid: &'a str, key_bytes: &'a [u8]) -> Self {
+        Self {
+            algorithm_oid,
+            key_bytes,
+        }
+    }
+}

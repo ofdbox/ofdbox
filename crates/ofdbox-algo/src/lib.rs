@@ -21,7 +21,7 @@ pub use cipher::{Cipher, Sm4Cbc};
 pub use digest::{DigestAlgorithm, Sm3Digest};
 pub use error::AlgorithmError;
 pub use kdf::{Kdf, Sm3Kdf};
-pub use key::PublicKeyRef;
+pub use key::{PublicKeyRef, SecretKeyRef};
 pub use oid::*;
 pub use registry::AlgorithmRegistry;
 pub use role::AlgorithmRole;

@@ -1,7 +1,7 @@
 use ofdbox_algo::{
     AlgorithmError, AlgorithmRegistry, AlgorithmRole, Cipher, DigestAlgorithm, Kdf, PublicKeyRef,
     RawSignatureAlgorithm, SM2_CURVE_OID, SM2_SIGN_OID, SM2_SM3_SIGN_OID, SM3_KDF_ID, SM3_OID,
-    SM4_CBC_OID, SignatureParams, Sm2RawSignature, Sm3Digest, Sm3Kdf, Sm4Cbc,
+    SM4_CBC_OID, SecretKeyRef, SignatureParams, Sm2RawSignature, Sm3Digest, Sm3Kdf, Sm4Cbc,
 };
 
 #[test]
@@ -107,4 +107,37 @@ fn role_names_are_stable() {
 
 fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
+#[test]
+fn algo_signs_and_verifies() {
+    let secret = sm2::SecretKey::from_slice(&[0x44u8; 32]).expect("secret");
+    let public = secret.public_key().to_sec1_bytes();
+    let params = SignatureParams::default();
+    let secret_bytes = secret.to_bytes();
+    let secret_ref = SecretKeyRef::new(SM2_CURVE_OID, &secret_bytes);
+    let signature = Sm2RawSignature
+        .sign(&secret_ref, b"OFDBox sign", &params)
+        .expect("sign");
+    assert!(!signature.is_empty());
+
+    let key = PublicKeyRef::new(SM2_CURVE_OID, &public);
+    Sm2RawSignature
+        .verify(&key, b"OFDBox sign", &signature, &params)
+        .expect("verify");
+    assert!(
+        Sm2RawSignature
+            .verify(&key, b"tampered", &signature, &params)
+            .is_err()
+    );
+}
+
+#[test]
+fn algo_rejects_invalid_signing_key() {
+    let params = SignatureParams::default();
+    let secret_ref = SecretKeyRef::new(SM2_CURVE_OID, &[0u8; 8]);
+    assert!(matches!(
+        Sm2RawSignature.sign(&secret_ref, b"data", &params),
+        Err(AlgorithmError::InvalidKey)
+    ));
 }

@@ -1,9 +1,7 @@
 use ofdbox_algo::{
-    PublicKeyRef, RawSignatureAlgorithm, SM2_CURVE_OID, SignatureParams, Sm2RawSignature,
+    AlgorithmError, PublicKeyRef, RawSignatureAlgorithm, SM2_CURVE_OID, SecretKeyRef,
+    SignatureParams, Sm2RawSignature,
 };
-use sm2::SecretKey;
-use sm2::dsa::signature::Signer;
-use sm2::dsa::{Signature, SigningKey};
 
 use crate::error::CryptoError;
 
@@ -11,12 +9,11 @@ pub use ofdbox_algo::DEFAULT_DIST_ID;
 
 /// SM2DSA 签名，输入消息原文，输出 ASN.1 DER 的 `SEQUENCE { r, s }`。
 pub fn sign_sm3(private_key: &[u8], message: &[u8], dist_id: &str) -> Result<Vec<u8>, CryptoError> {
-    let secret_key = SecretKey::from_slice(private_key).map_err(|_| CryptoError::InvalidKey)?;
-    let signing_key = SigningKey::new(dist_id, &secret_key).map_err(|_| CryptoError::InvalidKey)?;
-    let signature: Signature = signing_key
-        .try_sign(message)
-        .map_err(|_| CryptoError::InvalidSignature)?;
-    Ok(signature.to_der().to_vec())
+    let key = SecretKeyRef::new(SM2_CURVE_OID, private_key);
+    let params = SignatureParams { dist_id };
+    Sm2RawSignature
+        .sign(&key, message, &params)
+        .map_err(map_signature_error)
 }
 
 /// SM2DSA 验签，签名值为 ASN.1 DER 的 `SEQUENCE { r, s }`。
@@ -52,7 +49,14 @@ fn verify_with(
     let params = SignatureParams { dist_id };
     Sm2RawSignature
         .verify(&key, message, signature, &params)
-        .map_err(|_| CryptoError::InvalidSignature)
+        .map_err(map_signature_error)
+}
+
+fn map_signature_error(error: AlgorithmError) -> CryptoError {
+    match error {
+        AlgorithmError::InvalidKey => CryptoError::InvalidKey,
+        _ => CryptoError::InvalidSignature,
+    }
 }
 
 #[cfg(test)]
