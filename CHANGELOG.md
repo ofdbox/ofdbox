@@ -22,6 +22,7 @@
 
 ### 修复
 
+- 盖章外观：页 ID 与图片格式写入 XML 前转义；注释/资源文件名改用数字 ID，不再把页 ID 带进包内路径；支持 `<ofd:Annotations/>`、`<ofd:MultiMedias/>` 等自闭合容器并跳过 XML 注释；同一页已有 `<ofd:Page>` 时复用其注释文件，不再追加重复条目；`MaxUnitID` 缺失改为报错，并校验盖章/裁剪/图片尺寸为有限正数。
 - 按 GM/T 0099 附录 C.1，`UserInfo` 缺少 `IVValue` 时按 16 个 0 处理，不再跳过该用户。
 - 按 GM/T 0099 附录 C.4 与图 C.3，`EncryptEntry/@DecryptSeedLoc` 改为属性读写（仍接受子元素旧写法），解密时按条目取独立密钥；单个条目解不开不再影响其他条目。
 - `zip` 依赖启用 `unreserved` 特性，可读取并复制含 Info-ZIP Unix extra field 的包。

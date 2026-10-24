@@ -3,8 +3,13 @@
 //! 这里只做“文档已经声明 `DocumentRes` 与 `Annotations`”的增量写入；模板层面
 //! 的索引创建留给调用方（示例会建好这两个入口）。生成的文件同样会被签名保护。
 
+use quick_xml::escape::escape;
+
 use crate::error::OfdError;
 use crate::package::{OfdPackage, parent_dir, resolve_loc};
+use crate::sign::detect_prefix;
+
+const OFD_NS: &str = crate::OFD_NAMESPACE;
 
 /// 盖章位置与印模。
 #[derive(Clone, Debug)]
@@ -43,19 +48,12 @@ pub(crate) struct StampFiles {
     pub(crate) annot: StampAnnot,
 }
 
-const OFD_NS: &str = "http://www.ofdspec.org/2016";
-
 pub(crate) fn prepare(
     package: &mut OfdPackage,
     stamp: &StampAppearance,
     document_entry: &str,
 ) -> Result<StampFiles, OfdError> {
-    if stamp.boundary[2] <= 0.0 || stamp.boundary[3] <= 0.0 {
-        return Err(OfdError::InvalidStructure("盖章区域必须为正数".to_owned()));
-    }
-    if stamp.image.is_empty() {
-        return Err(OfdError::InvalidStructure("印模图片不能为空".to_owned()));
-    }
+    validate(stamp)?;
 
     let doc_dir = parent_dir(document_entry).unwrap_or("").to_owned();
     let document = String::from_utf8(package.read_entry(document_entry)?.to_vec())
@@ -72,11 +70,11 @@ pub(crate) fn prepare(
 
     let max_unit = element_text(&document, "MaxUnitID")
         .and_then(|text| text.trim().parse::<i64>().ok())
-        .unwrap_or(0);
+        .ok_or_else(|| OfdError::InvalidStructure("Document.xml 缺少 MaxUnitID".to_owned()))?;
     let annot_id = max_unit + 1;
     let image_object_id = max_unit + 2;
     let multimedia_id = max_unit + 3;
-    let document = set_element_text(&document, "MaxUnitID", &(multimedia_id).to_string())
+    let document = set_element_text(&document, "MaxUnitID", &multimedia_id.to_string())
         .ok_or_else(|| OfdError::InvalidStructure("Document.xml 缺少 MaxUnitID".to_owned()))?;
 
     // 资源目录：优先取 DocumentRes 的 BaseLoc，缺省为 `Res`。
@@ -87,7 +85,9 @@ pub(crate) fn prepare(
         res = element_attribute(text, "Res", "BaseLoc").unwrap_or_default();
     }
     let res_dir = resolve_loc(&doc_dir, if res.is_empty() { "Res" } else { &res })?;
-    let image_name = unique_name(package, &res_dir, &format!("seal_{}.png", stamp.page_id));
+    // 文件名用数字 ID，不把页 ID 带进路径。
+    let extension = image_extension(&stamp.image_format);
+    let image_name = unique_name(package, &res_dir, &format!("seal_{annot_id}.{extension}"));
     let image_entry = format!("{res_dir}/{image_name}");
 
     // DocumentRes：追加一张图片资源。
@@ -100,21 +100,24 @@ pub(crate) fn prepare(
 <ofd:Res xmlns:ofd="{OFD_NS}" BaseLoc="Res"><ofd:MultiMedias></ofd:MultiMedias></ofd:Res>"#
         ),
     };
-    let entry = format!(
-        r#"<ofd:MultiMedia ID="{multimedia_id}" Type="Image" Format="{}"><ofd:MediaFile>{image_name}</ofd:MediaFile></ofd:MultiMedia>"#,
-        stamp.image_format
+    let res_prefix = detect_prefix(&document_res_xml)?.to_owned();
+    let media = format!(
+        r#"<{res_prefix}MultiMedia ID="{multimedia_id}" Type="Image" Format="{}"><{res_prefix}MediaFile>{}</{res_prefix}MediaFile></{res_prefix}MultiMedia>"#,
+        escape(&stamp.image_format),
+        escape(&image_name)
     );
-    document_res_xml = insert_before_close(&document_res_xml, "MultiMedias", &entry)
-        .ok_or_else(|| OfdError::InvalidStructure("DocumentRes 缺少 MultiMedias".to_owned()))?;
+    document_res_xml = match insert_before_close(&document_res_xml, "MultiMedias", &media) {
+        Some(updated) => updated,
+        None => insert_before_close(
+            &document_res_xml,
+            "Res",
+            &format!("<{res_prefix}MultiMedias>{media}</{res_prefix}MultiMedias>"),
+        )
+        .ok_or_else(|| OfdError::InvalidStructure("DocumentRes 缺少 Res 根元素".to_owned()))?,
+    };
 
-    // 注释索引：追加一个页面入口。
+    // 注释索引：同一页已有条目时复用其注释文件，避免重复 `<ofd:Page>`。
     let index_dir = parent_dir(&annotations_entry).unwrap_or("").to_owned();
-    let annot_name = unique_name(
-        package,
-        &index_dir,
-        &format!("PageAnnot_{}.xml", stamp.page_id),
-    );
-    let annot_entry = format!("{index_dir}/{annot_name}");
     let mut index_xml = match package.read_entry(&annotations_entry) {
         Ok(bytes) => String::from_utf8(bytes.to_vec()).map_err(|error| {
             OfdError::InvalidStructure(format!("Annotations 不是 UTF-8: {error}"))
@@ -124,37 +127,117 @@ pub(crate) fn prepare(
 <ofd:Annotations xmlns:ofd="{OFD_NS}"></ofd:Annotations>"#
         ),
     };
-    let page_entry = format!(
-        r#"<ofd:Page PageID="{}"><ofd:FileLoc>{annot_name}</ofd:FileLoc></ofd:Page>"#,
-        stamp.page_id
-    );
-    index_xml = insert_before_close(&index_xml, "Annotations", &page_entry)
-        .ok_or_else(|| OfdError::InvalidStructure("Annotations 缺少结束标签".to_owned()))?;
+    let index_prefix = detect_prefix(&index_xml)?.to_owned();
+    let page_marker = format!("PageID=\"{}\"", escape(&stamp.page_id));
 
+    let (annot_entry, mut annot_xml, new_page) = match page_file_loc(&index_xml, &page_marker) {
+        Some(loc) => {
+            let entry = resolve_loc(&index_dir, &loc)?;
+            let xml = match package.read_entry(&entry) {
+                Ok(bytes) => String::from_utf8(bytes.to_vec()).map_err(|error| {
+                    OfdError::InvalidStructure(format!("注释文件不是 UTF-8: {error}"))
+                })?,
+                Err(_) => format!(
+                    r#"<?xml version="1.0" encoding="UTF-8"?>
+<ofd:PageAnnot xmlns:ofd="{OFD_NS}"></ofd:PageAnnot>"#
+                ),
+            };
+            (entry, xml, false)
+        }
+        None => {
+            let name = unique_name(package, &index_dir, &format!("PageAnnot_{annot_id}.xml"));
+            let entry = format!("{index_dir}/{name}");
+            let page_entry = format!(
+                r#"<{index_prefix}Page PageID="{}"><{index_prefix}FileLoc>{}</{index_prefix}FileLoc></{index_prefix}Page>"#,
+                escape(&stamp.page_id),
+                escape(&name)
+            );
+            index_xml = insert_before_close(&index_xml, "Annotations", &page_entry)
+                .ok_or_else(|| OfdError::InvalidStructure("Annotations 缺少结束标签".to_owned()))?;
+            (
+                entry,
+                format!(
+                    r#"<?xml version="1.0" encoding="UTF-8"?>
+<ofd:PageAnnot xmlns:ofd="{OFD_NS}"></ofd:PageAnnot>"#
+                ),
+                true,
+            )
+        }
+    };
+    let annot_prefix = detect_prefix(&annot_xml)?.to_owned();
     let boundary = format_boundary(&stamp.boundary);
-    let clip_rect = stamp.clip.unwrap_or(stamp.boundary);
-    let annot_xml = format!(
-        r#"<?xml version="1.0" encoding="UTF-8"?>
-<ofd:PageAnnot xmlns:ofd="{OFD_NS}"><ofd:Annot Type="Stamp" ID="{annot_id}" Subtype="Stamp"><ofd:Appearance Boundary="{boundary}"><ofd:ImageObject ID="{image_object_id}" ResourceID="{multimedia_id}" Boundary="0 0 {width} {height}" CTM="{width} 0 0 {height} 0 0"/></ofd:Appearance></ofd:Annot></ofd:PageAnnot>"#,
+    let annot = format!(
+        r#"<{annot_prefix}Annot Type="Stamp" ID="{annot_id}" Subtype="Stamp"><{annot_prefix}Appearance Boundary="{boundary}"><{annot_prefix}ImageObject ID="{image_object_id}" ResourceID="{multimedia_id}" Boundary="0 0 {width} {height}" CTM="{width} 0 0 {height} 0 0"/></{annot_prefix}Appearance></{annot_prefix}Annot>"#,
         width = stamp.image_width,
         height = stamp.image_height,
     );
+    annot_xml = insert_before_close(&annot_xml, "PageAnnot", &annot)
+        .ok_or_else(|| OfdError::InvalidStructure("注释文件缺少 PageAnnot 根元素".to_owned()))?;
+
+    let mut entries = vec![
+        (document_res_entry, document_res_xml.into_bytes()),
+        (annot_entry, annot_xml.into_bytes()),
+        (image_entry, stamp.image.clone()),
+    ];
+    if new_page {
+        entries.push((annotations_entry, index_xml.into_bytes()));
+    }
 
     Ok(StampFiles {
         document_xml: document.into_bytes(),
-        entries: vec![
-            (document_res_entry, document_res_xml.into_bytes()),
-            (annotations_entry, index_xml.into_bytes()),
-            (annot_entry, annot_xml.into_bytes()),
-            (image_entry, stamp.image.clone()),
-        ],
+        entries,
         annot: StampAnnot {
             id: annot_id.to_string(),
             page_id: stamp.page_id.clone(),
             boundary: stamp.boundary,
-            clip: Some(clip_rect),
+            clip: Some(stamp.clip.unwrap_or(stamp.boundary)),
         },
     })
+}
+
+fn validate(stamp: &StampAppearance) -> Result<(), OfdError> {
+    if stamp.boundary.iter().any(|value| !value.is_finite())
+        || stamp.boundary[2] <= 0.0
+        || stamp.boundary[3] <= 0.0
+    {
+        return Err(OfdError::InvalidStructure(
+            "盖章区域必须是有限正数".to_owned(),
+        ));
+    }
+    if stamp.clip.is_some_and(|clip| {
+        clip.iter().any(|value| !value.is_finite()) || clip[2] <= 0.0 || clip[3] <= 0.0
+    }) {
+        return Err(OfdError::InvalidStructure(
+            "裁剪区域必须是有限正数".to_owned(),
+        ));
+    }
+    if stamp.image.is_empty() {
+        return Err(OfdError::InvalidStructure("印模图片不能为空".to_owned()));
+    }
+    if stamp.image_format.trim().is_empty() {
+        return Err(OfdError::InvalidStructure("印模格式不能为空".to_owned()));
+    }
+    if !stamp.image_width.is_finite()
+        || !stamp.image_height.is_finite()
+        || stamp.image_width <= 0.0
+        || stamp.image_height <= 0.0
+    {
+        return Err(OfdError::InvalidStructure(
+            "印模显示尺寸必须是有限正数".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
+fn image_extension(format: &str) -> &'static str {
+    match format.trim().to_ascii_lowercase().as_str() {
+        "png" => "png",
+        "jpg" | "jpeg" => "jpg",
+        "gif" => "gif",
+        "bmp" => "bmp",
+        "svg" => "svg",
+        _ => "png",
+    }
 }
 
 fn format_boundary(boundary: &[f64; 4]) -> String {
@@ -206,13 +289,78 @@ fn element_attribute(xml: &str, element: &str, attribute: &str) -> Option<String
     Some(tag[attr_start..attr_start + attr_end].to_owned())
 }
 
+/// 找到索引里同一 `PageID` 的 `FileLoc`。
+fn page_file_loc(xml: &str, page_marker: &str) -> Option<String> {
+    let start = xml.find(page_marker)?;
+    let rest = &xml[start..];
+    let tag = rest.find("FileLoc>")?;
+    let inner = &rest[tag + "FileLoc>".len()..];
+    let end = inner.find('<')?;
+    Some(inner[..end].trim().to_owned())
+}
+
+struct Tag<'a> {
+    start: usize,
+    end: usize,
+    name: &'a str,
+    self_closing: bool,
+}
+
+fn find_last_tag<'a>(xml: &'a str, name: &str) -> Option<Tag<'a>> {
+    let mut closing = None;
+    let mut self_closing = None;
+    let mut position = 0;
+    while let Some(offset) = xml[position..].find('<') {
+        let start = position + offset;
+        if xml[start..].starts_with("<!--") {
+            let comment = xml[start + 4..].find("-->")?;
+            position = start + 4 + comment + 3;
+            continue;
+        }
+        let end = start + xml[start..].find('>')?;
+        let inner = &xml[start + 1..end];
+        let (is_closing, body) = match inner.strip_prefix('/') {
+            Some(body) => (true, body.trim()),
+            None => (false, inner),
+        };
+        let tag_name = body.split_whitespace().next().unwrap_or("");
+        let tag_name = tag_name.trim_end_matches('/');
+        if tag_name == name || tag_name.ends_with(&format!(":{name}")) {
+            let tag = Tag {
+                start,
+                end,
+                name: tag_name,
+                self_closing: !is_closing && xml[start..end].ends_with('/'),
+            };
+            if is_closing {
+                closing = Some(tag);
+            } else if tag.self_closing {
+                self_closing = Some(tag);
+            }
+        }
+        position = end + 1;
+    }
+    closing.or(self_closing)
+}
+
+/// 在 `name` 元素的结束标签前插入 `fragment`；自闭合元素则展开后插入。
 fn insert_before_close(xml: &str, name: &str, fragment: &str) -> Option<String> {
-    let closing = xml.rfind(name)?;
-    let close_start = xml[..closing].rfind('<')?;
-    let mut output = String::with_capacity(xml.len() + fragment.len());
-    output.push_str(&xml[..close_start]);
-    output.push_str(fragment);
-    output.push_str(&xml[close_start..]);
+    let tag = find_last_tag(xml, name)?;
+    let mut output = String::with_capacity(xml.len() + fragment.len() + 64);
+    output.push_str(&xml[..tag.start]);
+    if tag.self_closing {
+        // 去掉 `/>` 的 `/`，展开成 `<name>fragment</name>`。
+        output.push_str(&xml[tag.start..tag.end - 1]);
+        output.push('>');
+        output.push_str(fragment);
+        output.push_str("</");
+        output.push_str(tag.name);
+        output.push('>');
+        output.push_str(&xml[tag.end + 1..]);
+    } else {
+        output.push_str(fragment);
+        output.push_str(&xml[tag.start..]);
+    }
     Some(output)
 }
 
