@@ -9,6 +9,7 @@
 //! 页面渲染与格式转换已迁至独立的 `ofdbox-folio`，批量转换命令行
 //! 位于 `ofdbox-reader` 仓库。
 
+pub use ofdbox_algo as algo;
 pub use ofdbox_core as core;
 pub use ofdbox_core::{
     CacheOptions, DEFAULT_SIGNATURE_METHOD, DocumentView, EntriesVerification, EntriesWriteOptions,

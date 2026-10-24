@@ -1,39 +1,33 @@
 use std::io::Write;
 
-use cbc::cipher::{Block, BlockModeDecrypt, BlockModeEncrypt, KeyIvInit, block_padding::Pkcs7};
-use zeroize::Zeroizing;
+use cbc::cipher::{Block, BlockModeDecrypt, KeyIvInit, block_padding::Pkcs7};
+use ofdbox_algo::{AlgorithmError, Cipher, Sm4Cbc};
 
 use crate::error::CryptoError;
 
 const BLOCK_SIZE: usize = 16;
 
-type Encryptor = cbc::Encryptor<sm4::Sm4>;
 type Decryptor = cbc::Decryptor<sm4::Sm4>;
 
 /// SM4-CBC 加密，PKCS#7 填充。
 pub fn encrypt_cbc(key: &[u8], iv: &[u8], plaintext: &[u8]) -> Result<Vec<u8>, CryptoError> {
-    check_key_iv(key, iv)?;
-    let encryptor = Encryptor::new_from_slices(key, iv).map_err(|_| CryptoError::InvalidKey)?;
-    let mut buffer = Zeroizing::new(vec![0u8; plaintext.len() + BLOCK_SIZE]);
-    buffer[..plaintext.len()].copy_from_slice(plaintext);
-    let encrypted = encryptor
-        .encrypt_padded::<Pkcs7>(&mut buffer, plaintext.len())
-        .map_err(|_| CryptoError::InvalidCiphertext)?;
-    Ok(encrypted.to_vec())
+    Sm4Cbc
+        .encrypt(key, Some(iv), plaintext)
+        .map_err(map_cipher_error)
 }
 
 /// SM4-CBC 解密，PKCS#7 去填充。
 pub fn decrypt_cbc(key: &[u8], iv: &[u8], ciphertext: &[u8]) -> Result<Vec<u8>, CryptoError> {
-    check_key_iv(key, iv)?;
-    if ciphertext.is_empty() || !ciphertext.len().is_multiple_of(BLOCK_SIZE) {
-        return Err(CryptoError::InvalidCiphertext);
+    Sm4Cbc
+        .decrypt(key, Some(iv), ciphertext)
+        .map_err(map_cipher_error)
+}
+
+fn map_cipher_error(error: AlgorithmError) -> CryptoError {
+    match error {
+        AlgorithmError::InvalidKey | AlgorithmError::InvalidParameters => CryptoError::InvalidKey,
+        _ => CryptoError::InvalidCiphertext,
     }
-    let decryptor = Decryptor::new_from_slices(key, iv).map_err(|_| CryptoError::InvalidKey)?;
-    let mut buffer = Zeroizing::new(ciphertext.to_vec());
-    let decrypted = decryptor
-        .decrypt_padded::<Pkcs7>(&mut buffer)
-        .map_err(|_| CryptoError::InvalidCiphertext)?;
-    Ok(decrypted.to_vec())
 }
 
 /// SM4-CBC 解密并流式写入 sink，仅保留一个小块缓冲。

@@ -1,11 +1,13 @@
+use ofdbox_algo::{
+    PublicKeyRef, RawSignatureAlgorithm, SM2_CURVE_OID, SignatureParams, Sm2RawSignature,
+};
 use sm2::SecretKey;
-use sm2::dsa::signature::{Signer, Verifier};
-use sm2::dsa::{Signature, SigningKey, VerifyingKey};
+use sm2::dsa::signature::Signer;
+use sm2::dsa::{Signature, SigningKey};
 
 use crate::error::CryptoError;
 
-/// GB/T 32918 默认签名者标识。
-pub const DEFAULT_DIST_ID: &str = "1234567812345678";
+pub use ofdbox_algo::DEFAULT_DIST_ID;
 
 /// SM2DSA 签名，输入消息原文，输出 ASN.1 DER 的 `SEQUENCE { r, s }`。
 pub fn sign_sm3(private_key: &[u8], message: &[u8], dist_id: &str) -> Result<Vec<u8>, CryptoError> {
@@ -24,13 +26,7 @@ pub fn verify_sm3(
     signature_der: &[u8],
     dist_id: &str,
 ) -> Result<(), CryptoError> {
-    let verifying_key = VerifyingKey::from_sec1_bytes(dist_id, public_key_sec1)
-        .map_err(|_| CryptoError::InvalidKey)?;
-    let signature =
-        Signature::from_der(signature_der).map_err(|_| CryptoError::InvalidSignature)?;
-    verifying_key
-        .verify(message, &signature)
-        .map_err(|_| CryptoError::InvalidSignature)
+    verify_with(public_key_sec1, message, signature_der, dist_id)
 }
 
 /// SM2DSA 验签，签名值为 `r || s` 各 32 字节的原始编码。
@@ -43,17 +39,19 @@ pub fn verify_sm3_raw(
     if signature.len() != 64 {
         return Err(CryptoError::InvalidSignature);
     }
-    let verifying_key = VerifyingKey::from_sec1_bytes(dist_id, public_key_sec1)
-        .map_err(|_| CryptoError::InvalidKey)?;
-    let r: [u8; 32] = signature[..32]
-        .try_into()
-        .map_err(|_| CryptoError::InvalidSignature)?;
-    let s: [u8; 32] = signature[32..]
-        .try_into()
-        .map_err(|_| CryptoError::InvalidSignature)?;
-    let signature = Signature::from_scalars(r, s).map_err(|_| CryptoError::InvalidSignature)?;
-    verifying_key
-        .verify(message, &signature)
+    verify_with(public_key_sec1, message, signature, dist_id)
+}
+
+fn verify_with(
+    public_key_sec1: &[u8],
+    message: &[u8],
+    signature: &[u8],
+    dist_id: &str,
+) -> Result<(), CryptoError> {
+    let key = PublicKeyRef::new(SM2_CURVE_OID, public_key_sec1);
+    let params = SignatureParams { dist_id };
+    Sm2RawSignature
+        .verify(&key, message, signature, &params)
         .map_err(|_| CryptoError::InvalidSignature)
 }
 

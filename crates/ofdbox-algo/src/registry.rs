@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fmt;
 use std::sync::Arc;
 
 use crate::cipher::{Cipher, Sm4Cbc};
@@ -164,5 +165,18 @@ impl AlgorithmRegistry {
                 role: expected,
             },
         }
+    }
+}
+
+impl fmt::Debug for AlgorithmRegistry {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("AlgorithmRegistry")
+            .field("digests", &self.digests.len())
+            .field("signatures", &self.signatures.len())
+            .field("suites", &self.suites.len())
+            .field("ciphers", &self.ciphers.len())
+            .field("kdfs", &self.kdfs.len())
+            .finish()
     }
 }

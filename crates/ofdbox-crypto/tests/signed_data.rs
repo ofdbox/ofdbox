@@ -205,7 +205,12 @@ fn verifies_detached_signed_data() {
     verify_signed_data(content, &signed_value, DIST_ID).expect("verify");
     let verifier = Sm2SignedDataVerifier::new();
     verifier
-        .verify(SM2_SIGN_OID, content, &signed_value)
+        .verify(
+            SM2_SIGN_OID,
+            content,
+            &signed_value,
+            &ofdbox_algo::AlgorithmRegistry::gm_default(),
+        )
         .expect("verifier");
 
     let mut tampered = content.to_vec();

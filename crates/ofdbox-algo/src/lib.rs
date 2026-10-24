@@ -25,5 +25,5 @@ pub use key::PublicKeyRef;
 pub use oid::*;
 pub use registry::AlgorithmRegistry;
 pub use role::AlgorithmRole;
-pub use signature::{RawSignatureAlgorithm, SignatureParams, Sm2RawSignature};
+pub use signature::{DEFAULT_DIST_ID, RawSignatureAlgorithm, SignatureParams, Sm2RawSignature};
 pub use suite::{SignatureSuite, SuiteMode};

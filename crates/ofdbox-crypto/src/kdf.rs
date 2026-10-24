@@ -1,20 +1,10 @@
-use sm3::{Digest, Sm3};
+use ofdbox_algo::{Kdf, Sm3Kdf};
 
 /// GB/T 32918.3—2016 5.4.3 密钥派生函数，杂凑算法为 SM3。
 ///
 /// 计数器从 1 开始，按 32 位大端编码追加在输入比特串之后。
 pub fn sm3_kdf(secret: &[u8], out_len: usize) -> Vec<u8> {
-    let mut output = Vec::with_capacity(out_len);
-    let mut counter = 1u32;
-    while output.len() < out_len {
-        let mut hash = Sm3::new();
-        hash.update(secret);
-        hash.update(counter.to_be_bytes());
-        output.extend_from_slice(&hash.finalize());
-        counter = counter.wrapping_add(1);
-    }
-    output.truncate(out_len);
-    output
+    Sm3Kdf.derive(secret, out_len).expect("SM3-KDF 不会失败")
 }
 
 #[cfg(test)]

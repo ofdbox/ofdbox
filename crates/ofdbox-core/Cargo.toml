@@ -13,6 +13,7 @@ description = "OFD 文档结构读取、解析与严格序列化。"
 
 [dependencies]
 base64.workspace = true
+ofdbox-algo = { path = "../ofdbox-algo", version = "0.1.0" }
 quick-xml.workspace = true
 thiserror.workspace = true
 zip.workspace = true

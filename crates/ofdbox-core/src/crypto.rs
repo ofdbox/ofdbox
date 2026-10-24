@@ -1,5 +1,6 @@
 use std::io::Write;
 
+use ofdbox_algo::AlgorithmRegistry;
 use zeroize::Zeroizing;
 
 use crate::error::OfdError;
@@ -269,30 +270,44 @@ pub trait SignatureVerifier {
         true
     }
 
-    /// 是否支持指定签名方案标识。
-    fn supports(&self, signature_method: &str) -> bool;
-
     /// 验证 `signed_value` 对 `content` 的签名。
     ///
     /// `content` 是 `Signature.xml` 原始字节，`signed_value` 是 `SignedValue.dat` 原始字节。
+    /// 算法实现由 `algorithms` 按 OID 解析，容器本身不绑定具体算法。
     fn verify(
         &self,
         signature_method: &str,
         content: &[u8],
         signed_value: &[u8],
+        algorithms: &AlgorithmRegistry,
     ) -> Result<(), OfdError>;
 }
 
-/// 按「格式 → 字节认领 → 签名方法」顺序分发的验签器集合。
-#[derive(Default)]
+/// 按「格式 → 字节认领」分发的验签器集合。
 pub struct SignatureVerifiers {
     verifiers: Vec<Box<dyn SignatureVerifier>>,
+    algorithms: AlgorithmRegistry,
+}
+
+impl Default for SignatureVerifiers {
+    fn default() -> Self {
+        Self {
+            verifiers: Vec::new(),
+            algorithms: AlgorithmRegistry::gm_default(),
+        }
+    }
 }
 
 impl SignatureVerifiers {
-    /// 创建空集合。
+    /// 创建空集合，使用默认国密算法注册表。
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// 指定算法注册表。
+    pub fn with_algorithms(mut self, algorithms: AlgorithmRegistry) -> Self {
+        self.algorithms = algorithms;
+        self
     }
 
     /// 追加一个验签器，返回自身以便链式调用。
@@ -316,7 +331,7 @@ impl SignatureVerifiers {
         self.verifiers.len()
     }
 
-    /// 依次匹配格式、字节认领与签名方法，第一个命中的实现完成验签。
+    /// 依次匹配格式与字节认领，第一个命中的实现完成验签。
     pub fn verify(
         &self,
         format: SignedValueFormat,
@@ -325,13 +340,10 @@ impl SignatureVerifiers {
         signed_value: &[u8],
     ) -> Result<(), OfdError> {
         for verifier in &self.verifiers {
-            if verifier.format() != format
-                || !verifier.accepts(signed_value)
-                || !verifier.supports(signature_method)
-            {
+            if verifier.format() != format || !verifier.accepts(signed_value) {
                 continue;
             }
-            return verifier.verify(signature_method, content, signed_value);
+            return verifier.verify(signature_method, content, signed_value, &self.algorithms);
         }
         Err(OfdError::UnsupportedSignature(format!(
             "{signature_method}（签名值格式 {format:?}）"

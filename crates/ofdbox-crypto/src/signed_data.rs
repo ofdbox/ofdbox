@@ -4,24 +4,19 @@ use cms::content_info::ContentInfo;
 use cms::signed_data::SignedData;
 use der::asn1::ObjectIdentifier;
 use der::{Decode, Encode};
+use ofdbox_algo::{AlgorithmRegistry, PublicKeyRef, SM2_CURVE_OID, SignatureParams};
 use ofdbox_core::{OfdError, SignatureVerifier};
-use sm3::{Digest, Sm3};
 
 use crate::error::CryptoError;
-use crate::signature::{DEFAULT_DIST_ID, verify_sm3};
+use crate::signature::DEFAULT_DIST_ID;
 
 /// PKCS#7 的 signedData 标识，兼容外来文件。
 const ID_SIGNED_DATA_PKCS7: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.113549.1.7.2");
 /// GB/T 35275（沿用 GM/T 0010）的 signedData 标识。
 const ID_SIGNED_DATA: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.156.10197.6.1.4.2.2");
-const ID_SM3: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.156.10197.1.401");
-/// SM2 with SM3 的组合标识，OFD `SignatureMethod` 与 38540 用它。
-const ID_SM2_SIGN: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.156.10197.1.501");
-/// 纯 SM2 签名算法标识，35275 的 `SignerInfo.signatureAlgorithm` 用它。
-const ID_SM2_SIGN_ALG: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.156.10197.1.301.1");
 const ID_MESSAGE_DIGEST: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.113549.1.9.4");
 
-/// GB/T 35275 SignedData 的 SM2/SM3 验签器。
+/// GB/T 35275 SignedData 验签器。
 pub struct Sm2SignedDataVerifier {
     dist_id: String,
 }
@@ -48,29 +43,38 @@ impl Default for Sm2SignedDataVerifier {
 }
 
 impl SignatureVerifier for Sm2SignedDataVerifier {
-    fn supports(&self, signature_method: &str) -> bool {
-        signature_method == "1.2.1"
-            || signature_method == ID_SM2_SIGN.to_string()
-            || signature_method == ID_SM2_SIGN_ALG.to_string()
-            || signature_method.contains("SM2")
-    }
-
     fn verify(
         &self,
         _signature_method: &str,
         content: &[u8],
         signed_value: &[u8],
+        algorithms: &AlgorithmRegistry,
     ) -> Result<(), OfdError> {
-        verify_signed_data(content, signed_value, &self.dist_id)
+        verify_signed_data_with(content, signed_value, &self.dist_id, algorithms)
             .map_err(|error| OfdError::Crypto(error.to_string()))
     }
 }
 
-/// 校验一个 GB/T 35275 SignedData（分离内容）。
+/// 校验一个 GB/T 35275 SignedData（分离内容），使用默认国密算法注册表。
 pub fn verify_signed_data(
     content: &[u8],
     signed_value: &[u8],
     dist_id: &str,
+) -> Result<(), CryptoError> {
+    verify_signed_data_with(
+        content,
+        signed_value,
+        dist_id,
+        &AlgorithmRegistry::gm_default(),
+    )
+}
+
+/// 校验一个 GB/T 35275 SignedData，算法由注册表按 OID 解析。
+pub fn verify_signed_data_with(
+    content: &[u8],
+    signed_value: &[u8],
+    dist_id: &str,
+    algorithms: &AlgorithmRegistry,
 ) -> Result<(), CryptoError> {
     let info = ContentInfo::from_der(signed_value).map_err(|_| CryptoError::InvalidEncoding)?;
     if info.content_type != ID_SIGNED_DATA && info.content_type != ID_SIGNED_DATA_PKCS7 {
@@ -86,13 +90,9 @@ pub fn verify_signed_data(
         .iter()
         .next()
         .ok_or(CryptoError::InvalidSignature)?;
-    // 35275 的签名算法写纯 SM2（.301.1），部分实现写组合标识（.501），两者等价。
-    if signer.digest_alg.oid != ID_SM3
-        || (signer.signature_algorithm.oid != ID_SM2_SIGN
-            && signer.signature_algorithm.oid != ID_SM2_SIGN_ALG)
-    {
-        return Err(CryptoError::InvalidSignature);
-    }
+
+    let digest_oid = signer.digest_alg.oid.to_string();
+    let signature_oid = signer.signature_algorithm.oid.to_string();
 
     let attributes = signer
         .signed_attrs
@@ -105,8 +105,15 @@ pub fn verify_signed_data(
         .and_then(|attribute| {
             MessageDigest::try_from(attribute).map_err(|_| CryptoError::InvalidSignature)
         })?;
-    let actual_digest = Sm3::digest(content);
-    if message_digest.as_bytes() != actual_digest.as_slice() {
+
+    let digest = algorithms
+        .digest(&digest_oid)
+        .or_else(|_| {
+            let suite = algorithms.suite(&digest_oid)?;
+            algorithms.digest(suite.digest_oid)
+        })
+        .map_err(|_| CryptoError::InvalidSignature)?;
+    if message_digest.as_bytes() != digest.digest(content).as_slice() {
         return Err(CryptoError::InvalidSignature);
     }
 
@@ -129,26 +136,41 @@ pub fn verify_signed_data(
     let signed_bytes = attributes
         .to_der()
         .map_err(|_| CryptoError::InvalidEncoding)?;
-    verify_sm3(
-        public_key,
-        &signed_bytes,
-        signer.signature.as_bytes(),
-        dist_id,
-    )
+    let key = PublicKeyRef::new(SM2_CURVE_OID, public_key);
+    let params = SignatureParams { dist_id };
+    let result = if algorithms.suite(&signature_oid).is_ok() {
+        algorithms.verify_suite(
+            &signature_oid,
+            &key,
+            &signed_bytes,
+            signer.signature.as_bytes(),
+            &params,
+        )
+    } else {
+        algorithms.signature(&signature_oid).and_then(|algorithm| {
+            algorithm.verify(&key, &signed_bytes, signer.signature.as_bytes(), &params)
+        })
+    };
+    result.map_err(|_| CryptoError::InvalidSignature)
 }
 
 #[cfg(test)]
 mod tests {
     use super::{Sm2SignedDataVerifier, verify_signed_data};
+    use ofdbox_algo::AlgorithmRegistry;
     use ofdbox_core::SignatureVerifier;
 
     #[test]
     fn rejects_non_cms_bytes() {
         let verifier = Sm2SignedDataVerifier::new();
-        assert!(verifier.supports("1.2.156.10197.1.501"));
         assert!(
             verifier
-                .verify("1.2.156.10197.1.501", b"content", b"not cms")
+                .verify(
+                    "1.2.156.10197.1.501",
+                    b"content",
+                    b"not cms",
+                    &AlgorithmRegistry::gm_default(),
+                )
                 .is_err()
         );
         assert!(verify_signed_data(b"content", b"not cms", "1234567812345678").is_err());

@@ -394,6 +394,7 @@ name = "ofdbox"
 version = "0.0.1"
 dependencies = [
  "der",
+ "ofdbox-algo",
  "ofdbox-core",
  "ofdbox-crypto",
  "ofdbox-seal",
@@ -419,6 +420,7 @@ name = "ofdbox-core"
 version = "0.0.1"
 dependencies = [
  "base64",
+ "ofdbox-algo",
  "quick-xml",
  "tempfile",
  "thiserror",
@@ -436,6 +438,7 @@ dependencies = [
  "der",
  "getrandom",
  "md-5",
+ "ofdbox-algo",
  "ofdbox-core",
  "sha1",
  "sm2",
@@ -453,6 +456,7 @@ version = "0.0.1"
 dependencies = [
  "cms",
  "der",
+ "ofdbox-algo",
  "ofdbox-core",
  "ofdbox-crypto",
  "sm2",

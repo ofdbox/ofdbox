@@ -12,6 +12,7 @@ categories = ["cryptography"]
 description = "电子印章结构的格式识别与解析。"
 
 [dependencies]
+ofdbox-algo = { path = "../ofdbox-algo", version = "0.1.0" }
 ofdbox-core = { path = "../ofdbox-core", version = "0.0.1" }
 ofdbox-crypto = { path = "../ofdbox-crypto", version = "0.0.1" }
 x509-cert.workspace = true

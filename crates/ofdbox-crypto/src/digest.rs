@@ -1,12 +1,13 @@
-//! 杂凑原语。
+//! 杂凑原语（实现位于 `ofdbox-algo`）。
 
-use sm3::{Digest, Sm3};
+use ofdbox_algo::{DigestAlgorithm, Sm3Digest};
 
 /// 计算 SM3 杂凑。
 pub fn sm3_digest(data: &[u8]) -> [u8; 32] {
-    let mut hasher = Sm3::new();
-    hasher.update(data);
-    hasher.finalize().into()
+    let digest = Sm3Digest.digest(data);
+    let mut output = [0u8; 32];
+    output.copy_from_slice(&digest);
+    output
 }
 
 #[cfg(test)]

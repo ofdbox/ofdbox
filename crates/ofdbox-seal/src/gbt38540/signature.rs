@@ -20,6 +20,9 @@
 //! }
 //! ```
 
+use ofdbox_algo::{
+    AlgorithmError, AlgorithmRegistry, PublicKeyRef, SM2_CURVE_OID, SignatureParams,
+};
 use ofdbox_core::{OfdError, SignatureVerifier, SignedValueFormat};
 use ofdbox_crypto::{DEFAULT_DIST_ID, public_key_from_certificate, sm3_digest};
 
@@ -29,8 +32,6 @@ use crate::error::SealError;
 use crate::eseal::parse::identify_seal_format;
 use crate::eseal::verify::{SealVerifyOptions, verify_seal_with_options};
 use crate::fingerprint::SealFormat;
-use crate::oids::SM2_SM3_SIGNATURE_OID;
-use crate::signature::verify_sm2;
 use crate::timestamp::{TimeStampVerification, TimeStampVerifyOptions, verify_time_stamp_token};
 
 /// `SES_Signature` 的类型化视图。
@@ -136,6 +137,8 @@ pub struct SesVerifyOptions<'a> {
     pub check_timestamp: bool,
     /// TSA 证书链验证策略；提供时会校验 `timeStamping` EKU。
     pub timestamp_certificate: Option<&'a CertificatePolicy>,
+    /// 算法注册表；不提供时使用默认国密注册表。
+    pub algorithms: Option<&'a AlgorithmRegistry>,
 }
 
 impl<'a> Default for SesVerifyOptions<'a> {
@@ -148,6 +151,7 @@ impl<'a> Default for SesVerifyOptions<'a> {
             check_signer: true,
             check_timestamp: false,
             timestamp_certificate: None,
+            algorithms: None,
         }
     }
 }
@@ -194,6 +198,17 @@ impl<'a> SesVerifyOptions<'a> {
         self.timestamp_certificate = Some(policy);
         self
     }
+
+    /// 指定算法注册表。
+    pub fn with_algorithms(mut self, algorithms: &'a AlgorithmRegistry) -> Self {
+        self.algorithms = Some(algorithms);
+        self
+    }
+}
+
+fn default_algorithms() -> &'static AlgorithmRegistry {
+    static DEFAULT: std::sync::OnceLock<AlgorithmRegistry> = std::sync::OnceLock::new();
+    DEFAULT.get_or_init(AlgorithmRegistry::gm_default)
 }
 
 /// 签章验证结果。
@@ -216,26 +231,44 @@ pub fn verify_ses_signature(
     options: &SesVerifyOptions<'_>,
 ) -> Result<SesVerification, SealError> {
     let signature = parse_ses_signature(signed_value)?;
-    if signature.algorithm != SM2_SM3_SIGNATURE_OID
-        && signature.algorithm != "1.2.156.10197.1.301.1"
-    {
-        return Err(SealError::UnsupportedAlgorithm(signature.algorithm.clone()));
-    }
 
     // 原文杂凑值应等于签名对象的摘要（38540 7.1.2）。
     if sm3_digest(content).as_slice() != signature.data_hash {
         return Err(SealError::SignatureInvalid);
     }
 
+    let algorithms = match options.algorithms {
+        Some(algorithms) => algorithms,
+        None => default_algorithms(),
+    };
     let public_key = public_key_from_certificate(signature.certificate)
         .map_err(|_| SealError::InvalidCertificate)?;
-    verify_sm2(
-        &public_key,
-        signature.tbs,
-        signature.signature,
-        options.dist_id,
-    )
-    .map_err(|_| SealError::SignatureInvalid)?;
+    let key = PublicKeyRef::new(SM2_CURVE_OID, &public_key);
+    let params = SignatureParams {
+        dist_id: options.dist_id,
+    };
+    let verified = if algorithms.suite(&signature.algorithm).is_ok() {
+        algorithms.verify_suite(
+            &signature.algorithm,
+            &key,
+            signature.tbs,
+            signature.signature,
+            &params,
+        )
+    } else {
+        algorithms
+            .signature(&signature.algorithm)
+            .and_then(|algorithm| {
+                algorithm.verify(&key, signature.tbs, signature.signature, &params)
+            })
+    };
+    verified.map_err(|error| match error {
+        AlgorithmError::UnknownAlgorithm { .. } | AlgorithmError::RoleMismatch { .. } => {
+            SealError::UnsupportedAlgorithm(signature.algorithm.clone())
+        }
+        AlgorithmError::InvalidKey => SealError::InvalidCertificate,
+        _ => SealError::SignatureInvalid,
+    })?;
 
     let mut result = SesVerification {
         time_info: signature.time_info.to_owned(),
@@ -295,6 +328,7 @@ pub struct SesSignatureVerifier {
     check_signer: bool,
     check_timestamp: bool,
     timestamp_certificate_policy: Option<CertificatePolicy>,
+    algorithms: AlgorithmRegistry,
 }
 
 impl SesSignatureVerifier {
@@ -307,7 +341,14 @@ impl SesSignatureVerifier {
             check_signer: true,
             check_timestamp: false,
             timestamp_certificate_policy: None,
+            algorithms: AlgorithmRegistry::gm_default(),
         }
+    }
+
+    /// 指定算法注册表。
+    pub fn with_algorithms(mut self, algorithms: AlgorithmRegistry) -> Self {
+        self.algorithms = algorithms;
+        self
     }
 
     /// 指定 SM2 签名者标识。
@@ -359,17 +400,12 @@ impl SignatureVerifier for SesSignatureVerifier {
         SignedValueFormat::SesSignature
     }
 
-    fn supports(&self, signature_method: &str) -> bool {
-        signature_method == SM2_SM3_SIGNATURE_OID
-            || signature_method == "1.2.156.10197.1.301.1"
-            || signature_method.contains("SM2")
-    }
-
     fn verify(
         &self,
         _signature_method: &str,
         content: &[u8],
         signed_value: &[u8],
+        algorithms: &AlgorithmRegistry,
     ) -> Result<(), OfdError> {
         let options = SesVerifyOptions {
             dist_id: &self.dist_id,
@@ -379,6 +415,7 @@ impl SignatureVerifier for SesSignatureVerifier {
             check_signer: self.check_signer,
             check_timestamp: self.check_timestamp,
             timestamp_certificate: self.timestamp_certificate_policy.as_ref(),
+            algorithms: Some(algorithms),
         };
         verify_ses_signature(signed_value, content, &options)
             .map(|_| ())

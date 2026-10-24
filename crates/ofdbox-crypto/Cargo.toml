@@ -15,6 +15,7 @@ description = "GM/T 0099 密码原语与 OFD 密钥处理。"
 base64.workspace = true
 cbc.workspace = true
 cms.workspace = true
+ofdbox-algo = { path = "../ofdbox-algo", version = "0.1.0" }
 ofdbox-core = { path = "../ofdbox-core", version = "0.0.1" }
 der.workspace = true
 md-5.workspace = true

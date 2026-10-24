@@ -1,5 +1,6 @@
 mod fixtures;
 
+use ofdbox_algo::AlgorithmRegistry;
 use ofdbox_core::{OfdError, OfdPackage, SignatureVerifier, SignatureVerifiers, SignedValueFormat};
 
 const SIGNATURE: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
@@ -22,11 +23,13 @@ impl SignatureVerifier for FakeVerifier {
         SignedValueFormat::Other
     }
 
-    fn supports(&self, method: &str) -> bool {
-        method == "FAKE"
-    }
-
-    fn verify(&self, _method: &str, content: &[u8], signed_value: &[u8]) -> Result<(), OfdError> {
+    fn verify(
+        &self,
+        _method: &str,
+        content: &[u8],
+        signed_value: &[u8],
+        _algorithms: &AlgorithmRegistry,
+    ) -> Result<(), OfdError> {
         if content.windows(6).any(|window| window == b"Signat") && signed_value == b"signature" {
             Ok(())
         } else {
@@ -68,10 +71,16 @@ fn unsupported_signature_method_is_reported() {
 
     struct Unsupported;
     impl SignatureVerifier for Unsupported {
-        fn supports(&self, _method: &str) -> bool {
+        fn accepts(&self, _signed_value: &[u8]) -> bool {
             false
         }
-        fn verify(&self, _: &str, _: &[u8], _: &[u8]) -> Result<(), OfdError> {
+        fn verify(
+            &self,
+            _: &str,
+            _: &[u8],
+            _: &[u8],
+            _: &AlgorithmRegistry,
+        ) -> Result<(), OfdError> {
             Ok(())
         }
     }
