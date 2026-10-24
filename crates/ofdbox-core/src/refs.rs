@@ -22,6 +22,7 @@ const TEXT_REFS: &[&str] = &[
     "CustomTags",
     "SignedValue",
     "FileLoc",
+    "SchemaLoc",
     "MediaFile",
     "FontFile",
     "DecryptSeedLoc",

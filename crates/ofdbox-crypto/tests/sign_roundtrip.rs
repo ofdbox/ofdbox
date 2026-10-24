@@ -489,3 +489,43 @@ fn writes_ofd_entries_and_verifies() {
         Some("/Integrity/SignedValue.dat")
     );
 }
+
+#[test]
+fn follows_custom_tag_schema_loc() {
+    let (certificate, secret) = make_certificate();
+    let producer = Sm2SignedDataProducer::new(certificate, secret.to_bytes().to_vec());
+    let context = SigningContext {
+        content: ENTRIES.as_bytes(),
+        signed_entry: "/OFDEntries.xml",
+        signature_method: DEFAULT_SIGNATURE_METHOD,
+        signed_at: "20261024050000",
+        references: &[],
+    };
+    let value = producer.produce(&context).expect("signed value");
+
+    let document = DOCUMENT.replace(
+        "</ofd:Document>",
+        "<ofd:CustomTags>CustomTags.xml</ofd:CustomTags></ofd:Document>",
+    );
+    let custom_tags = r#"<?xml version="1.0" encoding="UTF-8"?>
+<ofd:CustomTags xmlns:ofd="http://www.ofdspec.org/2016"><ofd:CustomTag ID="1"><ofd:SchemaLoc>schema.xsd</ofd:SchemaLoc></ofd:CustomTag></ofd:CustomTags>"#;
+    let mut edits = PackageEdits::new();
+    edits.replace("Doc_0/Document.xml", document.into_bytes());
+    edits.add("Doc_0/CustomTags.xml", custom_tags.as_bytes().to_vec());
+    edits.add("Doc_0/schema.xsd", b"schema".to_vec());
+    edits.add("Doc_0/extra.txt", b"extra".to_vec());
+    edits.add("OFDEntries.xml", ENTRIES.as_bytes().to_vec());
+    edits.add("Integrity/SignedValue.dat", value);
+    let mut output = Vec::new();
+    OfdPackage::from_bytes(package())
+        .expect("open")
+        .write_with(&mut Cursor::new(&mut output), &edits, &Default::default())
+        .expect("write");
+    let mut opened = OfdPackage::from_bytes(output).expect("open entries");
+    let verifiers = SignatureVerifiers::new().with(Box::new(Sm2SignedDataVerifier::new()));
+    let report = opened
+        .verify_ofd_entries(&verifiers)
+        .expect("verify entries");
+    assert!(report.unlisted.is_empty(), "{:?}", report.unlisted);
+    assert!(report.is_consistent());
+}
