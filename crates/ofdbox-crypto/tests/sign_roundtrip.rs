@@ -5,8 +5,8 @@ use std::time::Duration;
 use der::asn1::{BitString, ObjectIdentifier};
 use der::{Decode, Encode};
 use ofdbox_core::{
-    DEFAULT_SIGNATURE_METHOD, OfdPackage, PackageEdits, ReadOptions, SignatureVerifiers,
-    SignedValueProducer, SigningContext, SigningRequest,
+    DEFAULT_SIGNATURE_METHOD, EntriesWriteOptions, OfdPackage, PackageEdits, ReadOptions,
+    SignatureVerifiers, SignedValueProducer, SigningContext, SigningRequest,
 };
 use ofdbox_crypto::{PasswordBackend, Sm2SignedDataProducer, Sm2SignedDataVerifier};
 use sm2::SecretKey;
@@ -450,4 +450,42 @@ fn reports_listed_but_referenced_file() {
         .expect("verify entries");
     assert_eq!(report.listed_but_referenced, vec!["/OFD.xml".to_owned()]);
     assert!(!report.is_consistent());
+}
+
+#[test]
+fn writes_ofd_entries_and_verifies() {
+    let (certificate, secret) = make_certificate();
+    let producer = Sm2SignedDataProducer::new(certificate, secret.to_bytes().to_vec());
+
+    let mut base = OfdPackage::from_bytes(package()).expect("open");
+    let mut edits = PackageEdits::new();
+    edits.add("Doc_0/trick.txt", b"trick".to_vec());
+    let mut seeded = Vec::new();
+    base.write_with(&mut Cursor::new(&mut seeded), &edits, &Default::default())
+        .expect("seed package");
+
+    let mut package = OfdPackage::from_bytes(seeded).expect("open seeded");
+    let options = EntriesWriteOptions {
+        id: "entries".to_owned(),
+        signed_at: "20261024050000".to_owned(),
+        ..Default::default()
+    };
+    let mut output = Vec::new();
+    let report = package
+        .write_ofd_entries(&mut Cursor::new(&mut output), &producer, &options)
+        .expect("write entries");
+    assert_eq!(report.files, 1);
+    assert_eq!(report.entries_entry, "/OFDEntries.xml");
+
+    let mut written = OfdPackage::from_bytes(output).expect("open written");
+    let verifiers = SignatureVerifiers::new().with(Box::new(Sm2SignedDataVerifier::new()));
+    let check = written
+        .verify_ofd_entries(&verifiers)
+        .expect("verify entries");
+    assert_eq!(check.files, 1);
+    assert!(check.is_consistent());
+    assert_eq!(
+        check.signed_value.as_deref(),
+        Some("/Integrity/SignedValue.dat")
+    );
 }

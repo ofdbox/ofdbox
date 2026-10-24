@@ -2,6 +2,8 @@ use std::collections::{HashMap, HashSet};
 use std::io::{Cursor, Read, Seek, Write};
 use std::sync::Arc;
 
+use quick_xml::Writer;
+use quick_xml::events::{BytesDecl, BytesEnd, Event};
 use zip::ZipArchive;
 
 use crate::cache::ByteLruCache;
@@ -30,6 +32,7 @@ use crate::sign::{
     DEFAULT_SIGNATURE_METHOD, ProtectScope, SignedValueProducer, SigningContext, SigningReport,
     SigningRequest,
 };
+use crate::write::ofd::{write_start, write_text_element};
 use crate::xml::parser::parse_xml;
 use crate::xml::tree::XmlDocument;
 
@@ -82,6 +85,50 @@ impl EntriesVerification {
     pub fn is_consistent(&self) -> bool {
         self.unlisted.is_empty() && self.listed_but_referenced.is_empty()
     }
+}
+
+/// 生成 `OFDEntries.xml` 的参数。
+#[derive(Debug, Clone)]
+pub struct EntriesWriteOptions {
+    /// `DocEntries/@ID`，必须是合法的 XML ID。
+    pub id: String,
+    /// `CreatorName` 属性。
+    pub creator_name: Option<String>,
+    /// `Version` 属性。
+    pub version: Option<String>,
+    /// `CreationDate` 属性。
+    pub creation_date: Option<String>,
+    /// 签名值文件路径，缺省 `Integrity/SignedValue.dat`。
+    pub signed_value_entry: String,
+    /// 签名时间，透传给签名值生产者。
+    pub signed_at: String,
+    /// 是否覆盖已有的 `OFDEntries.xml`。
+    pub replace_existing: bool,
+}
+
+impl Default for EntriesWriteOptions {
+    fn default() -> Self {
+        Self {
+            id: "ofdbox_entries".to_owned(),
+            creator_name: None,
+            version: None,
+            creation_date: None,
+            signed_value_entry: "Integrity/SignedValue.dat".to_owned(),
+            signed_at: String::new(),
+            replace_existing: false,
+        }
+    }
+}
+
+/// 生成 `OFDEntries.xml` 的结果。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EntriesWriteReport {
+    /// 写入 `FileList` 的夹带文件数量。
+    pub files: usize,
+    /// `OFDEntries.xml` 的包内路径。
+    pub entries_entry: String,
+    /// 签名值文件的包内路径。
+    pub signed_value_entry: String,
 }
 
 /// 缓存统计。
@@ -1161,6 +1208,77 @@ impl OfdPackage {
         })
     }
 
+    /// 生成并签署 `OFDEntries.xml`：列出未被文档引用的夹带文件，签名值
+    /// 按 GB/T 35275 覆盖 `OFDEntries.xml` 字节。
+    pub fn write_ofd_entries<W: Write + Seek>(
+        &mut self,
+        mut writer: W,
+        producer: &dyn SignedValueProducer,
+        options: &EntriesWriteOptions,
+    ) -> Result<EntriesWriteReport, OfdError> {
+        let entries_entry = resolve_loc("", "OFDEntries.xml")?;
+        if self.contains(&entries_entry) && !options.replace_existing {
+            return Err(OfdError::InvalidStructure(
+                "OFDEntries.xml 已存在；需要覆盖时设置 replace_existing".to_owned(),
+            ));
+        }
+        let signed_entry = resolve_loc("", &options.signed_value_entry)?;
+
+        let referenced = crate::refs::referenced_entries(self)?;
+        let mut all = HashMap::new();
+        for name in self.entry_names()? {
+            if !name.ends_with('/') {
+                all.insert(entry_key(&name), name);
+            }
+        }
+        let mut excluded: HashSet<String> = [
+            "OFDEntries.xml",
+            "Encryptions.xml",
+            "decryptseed.dat",
+            "entriesmap.dat",
+        ]
+        .into_iter()
+        .map(entry_key)
+        .collect();
+        excluded.insert(entry_key(&signed_entry));
+
+        let mut files: Vec<String> = all
+            .iter()
+            .filter(|(key, _)| !referenced.contains(*key) && !excluded.contains(*key))
+            .map(|(_, name)| format!("/{}", name.replace('\\', "/")))
+            .collect();
+        files.sort();
+
+        let xml = build_entries_xml(options, &files, &format!("/{signed_entry}"))?;
+        let context = SigningContext {
+            content: &xml,
+            signed_entry: "/OFDEntries.xml",
+            signature_method: DEFAULT_SIGNATURE_METHOD,
+            signed_at: &options.signed_at,
+            references: &[],
+        };
+        let signed_value = producer.produce(&context)?;
+
+        let mut edits = PackageEdits::new();
+        if self.contains(&entries_entry) {
+            edits.replace(&entries_entry, xml);
+        } else {
+            edits.add(&entries_entry, xml);
+        }
+        if self.contains(&signed_entry) {
+            edits.replace(&signed_entry, signed_value);
+        } else {
+            edits.add(&signed_entry, signed_value);
+        }
+        self.write_with(&mut writer, &edits, &PackageWriteOptions::default())?;
+
+        Ok(EntriesWriteReport {
+            files: files.len(),
+            entries_entry: format!("/{entries_entry}"),
+            signed_value_entry: format!("/{signed_entry}"),
+        })
+    }
+
     fn parse_signature_entry(&mut self, entry: String) -> Result<SignatureView, OfdError> {
         self.signature_entry = Some(entry.clone());
         let key = (entry.clone(), self.options.strict);
@@ -1849,6 +1967,45 @@ fn decryption_order(
         return Err(OfdError::Crypto("多重加密 Relative 链不完整".to_owned()));
     }
     Ok(order)
+}
+
+fn build_entries_xml(
+    options: &EntriesWriteOptions,
+    files: &[String],
+    signed_value: &str,
+) -> Result<Vec<u8>, OfdError> {
+    let mut writer = Writer::new(Vec::new());
+    writer.write_event(Event::Decl(BytesDecl::new("1.0", Some("UTF-8"), None)))?;
+    let mut attributes = vec![
+        ("xmlns:ofd", crate::xml::namespace::OFD_NAMESPACE),
+        ("ID", options.id.as_str()),
+    ];
+    if let Some(value) = options.creator_name.as_deref() {
+        attributes.push(("CreatorName", value));
+    }
+    if let Some(value) = options.version.as_deref() {
+        attributes.push(("Version", value));
+    }
+    if let Some(value) = options.creation_date.as_deref() {
+        attributes.push(("CreationDate", value));
+    }
+    write_start(&mut writer, "ofd:DocEntries", &attributes)?;
+
+    write_start(&mut writer, "ofd:FileList", &[])?;
+    for (index, path) in files.iter().enumerate() {
+        let id = format!("f{}", index + 1);
+        write_start(
+            &mut writer,
+            "ofd:File",
+            &[("ID", id.as_str()), ("FileLoc", path.as_str())],
+        )?;
+        writer.write_event(Event::End(BytesEnd::new("ofd:File")))?;
+    }
+    writer.write_event(Event::End(BytesEnd::new("ofd:FileList")))?;
+
+    write_text_element(&mut writer, "ofd:SignedValueLoc", signed_value)?;
+    writer.write_event(Event::End(BytesEnd::new("ofd:DocEntries")))?;
+    Ok(writer.into_inner())
 }
 
 #[cfg(test)]
