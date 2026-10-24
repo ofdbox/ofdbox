@@ -4,6 +4,7 @@
 
 ### 新增
 
+- `ofdbox-core`：盖章外观支持一次写多枚章（`SigningRequest::with_stamps`），跨页/同页均可；注释文件按页复用，单元 ID 连续分配；`Clip` 只在显式提供时写入。
 - `ofdbox-core`：盖章外观 `StampAppearance` + `SigningRequest::with_stamp`：自动写 `StampAnnot`、页面注释（`Type="Stamp"`）、`DocumentRes` 图片资源与印模文件，并把它们纳入 `References`；要求 `Document.xml` 已声明 `DocumentRes` 与 `Annotations`。
 - `ofdbox`：示例 `seal_and_stamp` 演示制章 → 盖章 → 验章，写出印章、制章者/签章者证书、签章者公钥（PEM）与盖章文件到 `target/`。
 - `ofdbox-seal`：`SealBuilder` 按 GB/T 38540 或 GM/T 0031 生成 `SESeal`：印章图片（PNG/GIF/JPG/BMP/SVG + 毫米宽高）、证书列表或证书杂凑值列表、有效期，制章者 SM2 签名；生成结果可用 `verify_seal` 验回并做 `signer_in_seal` 匹配。

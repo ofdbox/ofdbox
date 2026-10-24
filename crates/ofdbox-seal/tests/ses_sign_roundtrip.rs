@@ -453,3 +453,125 @@ fn rejects_unknown_page_id() {
         .expect_err("unknown page");
     assert!(matches!(error, OfdError::InvalidStructure(_)));
 }
+
+#[test]
+fn stamps_two_pages() {
+    let Some(seal) = real_seal() else {
+        return;
+    };
+    let (certificate, secret) = make_certificate();
+    let producer = Sm2SesSignatureProducer::new(seal, certificate, secret.to_bytes().to_vec())
+        .expect("producer");
+    let make = |page: &str| StampAppearance {
+        page_id: page.to_owned(),
+        boundary: [10.0, 20.0, 40.0, 40.0],
+        clip: None,
+        image: PNG.to_vec(),
+        image_format: "PNG".to_owned(),
+        image_width: 40.0,
+        image_height: 40.0,
+    };
+    let request = SigningRequest::new(DEFAULT_SIGNATURE_METHOD, "20261024050000")
+        .with_stamps(vec![make("1"), make("A&B/C")]);
+    let mut document = OfdPackage::from_bytes(package()).expect("open");
+    let mut output = Vec::new();
+    document
+        .sign_package(&request, &producer, &mut Cursor::new(&mut output))
+        .expect("stamp two pages");
+
+    let mut signed = OfdPackage::from_bytes(output).expect("open stamped");
+    let signature_xml = signed
+        .read_entry("Doc_0/Signs/Sign_0/Signature.xml")
+        .expect("signature xml");
+    let signature_xml = std::str::from_utf8(&signature_xml).expect("utf8");
+    assert_eq!(signature_xml.matches("<ofd:StampAnnot").count(), 2);
+
+    let index = signed.read_entry("Doc_0/Annotations.xml").expect("index");
+    let index = std::str::from_utf8(&index).expect("utf8");
+    assert_eq!(index.matches("PageID=").count(), 2);
+
+    let document_xml = signed.read_entry("Doc_0/Document.xml").expect("document");
+    assert!(
+        std::str::from_utf8(&document_xml)
+            .expect("utf8")
+            .contains("<ofd:MaxUnitID>8</ofd:MaxUnitID>")
+    );
+    let resources = signed
+        .read_entry("Doc_0/DocumentRes.xml")
+        .expect("document res");
+    let resources = std::str::from_utf8(&resources).expect("utf8");
+    assert!(resources.contains("MultiMedia ID=\"5\""));
+    assert!(resources.contains("MultiMedia ID=\"8\""));
+}
+
+#[test]
+fn stamps_same_page_twice() {
+    let Some(seal) = real_seal() else {
+        return;
+    };
+    let (certificate, secret) = make_certificate();
+    let producer = Sm2SesSignatureProducer::new(seal, certificate, secret.to_bytes().to_vec())
+        .expect("producer");
+    let make = || StampAppearance {
+        page_id: "1".to_owned(),
+        boundary: [10.0, 20.0, 40.0, 40.0],
+        clip: None,
+        image: PNG.to_vec(),
+        image_format: "PNG".to_owned(),
+        image_width: 40.0,
+        image_height: 40.0,
+    };
+    let request = SigningRequest::new(DEFAULT_SIGNATURE_METHOD, "20261024050000")
+        .with_stamps(vec![make(), make()]);
+    let mut document = OfdPackage::from_bytes(package()).expect("open");
+    let mut output = Vec::new();
+    document
+        .sign_package(&request, &producer, &mut Cursor::new(&mut output))
+        .expect("stamp twice");
+
+    let mut signed = OfdPackage::from_bytes(output).expect("open stamped");
+    let index = signed.read_entry("Doc_0/Annotations.xml").expect("index");
+    let index = std::str::from_utf8(&index).expect("utf8");
+    assert_eq!(index.matches("PageID=\"1\"").count(), 1);
+
+    let annotation = signed
+        .read_entry("Doc_0/PageAnnot_3.xml")
+        .expect("annotation");
+    let annotation = std::str::from_utf8(&annotation).expect("utf8");
+    assert_eq!(annotation.matches("Type=\"Stamp\"").count(), 2);
+    assert!(annotation.contains("ID=\"3\""));
+    assert!(annotation.contains("ID=\"6\""));
+}
+
+#[test]
+fn omits_clip_when_not_provided() {
+    let Some(seal) = real_seal() else {
+        return;
+    };
+    let (certificate, secret) = make_certificate();
+    let producer = Sm2SesSignatureProducer::new(seal, certificate, secret.to_bytes().to_vec())
+        .expect("producer");
+    let stamp = StampAppearance {
+        page_id: "1".to_owned(),
+        boundary: [10.0, 20.0, 40.0, 40.0],
+        clip: None,
+        image: PNG.to_vec(),
+        image_format: "PNG".to_owned(),
+        image_width: 40.0,
+        image_height: 40.0,
+    };
+    let request = SigningRequest::new(DEFAULT_SIGNATURE_METHOD, "20261024050000").with_stamp(stamp);
+    let mut document = OfdPackage::from_bytes(package()).expect("open");
+    let mut output = Vec::new();
+    document
+        .sign_package(&request, &producer, &mut Cursor::new(&mut output))
+        .expect("stamp");
+
+    let mut signed = OfdPackage::from_bytes(output).expect("open stamped");
+    let signature_xml = signed
+        .read_entry("Doc_0/Signs/Sign_0/Signature.xml")
+        .expect("signature xml");
+    let signature_xml = std::str::from_utf8(&signature_xml).expect("utf8");
+    assert!(signature_xml.contains("StampAnnot"));
+    assert!(!signature_xml.contains("Clip="));
+}

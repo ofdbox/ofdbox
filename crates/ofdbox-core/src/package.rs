@@ -1285,9 +1285,10 @@ impl OfdPackage {
             .ok_or_else(|| OfdError::InvalidStructure("尚未定位 Document.xml".to_owned()))?;
         let doc_dir = parent_dir(&doc_entry).unwrap_or("").to_owned();
 
-        let stamp_files = match request.stamp.as_ref() {
-            Some(stamp) => Some(crate::stamp::prepare(self, stamp, &doc_entry)?),
-            None => None,
+        let stamp_files = if request.stamps.is_empty() {
+            None
+        } else {
+            Some(crate::stamp::prepare(self, &request.stamps, &doc_entry)?)
         };
 
         let root = self.parse_root()?;
@@ -1406,7 +1407,9 @@ impl OfdPackage {
             request,
             &references,
             &signed_value_path,
-            stamp_files.as_ref().map(|files| &files.annot),
+            stamp_files
+                .as_ref()
+                .map_or(&[][..], |files| files.annots.as_slice()),
         )?;
         let context = SigningContext {
             content: signature_xml.as_bytes(),

@@ -129,8 +129,8 @@ pub struct SigningRequest<'a> {
     pub provider: ProviderInfo,
     /// `SignatureDateTime`，按原样写入。
     pub signed_at: String,
-    /// 盖章外观；提供时同时写注释、资源与 `StampAnnot`。
-    pub stamp: Option<StampAppearance>,
+    /// 盖章外观；按顺序写入多个 `StampAnnot`、注释与资源。
+    pub stamps: Vec<StampAppearance>,
 }
 
 impl<'a> SigningRequest<'a> {
@@ -142,13 +142,19 @@ impl<'a> SigningRequest<'a> {
             signature_method,
             provider: ProviderInfo::ofdbox(),
             signed_at: signed_at.into(),
-            stamp: None,
+            stamps: Vec::new(),
         }
     }
 
-    /// 指定盖章外观。
+    /// 追加一枚印章。
     pub fn with_stamp(mut self, stamp: StampAppearance) -> Self {
-        self.stamp = Some(stamp);
+        self.stamps.push(stamp);
+        self
+    }
+
+    /// 追加多枚印章。
+    pub fn with_stamps(mut self, stamps: impl IntoIterator<Item = StampAppearance>) -> Self {
+        self.stamps.extend(stamps);
         self
     }
 }
@@ -173,7 +179,7 @@ pub(crate) fn write_signature_xml(
     request: &SigningRequest<'_>,
     references: &[ReferenceDigest],
     signed_value_path: &str,
-    stamp: Option<&StampAnnot>,
+    stamps: &[StampAnnot],
 ) -> Result<String, OfdError> {
     let mut writer = Writer::new(Vec::new());
     writer.write_event(Event::Decl(BytesDecl::new("1.0", Some("UTF-8"), None)))?;
@@ -220,7 +226,7 @@ pub(crate) fn write_signature_xml(
     }
     writer.write_event(Event::End(BytesEnd::new("ofd:References")))?;
 
-    if let Some(stamp) = stamp {
+    for stamp in stamps {
         let boundary = format!(
             "{} {} {} {}",
             stamp.boundary[0], stamp.boundary[1], stamp.boundary[2], stamp.boundary[3]

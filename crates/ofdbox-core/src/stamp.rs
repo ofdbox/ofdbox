@@ -45,30 +45,43 @@ pub(crate) struct StampFiles {
     pub(crate) document_xml: Vec<u8>,
     /// `(包内路径, 字节)`，可能是新增也可能是替换。
     pub(crate) entries: Vec<(String, Vec<u8>)>,
-    pub(crate) annot: StampAnnot,
+    /// 按传入顺序对应的 `StampAnnot`。
+    pub(crate) annots: Vec<StampAnnot>,
 }
 
 pub(crate) fn prepare(
     package: &mut OfdPackage,
-    stamp: &StampAppearance,
+    stamps: &[StampAppearance],
     document_entry: &str,
 ) -> Result<StampFiles, OfdError> {
-    validate(stamp)?;
+    if stamps.is_empty() {
+        return Err(OfdError::InvalidStructure("至少需要一枚印章".to_owned()));
+    }
+    for stamp in stamps {
+        validate(stamp)?;
+    }
 
     let doc_dir = parent_dir(document_entry).unwrap_or("").to_owned();
     let document = String::from_utf8(package.read_entry(document_entry)?.to_vec())
         .map_err(|error| OfdError::InvalidStructure(format!("Document.xml 不是 UTF-8: {error}")))?;
 
-    let page_exists = package.parse_document()?.pages().is_some_and(|pages| {
-        pages
-            .pages()
-            .any(|page| page.id() == Some(stamp.page_id.as_str()))
-    });
-    if !page_exists {
-        return Err(OfdError::InvalidStructure(format!(
-            "Document.xml 中不存在页面 {}",
-            stamp.page_id
-        )));
+    let pages: std::collections::HashSet<String> = package
+        .parse_document()?
+        .pages()
+        .map(|pages| {
+            pages
+                .pages()
+                .filter_map(|page| page.id().map(str::to_owned))
+                .collect()
+        })
+        .unwrap_or_default();
+    for stamp in stamps {
+        if !pages.contains(&stamp.page_id) {
+            return Err(OfdError::InvalidStructure(format!(
+                "Document.xml 中不存在页面 {}",
+                stamp.page_id
+            )));
+        }
     }
 
     let document_res = element_text(&document, "DocumentRes").ok_or_else(|| {
@@ -83,11 +96,8 @@ pub(crate) fn prepare(
     let max_unit = element_text(&document, "MaxUnitID")
         .and_then(|text| text.trim().parse::<i64>().ok())
         .ok_or_else(|| OfdError::InvalidStructure("Document.xml 缺少 MaxUnitID".to_owned()))?;
-    let annot_id = max_unit + 1;
-    let image_object_id = max_unit + 2;
-    let multimedia_id = max_unit + 3;
-    let document = set_element_text(&document, "MaxUnitID", &multimedia_id.to_string())
-        .ok_or_else(|| OfdError::InvalidStructure("Document.xml 缺少 MaxUnitID".to_owned()))?;
+    // 每枚章占三个单元：Annot、ImageObject、MultiMedia。
+    let mut next_id = max_unit + 1;
 
     // 资源目录：优先取 DocumentRes 的 BaseLoc，缺省为 `Res`。
     let mut res = String::new();
@@ -97,12 +107,8 @@ pub(crate) fn prepare(
         res = element_attribute(text, "Res", "BaseLoc").unwrap_or_default();
     }
     let res_dir = resolve_loc(&doc_dir, if res.is_empty() { "Res" } else { &res })?;
-    // 文件名用数字 ID，不把页 ID 带进路径。
-    let extension = image_extension(&stamp.image_format);
-    let image_name = unique_name(package, &res_dir, &format!("seal_{annot_id}.{extension}"));
-    let image_entry = format!("{res_dir}/{image_name}");
 
-    // DocumentRes：追加一张图片资源。
+    // DocumentRes：一次追加所有图片资源。
     let mut document_res_xml = match package.read_entry(&document_res_entry) {
         Ok(bytes) => String::from_utf8(bytes.to_vec()).map_err(|error| {
             OfdError::InvalidStructure(format!("DocumentRes 不是 UTF-8: {error}"))
@@ -113,22 +119,8 @@ pub(crate) fn prepare(
         ),
     };
     let res_prefix = detect_prefix(&document_res_xml)?.to_owned();
-    let media = format!(
-        r#"<{res_prefix}MultiMedia ID="{multimedia_id}" Type="Image" Format="{}"><{res_prefix}MediaFile>{}</{res_prefix}MediaFile></{res_prefix}MultiMedia>"#,
-        escape(&stamp.image_format),
-        escape(&image_name)
-    );
-    document_res_xml = match insert_before_close(&document_res_xml, "MultiMedias", &media) {
-        Some(updated) => updated,
-        None => insert_before_close(
-            &document_res_xml,
-            "Res",
-            &format!("<{res_prefix}MultiMedias>{media}</{res_prefix}MultiMedias>"),
-        )
-        .ok_or_else(|| OfdError::InvalidStructure("DocumentRes 缺少 Res 根元素".to_owned()))?,
-    };
 
-    // 注释索引：同一页已有条目时复用其注释文件，避免重复 `<ofd:Page>`。
+    // 注释索引与注释文件缓存。
     let index_dir = parent_dir(&annotations_entry).unwrap_or("").to_owned();
     let mut index_xml = match package.read_entry(&annotations_entry) {
         Ok(bytes) => String::from_utf8(bytes.to_vec()).map_err(|error| {
@@ -140,70 +132,114 @@ pub(crate) fn prepare(
         ),
     };
     let index_prefix = detect_prefix(&index_xml)?.to_owned();
-    let page_marker = format!("PageID=\"{}\"", escape(&stamp.page_id));
+    let mut page_appended = false;
+    let mut annot_files: Vec<(String, String)> = Vec::new();
+    let mut media = String::new();
+    let mut images: Vec<(String, Vec<u8>)> = Vec::new();
+    let mut annots = Vec::with_capacity(stamps.len());
 
-    let (annot_entry, mut annot_xml, new_page) = match page_file_loc(&index_xml, &page_marker) {
-        Some(loc) => {
-            let entry = resolve_loc(&index_dir, &loc)?;
-            let xml = match package.read_entry(&entry) {
-                Ok(bytes) => String::from_utf8(bytes.to_vec()).map_err(|error| {
-                    OfdError::InvalidStructure(format!("注释文件不是 UTF-8: {error}"))
-                })?,
-                Err(_) => format!(
-                    r#"<?xml version="1.0" encoding="UTF-8"?>
+    for stamp in stamps {
+        let annot_id = next_id;
+        let image_object_id = next_id + 1;
+        let multimedia_id = next_id + 2;
+        next_id += 3;
+
+        let extension = image_extension(&stamp.image_format);
+        let image_name = unique_name(package, &res_dir, &format!("seal_{annot_id}.{extension}"));
+        let image_entry = format!("{res_dir}/{image_name}");
+        media.push_str(&format!(
+            r#"<{res_prefix}MultiMedia ID="{multimedia_id}" Type="Image" Format="{}"><{res_prefix}MediaFile>{}</{res_prefix}MediaFile></{res_prefix}MultiMedia>"#,
+            escape(&stamp.image_format),
+            escape(&image_name)
+        ));
+        images.push((image_entry, stamp.image.clone()));
+
+        let page_marker = format!("PageID=\"{}\"", escape(&stamp.page_id));
+        let annot_entry = match page_file_loc(&index_xml, &page_marker) {
+            Some(loc) => resolve_loc(&index_dir, &loc)?,
+            None => {
+                let name = unique_name(package, &index_dir, &format!("PageAnnot_{annot_id}.xml"));
+                let entry = format!("{index_dir}/{name}");
+                let page_entry = format!(
+                    r#"<{index_prefix}Page PageID="{}"><{index_prefix}FileLoc>{}</{index_prefix}FileLoc></{index_prefix}Page>"#,
+                    escape(&stamp.page_id),
+                    escape(&name)
+                );
+                index_xml = insert_before_close(&index_xml, "Annotations", &page_entry)
+                    .ok_or_else(|| {
+                        OfdError::InvalidStructure("Annotations 缺少结束标签".to_owned())
+                    })?;
+                page_appended = true;
+                entry
+            }
+        };
+
+        let position = annot_files
+            .iter()
+            .position(|(entry, _)| *entry == annot_entry);
+        let xml = match position {
+            Some(index) => &mut annot_files[index].1,
+            None => {
+                let existing = match package.read_entry(&annot_entry) {
+                    Ok(bytes) => String::from_utf8(bytes.to_vec()).map_err(|error| {
+                        OfdError::InvalidStructure(format!("注释文件不是 UTF-8: {error}"))
+                    })?,
+                    Err(_) => format!(
+                        r#"<?xml version="1.0" encoding="UTF-8"?>
 <ofd:PageAnnot xmlns:ofd="{OFD_NS}"></ofd:PageAnnot>"#
-                ),
-            };
-            (entry, xml, false)
-        }
-        None => {
-            let name = unique_name(package, &index_dir, &format!("PageAnnot_{annot_id}.xml"));
-            let entry = format!("{index_dir}/{name}");
-            let page_entry = format!(
-                r#"<{index_prefix}Page PageID="{}"><{index_prefix}FileLoc>{}</{index_prefix}FileLoc></{index_prefix}Page>"#,
-                escape(&stamp.page_id),
-                escape(&name)
-            );
-            index_xml = insert_before_close(&index_xml, "Annotations", &page_entry)
-                .ok_or_else(|| OfdError::InvalidStructure("Annotations 缺少结束标签".to_owned()))?;
-            (
-                entry,
-                format!(
-                    r#"<?xml version="1.0" encoding="UTF-8"?>
-<ofd:PageAnnot xmlns:ofd="{OFD_NS}"></ofd:PageAnnot>"#
-                ),
-                true,
-            )
-        }
+                    ),
+                };
+                annot_files.push((annot_entry.clone(), existing));
+                &mut annot_files.last_mut().expect("刚插入").1
+            }
+        };
+        let annot_prefix = detect_prefix(xml)?.to_owned();
+        let boundary = format_boundary(&stamp.boundary);
+        let annot = format!(
+            r#"<{annot_prefix}Annot Type="Stamp" ID="{annot_id}" Subtype="Stamp"><{annot_prefix}Appearance Boundary="{boundary}"><{annot_prefix}ImageObject ID="{image_object_id}" ResourceID="{multimedia_id}" Boundary="0 0 {width} {height}" CTM="{width} 0 0 {height} 0 0"/></{annot_prefix}Appearance></{annot_prefix}Annot>"#,
+            width = stamp.image_width,
+            height = stamp.image_height,
+        );
+        *xml = insert_before_close(xml, "PageAnnot", &annot).ok_or_else(|| {
+            OfdError::InvalidStructure("注释文件缺少 PageAnnot 根元素".to_owned())
+        })?;
+
+        annots.push(StampAnnot {
+            id: annot_id.to_string(),
+            page_id: stamp.page_id.clone(),
+            boundary: stamp.boundary,
+            clip: stamp.clip,
+        });
+    }
+
+    let document = set_element_text(&document, "MaxUnitID", &(next_id - 1).to_string())
+        .ok_or_else(|| OfdError::InvalidStructure("Document.xml 缺少 MaxUnitID".to_owned()))?;
+
+    document_res_xml = match insert_before_close(&document_res_xml, "MultiMedias", &media) {
+        Some(updated) => updated,
+        None => insert_before_close(
+            &document_res_xml,
+            "Res",
+            &format!("<{res_prefix}MultiMedias>{media}</{res_prefix}MultiMedias>"),
+        )
+        .ok_or_else(|| OfdError::InvalidStructure("DocumentRes 缺少 Res 根元素".to_owned()))?,
     };
-    let annot_prefix = detect_prefix(&annot_xml)?.to_owned();
-    let boundary = format_boundary(&stamp.boundary);
-    let annot = format!(
-        r#"<{annot_prefix}Annot Type="Stamp" ID="{annot_id}" Subtype="Stamp"><{annot_prefix}Appearance Boundary="{boundary}"><{annot_prefix}ImageObject ID="{image_object_id}" ResourceID="{multimedia_id}" Boundary="0 0 {width} {height}" CTM="{width} 0 0 {height} 0 0"/></{annot_prefix}Appearance></{annot_prefix}Annot>"#,
-        width = stamp.image_width,
-        height = stamp.image_height,
-    );
-    annot_xml = insert_before_close(&annot_xml, "PageAnnot", &annot)
-        .ok_or_else(|| OfdError::InvalidStructure("注释文件缺少 PageAnnot 根元素".to_owned()))?;
 
-    let mut entries = vec![
-        (document_res_entry, document_res_xml.into_bytes()),
-        (annot_entry, annot_xml.into_bytes()),
-        (image_entry, stamp.image.clone()),
-    ];
-    if new_page {
+    let mut entries = vec![(document_res_entry, document_res_xml.into_bytes())];
+    if page_appended {
         entries.push((annotations_entry, index_xml.into_bytes()));
     }
+    entries.extend(
+        annot_files
+            .into_iter()
+            .map(|(entry, xml)| (entry, xml.into_bytes())),
+    );
+    entries.extend(images);
 
     Ok(StampFiles {
         document_xml: document.into_bytes(),
         entries,
-        annot: StampAnnot {
-            id: annot_id.to_string(),
-            page_id: stamp.page_id.clone(),
-            boundary: stamp.boundary,
-            clip: Some(stamp.clip.unwrap_or(stamp.boundary)),
-        },
+        annots,
     })
 }
 
