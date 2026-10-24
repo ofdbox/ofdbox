@@ -93,3 +93,93 @@ fn zip_with_entries(entries: &[(&str, &[u8])]) -> Vec<u8> {
     }
     writer.finish().expect("finish").into_inner()
 }
+
+#[test]
+fn encrypted_package_requires_decryption() {
+    let plain = zip_with_entries(&[
+        ("OFD.xml", ROOT.as_bytes()),
+        ("Doc_0/Document.xml", DOCUMENT.as_bytes()),
+    ]);
+    let encrypted =
+        encrypt_package(&plain, &EncryptOptions::password("alice", "secret")).expect("encrypt");
+    let mut package = OfdPackage::from_bytes(encrypted).expect("open");
+    assert!(matches!(
+        package.parse_root(),
+        Err(OfdError::EncryptionRequired)
+    ));
+    assert!(package.read_entry("OFD.xml").is_err());
+}
+
+#[test]
+fn streams_decrypted_entries() {
+    let plain = zip_with_entries(&[
+        ("OFD.xml", ROOT.as_bytes()),
+        ("Doc_0/Document.xml", DOCUMENT.as_bytes()),
+        ("Doc_0/Res/a.bin", b"\x00\x01\x02\x03"),
+    ]);
+    let encrypted =
+        encrypt_package(&plain, &EncryptOptions::password("alice", "secret")).expect("encrypt");
+    let mut package = OfdPackage::from_bytes(encrypted).expect("open");
+    package
+        .enable_decryption(Box::new(PasswordBackend::new("secret")))
+        .expect("enable");
+
+    let mut streamed = Vec::new();
+    package
+        .read_entry_to("Doc_0/Res/a.bin", &mut streamed)
+        .expect("stream");
+    assert_eq!(
+        streamed,
+        &*package.read_entry("Doc_0/Res/a.bin").expect("read")
+    );
+}
+
+#[test]
+fn parses_generated_encryption_metadata() {
+    let plain = zip_with_entries(&[
+        ("OFD.xml", ROOT.as_bytes()),
+        ("Doc_0/Document.xml", DOCUMENT.as_bytes()),
+    ]);
+    let encrypted =
+        encrypt_package(&plain, &EncryptOptions::password("alice", "secret")).expect("encrypt");
+    let mut package = OfdPackage::from_bytes(encrypted).expect("open");
+    package
+        .enable_decryption(Box::new(PasswordBackend::new("secret")))
+        .expect("enable");
+
+    let encryptions = package.parse_encryptions().expect("encryptions");
+    let info = encryptions.encrypt_infos().next().expect("info");
+    let seed_loc = info.decrypt_seed_loc().expect("seed loc").to_owned();
+    let map_loc = info.entries_map_loc().expect("map loc").to_owned();
+
+    let seed = package.parse_decrypt_seed(&seed_loc).expect("seed");
+    assert!(seed.users().next().is_some());
+
+    // 生成端写出的 entriesmap.dat 是二进制映射表，不做 XML 解析。
+    assert!(!package.read_entry(&map_loc).expect("map").is_empty());
+}
+
+#[test]
+fn writes_plain_package_from_encrypted() {
+    let plain = zip_with_entries(&[
+        ("OFD.xml", ROOT.as_bytes()),
+        ("Doc_0/Document.xml", DOCUMENT.as_bytes()),
+    ]);
+    let encrypted =
+        encrypt_package(&plain, &EncryptOptions::password("alice", "secret")).expect("encrypt");
+    let mut package = OfdPackage::from_bytes(encrypted).expect("open");
+    package
+        .enable_decryption(Box::new(PasswordBackend::new("secret")))
+        .expect("enable");
+
+    let mut output = Cursor::new(Vec::new());
+    let report = package
+        .write_decrypted_to(&mut output)
+        .expect("write decrypted");
+    assert!(report.entries > 0);
+    assert!(!report.removed.is_empty());
+
+    let mut plain = OfdPackage::from_bytes(output.into_inner()).expect("open plain");
+    plain.parse_root().expect("plain root");
+    plain.parse_document().expect("plain document");
+}
