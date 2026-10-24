@@ -4,7 +4,7 @@
 
 ### 新增
 
-- `ofdbox-core`：`OfdPackage::verify_ofd_entries` 校验 `OFDEntries.xml`：`FileList` 中的文件必须存在且不重复，`SignedValueLoc` 指向的签名值按 GB/T 35275 验证其对 `OFDEntries.xml` 字节的签名。
+- `ofdbox-core`：`OfdPackage::verify_ofd_entries` 校验 `OFDEntries.xml`：`FileList` 中的文件必须存在且不重复，`SignedValueLoc` 指向的签名值按 GB/T 35275 验证其对 `OFDEntries.xml` 字节的签名；并沿 `OFD.xml`、`Encryptions.xml` 遍历文档引用图，报告未列入 `FileList` 的夹带文件以及“列入但仍被引用”的不一致。
 - `ofdbox-core`：盖章外观支持一次写多枚章（`SigningRequest::with_stamps`），跨页/同页均可；注释文件按页复用，单元 ID 连续分配；`Clip` 只在显式提供时写入。
 - `ofdbox-core`：盖章外观 `StampAppearance` + `SigningRequest::with_stamp`：自动写 `StampAnnot`、页面注释（`Type="Stamp"`）、`DocumentRes` 图片资源与印模文件，并把它们纳入 `References`；要求 `Document.xml` 已声明 `DocumentRes` 与 `Annotations`。
 - `ofdbox`：示例 `seal_and_stamp` 演示制章 → 盖章 → 验章，写出印章、制章者/签章者证书、签章者公钥（PEM）与盖章文件到 `target/`。

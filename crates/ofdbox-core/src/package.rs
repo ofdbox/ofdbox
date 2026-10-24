@@ -71,6 +71,17 @@ pub struct EntriesVerification {
     pub files: usize,
     /// 已验签的 `SignedValueLoc`（包内绝对路径）；未提供签名时为 `None`。
     pub signed_value: Option<String>,
+    /// 包内既未被文档引用、也未列入 `FileList` 的文件（夹带文件）。
+    pub unlisted: Vec<String>,
+    /// 列入了 `FileList`、但仍被文档引用的文件（列表与引用图不一致）。
+    pub listed_but_referenced: Vec<String>,
+}
+
+impl EntriesVerification {
+    /// 文件列表与引用图完全一致。
+    pub fn is_consistent(&self) -> bool {
+        self.unlisted.is_empty() && self.listed_but_referenced.is_empty()
+    }
 }
 
 /// 缓存统计。
@@ -1098,9 +1109,55 @@ impl OfdPackage {
             None => None,
         };
 
+        let referenced = crate::refs::referenced_entries(self)?;
+        let mut all = HashMap::new();
+        for name in self.entry_names()? {
+            if !name.ends_with('/') {
+                all.insert(entry_key(&name), name);
+            }
+        }
+        let mut listed = HashMap::new();
+        for file in view.files() {
+            if let Some(loc) = file.file_loc() {
+                let path = resolve_loc("", loc)?;
+                listed.insert(entry_key(&path), format!("/{path}"));
+            }
+        }
+        let mut excluded: HashSet<String> = [
+            "OFDEntries.xml",
+            "Encryptions.xml",
+            "decryptseed.dat",
+            "entriesmap.dat",
+        ]
+        .into_iter()
+        .map(entry_key)
+        .collect();
+        if let Some(path) = signed_value.as_deref() {
+            excluded.insert(entry_key(path));
+        }
+
+        let mut unlisted = Vec::new();
+        for (key, name) in &all {
+            if referenced.contains(key) || listed.contains_key(key) || excluded.contains(key) {
+                continue;
+            }
+            unlisted.push(format!("/{}", name.replace('\\', "/")));
+        }
+        unlisted.sort();
+
+        let mut listed_but_referenced = Vec::new();
+        for (key, path) in &listed {
+            if referenced.contains(key) {
+                listed_but_referenced.push(path.clone());
+            }
+        }
+        listed_but_referenced.sort();
+
         Ok(EntriesVerification {
             files,
             signed_value,
+            unlisted,
+            listed_but_referenced,
         })
     }
 

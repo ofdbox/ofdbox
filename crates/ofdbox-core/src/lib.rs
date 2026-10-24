@@ -18,6 +18,7 @@ mod model;
 mod options;
 mod package;
 mod package_write;
+mod refs;
 mod sign;
 mod stamp;
 mod write;
