@@ -32,6 +32,11 @@ const TEXT_REFS: &[&str] = &[
 /// 以属性形式给出路径的元素属性。
 const ATTRIBUTE_REFS: &[&str] = &["BaseLoc", "FileLoc", "ImageLoc", "Annotations"];
 
+/// 名称以 `Loc` 结尾（不区分大小写）的字段按路径处理，兼容厂商自定义写法。
+fn is_loc_name(name: &str) -> bool {
+    name.to_ascii_lowercase().ends_with("loc")
+}
+
 pub(crate) fn referenced_entries(package: &mut OfdPackage) -> Result<HashSet<String>, OfdError> {
     let mut referenced = HashSet::new();
     let mut visited = HashSet::new();
@@ -56,7 +61,8 @@ pub(crate) fn referenced_entries(package: &mut OfdPackage) -> Result<HashSet<Str
         let doc = parse_xml(&bytes, ReadOptions::LENIENT)?;
         let dir = parent_dir(&entry).unwrap_or("").to_owned();
         let root = doc.root();
-        let res_base = if doc.name(root).local == "Res" {
+        let res_file = doc.name(root).local == "Res";
+        let res_base = if res_file {
             let base = doc.attribute(root, "BaseLoc").unwrap_or("");
             resolve_loc(&dir, base).unwrap_or_else(|_| dir.clone())
         } else {
@@ -66,10 +72,11 @@ pub(crate) fn referenced_entries(package: &mut OfdPackage) -> Result<HashSet<Str
         let mut refs: Vec<(String, String)> = Vec::new();
         for node in doc.nodes() {
             let name = node.name.local.as_str();
-            if TEXT_REFS.contains(&name) {
+            if TEXT_REFS.contains(&name) || is_loc_name(name) {
                 let text = node.text.trim();
                 if !text.is_empty() {
-                    let base = if matches!(name, "MediaFile" | "FontFile") {
+                    // Res 文件里的路径都相对于 BaseLoc；其余相对于当前文件目录。
+                    let base = if res_file || matches!(name, "MediaFile" | "FontFile") {
                         &res_base
                     } else {
                         &dir
@@ -81,7 +88,8 @@ pub(crate) fn referenced_entries(package: &mut OfdPackage) -> Result<HashSet<Str
                 continue;
             }
             for attribute in &node.attributes {
-                if ATTRIBUTE_REFS.contains(&attribute.name.local.as_str()) {
+                let attribute_name = attribute.name.local.as_str();
+                if ATTRIBUTE_REFS.contains(&attribute_name) || is_loc_name(attribute_name) {
                     let value = attribute.value.trim();
                     if !value.is_empty() {
                         refs.push((dir.clone(), value.to_owned()));

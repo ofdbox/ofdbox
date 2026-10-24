@@ -489,3 +489,41 @@ fn writes_ofd_entries_and_verifies() {
         Some("/Integrity/SignedValue.dat")
     );
 }
+
+#[test]
+fn follows_vendor_loc_fields() {
+    let (certificate, secret) = make_certificate();
+    let producer = Sm2SignedDataProducer::new(certificate, secret.to_bytes().to_vec());
+    let context = SigningContext {
+        content: ENTRIES.as_bytes(),
+        signed_entry: "/OFDEntries.xml",
+        signature_method: DEFAULT_SIGNATURE_METHOD,
+        signed_at: "20261024050000",
+        references: &[],
+    };
+    let value = producer.produce(&context).expect("signed value");
+
+    let document = DOCUMENT.replace(
+        "</ofd:Document>",
+        "<ofd:VendorLoc>/Doc_0/vendor.txt</ofd:VendorLoc></ofd:Document>",
+    );
+    let mut edits = PackageEdits::new();
+    edits.replace("Doc_0/Document.xml", document.into_bytes());
+    edits.add("Doc_0/vendor.txt", b"vendor".to_vec());
+    edits.add("Doc_0/extra.txt", b"extra".to_vec());
+    edits.add("OFDEntries.xml", ENTRIES.as_bytes().to_vec());
+    edits.add("Integrity/SignedValue.dat", value);
+    let mut output = Vec::new();
+    OfdPackage::from_bytes(package())
+        .expect("open")
+        .write_with(&mut Cursor::new(&mut output), &edits, &Default::default())
+        .expect("write");
+    let mut opened = OfdPackage::from_bytes(output).expect("open entries");
+    let verifiers = SignatureVerifiers::new().with(Box::new(Sm2SignedDataVerifier::new()));
+    let report = opened
+        .verify_ofd_entries(&verifiers)
+        .expect("verify entries");
+    assert_eq!(report.files, 1);
+    assert!(report.unlisted.is_empty(), "{:?}", report.unlisted);
+    assert!(report.is_consistent());
+}
