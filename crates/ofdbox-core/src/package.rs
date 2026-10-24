@@ -5,7 +5,7 @@ use std::sync::Arc;
 use zip::ZipArchive;
 
 use crate::cache::ByteLruCache;
-use crate::crypto::{CryptoBackend, FileKey, SignatureVerifiers};
+use crate::crypto::{CryptoBackend, FileKey, SignatureVerifiers, detect_signed_value_format};
 use crate::error::OfdError;
 use crate::model::annotation::{AnnotationsView, PageAnnotView};
 use crate::model::attachment::AttachmentsView;
@@ -27,7 +27,8 @@ use crate::package_write::{
     write_plain_entry,
 };
 use crate::sign::{
-    ProtectScope, SignedValueProducer, SigningContext, SigningReport, SigningRequest,
+    DEFAULT_SIGNATURE_METHOD, ProtectScope, SignedValueProducer, SigningContext, SigningReport,
+    SigningRequest,
 };
 use crate::xml::parser::parse_xml;
 use crate::xml::tree::XmlDocument;
@@ -61,6 +62,15 @@ struct DecryptionContext {
     operations: Vec<DecryptionOperation>,
     /// 已解出的条目级密钥，按密钥描述文件路径缓存。
     entry_keys: HashMap<String, FileKey>,
+}
+
+/// `OFDEntries.xml` 校验结果。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EntriesVerification {
+    /// `FileList` 中的文件数量。
+    pub files: usize,
+    /// 已验签的 `SignedValueLoc`（包内绝对路径）；未提供签名时为 `None`。
+    pub signed_value: Option<String>,
 }
 
 /// 缓存统计。
@@ -1045,6 +1055,53 @@ impl OfdPackage {
         self.xml_cache
             .insert(key, Arc::clone(&doc), doc.estimated_size());
         DocEntriesView::from_document(doc, self.options)
+    }
+
+    /// 校验 `OFDEntries.xml`：列出文件必须存在、不得重复；`SignedValueLoc`
+    /// 指向的签名值按 GB/T 35275 验证其对该文件字节的签名。
+    pub fn verify_ofd_entries(
+        &mut self,
+        verifiers: &SignatureVerifiers,
+    ) -> Result<EntriesVerification, OfdError> {
+        let entries_entry = resolve_loc("", "OFDEntries.xml")?;
+        let entries_bytes = self.read_entry(&entries_entry)?;
+        let view = self.parse_ofd_entries()?;
+
+        let mut seen = HashSet::new();
+        let mut files = 0usize;
+        for file in view.files() {
+            let file_loc = file
+                .file_loc()
+                .ok_or_else(|| OfdError::InvalidStructure("File 缺少 FileLoc 属性".to_owned()))?;
+            let path = resolve_loc("", file_loc)?;
+            if !seen.insert(entry_key(&path)) {
+                return Err(OfdError::InvalidStructure(format!(
+                    "OFDEntries.xml 重复列出文件: {file_loc}"
+                )));
+            }
+            if !self.contains(&path) {
+                return Err(OfdError::InvalidStructure(format!(
+                    "OFDEntries.xml 列出的文件不存在: {file_loc}"
+                )));
+            }
+            files += 1;
+        }
+
+        let signed_value = match view.signed_value_loc() {
+            Some(loc) => {
+                let path = resolve_loc("", loc)?;
+                let value = self.read_entry(&path)?;
+                let format = detect_signed_value_format(&value);
+                verifiers.verify(format, DEFAULT_SIGNATURE_METHOD, &entries_bytes, &value)?;
+                Some(format!("/{path}"))
+            }
+            None => None,
+        };
+
+        Ok(EntriesVerification {
+            files,
+            signed_value,
+        })
     }
 
     fn parse_signature_entry(&mut self, entry: String) -> Result<SignatureView, OfdError> {

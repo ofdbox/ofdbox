@@ -11,10 +11,10 @@
 
 pub use ofdbox_core as core;
 pub use ofdbox_core::{
-    CacheOptions, DEFAULT_SIGNATURE_METHOD, DocumentView, OfdError, OfdPackage, PackageDateTime,
-    PackageEdits, PackageWriteOptions, PageView, ProtectScope, ProviderInfo, ReadOptions,
-    SignatureVerifiers, SignedValueFormat, SignedValueProducer, SigningReport, SigningRequest,
-    StampAppearance,
+    CacheOptions, DEFAULT_SIGNATURE_METHOD, DocumentView, EntriesVerification, OfdError,
+    OfdPackage, PackageDateTime, PackageEdits, PackageWriteOptions, PageView, ProtectScope,
+    ProviderInfo, ReadOptions, SignatureVerifiers, SignedValueFormat, SignedValueProducer,
+    SigningReport, SigningRequest, StampAppearance,
 };
 
 #[cfg(feature = "crypto")]

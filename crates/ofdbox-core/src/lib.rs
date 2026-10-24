@@ -74,7 +74,7 @@ pub use model::signature::{
 };
 pub use model::version::{DocVersionView, VersionFileView};
 pub use options::{CacheOptions, ReadOptions};
-pub use package::{CacheStats, OfdPackage, ROOT_ENTRY};
+pub use package::{CacheStats, EntriesVerification, OfdPackage, ROOT_ENTRY};
 pub use package_write::{
     DecryptedWriteReport, EntryCompression, PackageDateTime, PackageEdits, PackageWriteOptions,
 };
