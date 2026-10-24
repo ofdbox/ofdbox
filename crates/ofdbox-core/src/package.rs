@@ -842,7 +842,19 @@ impl OfdPackage {
             .as_deref()
             .and_then(parent_dir)
             .ok_or_else(|| OfdError::InvalidStructure("尚未定位签名列表文件".to_owned()))?;
-        let entry = resolve_loc(base, base_loc)?;
+        let relative = resolve_loc(base, base_loc)?;
+        // 部分厂商把 BaseLoc 写成包内全路径（没有前导 `/`），先按相对解析，
+        // 找不到时再按包根解析。
+        let entry = if self.contains(&relative) {
+            relative
+        } else {
+            let absolute = resolve_loc("", base_loc)?;
+            if self.contains(&absolute) {
+                absolute
+            } else {
+                relative
+            }
+        };
         self.parse_signature_entry(entry)
     }
 
@@ -1054,7 +1066,17 @@ impl OfdPackage {
         let signed_value_loc = signature
             .signed_value()
             .ok_or_else(|| OfdError::InvalidStructure("签名缺少 SignedValue".to_owned()))?;
-        let signed_entry = resolve_loc(parent_dir(&entry).unwrap_or(""), signed_value_loc)?;
+        let relative = resolve_loc(parent_dir(&entry).unwrap_or(""), signed_value_loc)?;
+        let signed_entry = if self.contains(&relative) {
+            relative
+        } else {
+            let absolute = resolve_loc("", signed_value_loc)?;
+            if self.contains(&absolute) {
+                absolute
+            } else {
+                relative
+            }
+        };
         let signed_value = self.read_entry(&signed_entry)?;
         let format = crate::crypto::detect_signed_value_format(&signed_value);
         verifiers.verify(format, &method, &content, &signed_value)
@@ -1084,6 +1106,10 @@ impl OfdPackage {
             let file_ref = reference
                 .file_ref()
                 .ok_or_else(|| OfdError::InvalidStructure("Reference 缺少 FileRef".to_owned()))?;
+            // 厂商文件里存在把目录写进 References 的情况，目录没有文件摘要，跳过。
+            if file_ref.ends_with('/') {
+                continue;
+            }
             let entry = resolve_loc("", file_ref)?;
             let bytes = self.read_entry(&entry)?;
             let actual = backend.digest(method, &bytes)?;
