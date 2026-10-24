@@ -10,8 +10,8 @@ use crate::xml::tree::{NodeId, XmlDocument};
 
 /// 完整性保护描述文件 `OFDEntries.xml` 的类型化视图。
 ///
-/// 附录 D 的表 D.1 在 OCR 中字段层级存在歧义；这里按“元数据为属性、
-/// `FileList`/`File` 为子元素”实现。
+/// 按附录 D 表 D.1：`CreatorName`/`Version`/`CreationDate` 是根元素属性，
+/// `File/@FileLoc` 也是属性（不是子元素）。
 #[derive(Debug, Clone)]
 pub struct DocEntriesView {
     doc: Arc<XmlDocument>,
@@ -139,9 +139,7 @@ impl DocEntryFileView {
 
     /// 包内文件路径。
     pub fn file_loc(&self) -> Option<&str> {
-        self.doc
-            .find_child(self.node, "FileLoc")
-            .map(|node| self.doc.text(node).trim())
+        self.doc.attribute(self.node, "FileLoc")
     }
 }
 
@@ -151,10 +149,13 @@ fn validate_file_list(doc: &XmlDocument, node: NodeId, diagnostics: &mut Vec<Dia
     check_children_unordered(doc, node, &["File"], &["File"], &["File"], diagnostics);
     for file in doc.children_named(node, "File") {
         check_namespace(doc, file, diagnostics);
-        check_attributes(doc, file, &["ID"], &["ID"], diagnostics);
-        check_children_unordered(doc, file, &["FileLoc"], &["FileLoc"], &[], diagnostics);
-        if let Some(loc) = doc.find_child(file, "FileLoc") {
-            validate_text_element(doc, loc, true, diagnostics);
-        }
+        check_attributes(
+            doc,
+            file,
+            &["ID", "FileLoc"],
+            &["ID", "FileLoc"],
+            diagnostics,
+        );
+        check_children_unordered(doc, file, &[], &[], &[], diagnostics);
     }
 }

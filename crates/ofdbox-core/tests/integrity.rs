@@ -6,8 +6,8 @@ const ENTRIES: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
 <ofd:DocEntries xmlns:ofd="http://www.ofdspec.org/2016" ID="1" CreatorName="OFDBox"
                 Version="1.0" CreationDate="2024-01-02">
   <ofd:FileList>
-    <ofd:File ID="f1"><ofd:FileLoc>/OFD.xml</ofd:FileLoc></ofd:File>
-    <ofd:File ID="f2"><ofd:FileLoc>/Doc_0/Document.xml</ofd:FileLoc></ofd:File>
+    <ofd:File ID="f1" FileLoc="/OFD.xml"/>
+    <ofd:File ID="f2" FileLoc="/Doc_0/Document.xml"/>
   </ofd:FileList>
   <ofd:SignedValueLoc>/Integrity/SignedValue.dat</ofd:SignedValueLoc>
 </ofd:DocEntries>"#;
@@ -35,6 +35,7 @@ fn writer_emits_canonical_doc_entries() {
     assert!(xml.contains("<ofd:DocEntries"));
     assert!(xml.contains(r#"CreatorName="OFDBox""#));
     assert!(xml.contains("<ofd:FileList>"));
+    assert!(xml.contains(r#"FileLoc="/OFD.xml""#));
     assert!(xml.contains("<ofd:SignedValueLoc>/Integrity/SignedValue.dat</ofd:SignedValueLoc>"));
     let reparsed =
         DocEntriesView::from_xml(xml.as_bytes(), ReadOptions::STRICT).expect("strict reparse");
@@ -57,4 +58,22 @@ fn package_parses_ofd_entries() {
     let mut package = OfdPackage::from_bytes(bytes).expect("package");
     let view = package.parse_ofd_entries().expect("OFDEntries");
     assert_eq!(view.files().count(), 2);
+}
+
+#[test]
+fn file_loc_must_be_attribute() {
+    let with_child = ENTRIES.replace(
+        r#"<ofd:File ID="f1" FileLoc="/OFD.xml"/>"#,
+        r#"<ofd:File ID="f1"><ofd:FileLoc>/OFD.xml</ofd:FileLoc></ofd:File>"#,
+    );
+    assert!(matches!(
+        DocEntriesView::from_xml(with_child.as_bytes(), ReadOptions::STRICT),
+        Err(OfdError::Conformance(_))
+    ));
+
+    let missing = ENTRIES.replace(r#" FileLoc="/OFD.xml""#, "");
+    assert!(matches!(
+        DocEntriesView::from_xml(missing.as_bytes(), ReadOptions::STRICT),
+        Err(OfdError::Conformance(_))
+    ));
 }

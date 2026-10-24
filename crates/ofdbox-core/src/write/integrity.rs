@@ -31,9 +31,8 @@ pub(crate) fn write_doc_entries(entries: &DocEntriesView) -> Result<String, OfdE
             .ok_or_else(|| missing("/DocEntries/FileList/File/@ID", "缺少 File ID"))?;
         let loc = file
             .file_loc()
-            .ok_or_else(|| missing("/DocEntries/FileList/File/FileLoc", "缺少 FileLoc"))?;
-        write_start(&mut writer, "ofd:File", &[("ID", id)])?;
-        write_text_element(&mut writer, "ofd:FileLoc", loc)?;
+            .ok_or_else(|| missing("/DocEntries/FileList/File/@FileLoc", "缺少 FileLoc"))?;
+        write_start(&mut writer, "ofd:File", &[("ID", id), ("FileLoc", loc)])?;
         writer.write_event(Event::End(BytesEnd::new("ofd:File")))?;
     }
     writer.write_event(Event::End(BytesEnd::new("ofd:FileList")))?;
