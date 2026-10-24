@@ -4,6 +4,7 @@
 
 ### 新增
 
+- `ofdbox-seal`：`SealBuilder` 按 GB/T 38540 或 GM/T 0031 生成 `SESeal`：印章图片（PNG/GIF/JPG/BMP/SVG + 毫米宽高）、证书列表或证书杂凑值列表、有效期，制章者 SM2 签名；生成结果可用 `verify_seal` 验回并做 `signer_in_seal` 匹配。
 - `ofdbox-seal`：`Sm2SesSignatureProducer` 用已有 `SESeal` + 签章者证书/私钥生成 GB/T 38540 `SES_Signature`；`sign_package` 按 `SignedValueProducer::signature_type()` 写出 `Type=Seal` 的签名记录。
 - `ofdbox-seal`：GB/T 38540 `SES_Signature` 解析与验签（`parse_ses_signature` / `verify_ses_signature` / `SesSignatureVerifier`），验证原文杂凑值、签章者签名、内嵌印章与签章者证书列表；43 份真实 `Type=Seal` 样本全部验通。
 - `ofdbox-core`：`OfdPackage::write_to` / `write_with` / `to_bytes` / `save` 重打包与编辑写出。未修改的 entry 直接复制压缩数据并保留压缩方式、时间、权限、extra field、文件注释与包注释；非 UTF-8 名称改用原始名称字节复制。

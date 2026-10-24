@@ -58,6 +58,8 @@ pub enum SealError {
     UnsupportedCertificateListType(i64),
     /// 未提供验证时间，且当前平台无法读取系统时间。
     VerificationTimeRequired,
+    /// 制章/验签时的密码运算失败。
+    Crypto(String),
 }
 
 impl fmt::Display for SealError {
@@ -100,6 +102,7 @@ impl fmt::Display for SealError {
             Self::VerificationTimeRequired => {
                 formatter.write_str("当前平台无法读取系统时间，必须显式提供验证时间")
             }
+            Self::Crypto(message) => write!(formatter, "密码运算失败：{message}"),
         }
     }
 }

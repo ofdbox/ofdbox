@@ -9,6 +9,7 @@
 //! 显示和验证是两条独立路径：显示只需要印章头和内嵌图片，不执行任何密码学运算；
 //! 格式未知时仍可提取图片，但不得据此认为印章有效。
 
+mod build;
 mod certificate;
 mod der;
 mod error;
@@ -21,6 +22,7 @@ mod signature;
 mod time;
 mod verify;
 
+pub use build::{SealBuilder, SealPictureInput, SealSpec, SealStandard};
 pub use certificate::{
     CertificatePolicy, CertificateValidation, validate_certificate, validate_certificate_at,
 };

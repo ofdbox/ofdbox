@@ -28,8 +28,9 @@ pub use ofdbox_crypto::{
 pub use ofdbox_seal as seal;
 #[cfg(feature = "seal")]
 pub use ofdbox_seal::{
-    SealVerifyOptions, SesSignatureVerifier, SesVerifyOptions, Sm2SesSignatureProducer,
-    parse_ses_signature, verify_seal, verify_ses_signature,
+    SealBuilder, SealPictureInput, SealSpec, SealStandard, SealVerifyOptions, SesSignatureVerifier,
+    SesVerifyOptions, Sm2SesSignatureProducer, parse_ses_signature, verify_seal,
+    verify_ses_signature,
 };
 
 /// 门面统一错误。
