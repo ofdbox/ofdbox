@@ -4,6 +4,12 @@ on:
   push:
     branches: [main, dev]
   pull_request:
+  workflow_dispatch:
+    inputs:
+      corpus_dir:
+        description: "自托管 Runner 上的 OFD 语料目录（留空则不跑语料兼容性）"
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -51,3 +57,16 @@ jobs:
       - run: cargo check -p ofdbox-crypto --target wasm32-unknown-unknown
       - run: cargo check -p ofdbox-seal --target wasm32-unknown-unknown
       - run: cargo check -p ofdbox --target wasm32-unknown-unknown --no-default-features --features crypto
+
+  corpus:
+    name: corpus compatibility
+    # 只在手动触发且提供语料目录时运行；普通 CI 不依赖外部文档。
+    if: github.event_name == 'workflow_dispatch' && inputs.corpus_dir != ''
+    runs-on: [self-hosted, windows]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test -p ofdbox --test corpus_compat --locked -- --ignored --nocapture
+        env:
+          OFDBOX_TESTDATA_DIR: ${{ inputs.corpus_dir }}

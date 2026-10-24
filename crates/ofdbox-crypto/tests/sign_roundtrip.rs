@@ -5,7 +5,7 @@ use std::time::Duration;
 use der::asn1::{BitString, ObjectIdentifier};
 use der::{Decode, Encode};
 use ofdbox_core::{
-    DEFAULT_SIGNATURE_METHOD, EntriesWriteOptions, OfdPackage, PackageEdits, ReadOptions,
+    DEFAULT_SIGNATURE_METHOD, EntriesWriteOptions, OfdError, OfdPackage, PackageEdits, ReadOptions,
     SignatureVerifiers, SignedValueProducer, SigningContext, SigningRequest,
 };
 use ofdbox_crypto::{PasswordBackend, Sm2SignedDataProducer, Sm2SignedDataVerifier};
@@ -489,4 +489,99 @@ fn follows_custom_tag_schema_loc() {
         .expect("verify entries");
     assert!(report.unlisted.is_empty(), "{:?}", report.unlisted);
     assert!(report.is_consistent());
+}
+
+#[test]
+fn reference_graph_matches_case_insensitively() {
+    let (certificate, secret) = make_certificate();
+    let producer = Sm2SignedDataProducer::new(certificate, secret.to_bytes().to_vec());
+    let entries = ENTRIES.replace(
+        r#"<ofd:File ID="f1" FileLoc="/Doc_0/extra.txt"/>"#,
+        r#"<ofd:File ID="f1" FileLoc="/Doc_0/Document.xml"/>"#,
+    );
+    let context = SigningContext {
+        content: entries.as_bytes(),
+        signed_entry: "/OFDEntries.xml",
+        signature_method: DEFAULT_SIGNATURE_METHOD,
+        signed_at: "20261024050000",
+        references: &[],
+    };
+    let value = producer.produce(&context).expect("signed value");
+
+    let root = OFD_XML.replace("Doc_0/Document.xml", "doc_0/document.xml");
+    let mut edits = PackageEdits::new();
+    edits.replace("OFD.xml", root.into_bytes());
+    edits.add("OFDEntries.xml", entries.into_bytes());
+    edits.add("Integrity/SignedValue.dat", value);
+    let mut output = Vec::new();
+    OfdPackage::from_bytes(package())
+        .expect("open")
+        .write_with(&mut Cursor::new(&mut output), &edits, &Default::default())
+        .expect("write");
+    let mut opened = OfdPackage::from_bytes(output).expect("open entries");
+    let verifiers = SignatureVerifiers::new().with(Box::new(Sm2SignedDataVerifier::new()));
+    let report = opened
+        .verify_ofd_entries(&verifiers)
+        .expect("verify entries");
+    assert!(report.unlisted.is_empty(), "{:?}", report.unlisted);
+    assert!(
+        report
+            .listed_but_referenced
+            .contains(&"/Doc_0/Document.xml".to_owned())
+    );
+}
+
+#[test]
+fn verify_rejects_duplicate_listed_files() {
+    let (certificate, secret) = make_certificate();
+    let producer = Sm2SignedDataProducer::new(certificate, secret.to_bytes().to_vec());
+    let entries = ENTRIES.replace(
+        r#"<ofd:File ID="f1" FileLoc="/Doc_0/extra.txt"/>"#,
+        r#"<ofd:File ID="f1" FileLoc="/OFD.xml"/><ofd:File ID="f2" FileLoc="/OFD.xml"/>"#,
+    );
+    let context = SigningContext {
+        content: entries.as_bytes(),
+        signed_entry: "/OFDEntries.xml",
+        signature_method: DEFAULT_SIGNATURE_METHOD,
+        signed_at: "20261024050000",
+        references: &[],
+    };
+    let value = producer.produce(&context).expect("signed value");
+
+    let mut edits = PackageEdits::new();
+    edits.add("OFDEntries.xml", entries.into_bytes());
+    edits.add("Integrity/SignedValue.dat", value);
+    let mut output = Vec::new();
+    OfdPackage::from_bytes(package())
+        .expect("open")
+        .write_with(&mut Cursor::new(&mut output), &edits, &Default::default())
+        .expect("write");
+    let mut opened = OfdPackage::from_bytes(output).expect("open entries");
+    let verifiers = SignatureVerifiers::new().with(Box::new(Sm2SignedDataVerifier::new()));
+    assert!(matches!(
+        opened.verify_ofd_entries(&verifiers),
+        Err(OfdError::InvalidStructure(_))
+    ));
+}
+
+#[test]
+fn verify_without_signed_value_loc_skips_signature() {
+    let entries = ENTRIES.replace(
+        "<ofd:SignedValueLoc>/Integrity/SignedValue.dat</ofd:SignedValueLoc>",
+        "",
+    );
+    let mut edits = PackageEdits::new();
+    edits.add("Doc_0/extra.txt", b"extra".to_vec());
+    edits.add("OFDEntries.xml", entries.into_bytes());
+    let mut output = Vec::new();
+    OfdPackage::from_bytes(package())
+        .expect("open")
+        .write_with(&mut Cursor::new(&mut output), &edits, &Default::default())
+        .expect("write");
+    let mut opened = OfdPackage::from_bytes(output).expect("open entries");
+    let verifiers = SignatureVerifiers::new().with(Box::new(Sm2SignedDataVerifier::new()));
+    let report = opened
+        .verify_ofd_entries(&verifiers)
+        .expect("verify entries");
+    assert_eq!(report.signed_value, None);
 }

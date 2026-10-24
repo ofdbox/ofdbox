@@ -26,6 +26,7 @@
 ### 修复
 
 - 0099 严格校验：`Encryptions` 检查 `EncryptInfo/@ID` 唯一，`EncryptedEntries` 的 `EncryptEntry` 要求 `EPath`；新增重复 ID、缺 `EPath`、篡改密文与密钥描述的负例测试。
+- `OFDEntries` 严格模式要求 `SignedValueLoc`，`FileLoc` 必须是包内绝对路径，并检查 `File/@ID` 与 `FileLoc` 重复。
 - 签名的 `BaseLoc` / `SignedValue` 写成不带前导 `/` 的包内全路径时，先按相对路径解析，找不到再回退到包根解析；`References` 里指向目录（以 `/` 结尾）的条目跳过，不再报缺少条目。
 - `OFDEntries` 引用图补标准 `ST_Loc` 字段 `SchemaLoc`（`CustomTag` 的 schema 路径）；只按标准定义的字段名收集，不按 `Loc` 后缀猜测厂商自定义字段。
 - `OFDEntries.xml` 按表 D.1 把 `File/@FileLoc` 作为属性读写（此前误作子元素）；`CreatorName`/`Version`/`CreationDate` 仍为根元素属性。严格模式下子元素 `FileLoc` 与缺失 `FileLoc` 属性都会报错。
@@ -48,6 +49,7 @@
 - 35275 `SignedData` 测试补齐负例：detached 内容篡改、缺 `signedAttrs`、未知摘要算法、缺证书、签名值篡改，以及旧 SM2 签名 OID `.301.1` 的正向兼容。
 - 38540/0031 测试补齐负例：篡改原文/签名值、未知签名算法、截断、尾随非零字节、签章者不在印章列表、空证书列表、0031 不支持摘要列表。
 - 新增 33190 黄金对测试：`OFD.xml`、`Document.xml`、`Res`、`Annotations`、`PageAnnot`、`Signatures`、`Signature`、页面内容、`Attachments`、`CustomTags`、`DocVersion` 的严格解析、字段断言、`to_xml` 逐字节比对与严格负例。
+- 补充 OFDEntries 边界测试：`FileList` 重复、缺 `SignedValueLoc`、相对 `FileLoc`、大小写引用一致性；CI 增加手动触发、自托管 Runner 的语料兼容性 job（`workflow_dispatch` 输入 `corpus_dir`）。
 - 渲染、格式转换与文档生成迁至独立仓库 `ofdbox-folio`。
 - 批量转换命令行迁至 `ofdbox-reader`，删除 `ofdbox-cli`。
 - 删除 `ofdbox-render`；`ofdbox` 门面移除 render/ofd/pdf/cpu/image feature 与相关导出，只保留 core、crypto、seal。
