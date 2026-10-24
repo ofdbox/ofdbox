@@ -1,5 +1,4 @@
 use std::io::{Cursor, Write};
-use std::path::PathBuf;
 use std::str::FromStr;
 use std::time::Duration;
 
@@ -10,7 +9,10 @@ use ofdbox_core::{
     StampAppearance,
 };
 use ofdbox_crypto::PasswordBackend;
-use ofdbox_seal::{SesSignatureVerifier, Sm2SesSignatureProducer, parse_ses_signature};
+use ofdbox_seal::{
+    SealBuilder, SealPictureInput, SealSpec, SealStandard, SesSignatureVerifier,
+    Sm2SesSignatureProducer,
+};
 use sm2::SecretKey;
 use sm2::dsa::DerSignature;
 use sm2::dsa::signature::{Keypair, Signer};
@@ -178,32 +180,30 @@ fn package_with(document_res: &str, annotations: &str, extra: &[(&str, &str)]) -
     writer.finish().expect("finish").into_inner()
 }
 
-/// 从语料里取一份真实的 38540 印章数据。
-fn real_seal() -> Option<Vec<u8>> {
-    let _ = dotenvy::dotenv();
-    let dir = std::env::var_os("OFDBOX_TESTDATA_DIR").map(PathBuf::from)?;
-    let path = dir
-        .join("ofd-files")
-        .join("增值税电子发票样例")
-        .join("invoice.ofd");
-    let bytes = std::fs::read(path).ok()?;
-    let package = OfdPackage::from_bytes(bytes).ok()?;
-    let mut package = package;
-    let index = package.parse_signatures().ok()?;
-    let entry = index.signatures().next()?;
-    let signature = package.parse_signature(entry.base_loc()?).ok()?;
-    let value_path = signature.signed_value()?.to_owned();
-    let value = package.read_entry(&value_path).ok()?;
-    let ses = parse_ses_signature(&value).ok()?;
-    Some(ses.seal.to_vec())
+/// 用测试证书现场构造一枚 38540 印章，不依赖外部语料。
+fn synthetic_seal(certificate: &[u8], secret: &SecretKey) -> Vec<u8> {
+    let spec = SealSpec::new(
+        SealStandard::GbT38540,
+        "SEAL-TEST",
+        "测试印章",
+        SealPictureInput {
+            media_type: "PNG".to_owned(),
+            data: PNG.to_vec(),
+            width: 40,
+            height: 40,
+        },
+    )
+    .with_validity("20260101000000", "20260101000000", "20360101000000")
+    .with_certificates(vec![certificate.to_vec()]);
+    SealBuilder::new(spec, certificate.to_vec(), secret.to_bytes().to_vec())
+        .build()
+        .expect("synthetic seal")
 }
 
 #[test]
-fn stamps_with_real_seal_and_verifies() {
-    let Some(seal) = real_seal() else {
-        return;
-    };
+fn stamps_with_synthetic_seal_and_verifies() {
     let (certificate, secret) = make_certificate();
+    let seal = synthetic_seal(&certificate, &secret);
     let producer = Sm2SesSignatureProducer::new(seal, certificate, secret.to_bytes().to_vec())
         .expect("producer");
 
@@ -241,10 +241,8 @@ fn stamps_with_real_seal_and_verifies() {
 
 #[test]
 fn stamps_with_appearance() {
-    let Some(seal) = real_seal() else {
-        return;
-    };
     let (certificate, secret) = make_certificate();
+    let seal = synthetic_seal(&certificate, &secret);
     let producer = Sm2SesSignatureProducer::new(seal, certificate, secret.to_bytes().to_vec())
         .expect("producer");
 
@@ -333,10 +331,8 @@ fn stamps_with_appearance() {
 
 #[test]
 fn stamps_with_special_page_id_and_self_closing_containers() {
-    let Some(seal) = real_seal() else {
-        return;
-    };
     let (certificate, secret) = make_certificate();
+    let seal = synthetic_seal(&certificate, &secret);
     let producer = Sm2SesSignatureProducer::new(seal, certificate, secret.to_bytes().to_vec())
         .expect("producer");
     let stamp = StampAppearance {
@@ -388,10 +384,8 @@ fn stamps_with_special_page_id_and_self_closing_containers() {
 
 #[test]
 fn reuses_existing_page_entry() {
-    let Some(seal) = real_seal() else {
-        return;
-    };
     let (certificate, secret) = make_certificate();
+    let seal = synthetic_seal(&certificate, &secret);
     let producer = Sm2SesSignatureProducer::new(seal, certificate, secret.to_bytes().to_vec())
         .expect("producer");
     let stamp = StampAppearance {
@@ -431,10 +425,8 @@ fn reuses_existing_page_entry() {
 
 #[test]
 fn rejects_unknown_page_id() {
-    let Some(seal) = real_seal() else {
-        return;
-    };
     let (certificate, secret) = make_certificate();
+    let seal = synthetic_seal(&certificate, &secret);
     let producer = Sm2SesSignatureProducer::new(seal, certificate, secret.to_bytes().to_vec())
         .expect("producer");
     let stamp = StampAppearance {
@@ -456,10 +448,8 @@ fn rejects_unknown_page_id() {
 
 #[test]
 fn stamps_two_pages() {
-    let Some(seal) = real_seal() else {
-        return;
-    };
     let (certificate, secret) = make_certificate();
+    let seal = synthetic_seal(&certificate, &secret);
     let producer = Sm2SesSignatureProducer::new(seal, certificate, secret.to_bytes().to_vec())
         .expect("producer");
     let make = |page: &str| StampAppearance {
@@ -506,10 +496,8 @@ fn stamps_two_pages() {
 
 #[test]
 fn stamps_same_page_twice() {
-    let Some(seal) = real_seal() else {
-        return;
-    };
     let (certificate, secret) = make_certificate();
+    let seal = synthetic_seal(&certificate, &secret);
     let producer = Sm2SesSignatureProducer::new(seal, certificate, secret.to_bytes().to_vec())
         .expect("producer");
     let make = || StampAppearance {
@@ -545,10 +533,8 @@ fn stamps_same_page_twice() {
 
 #[test]
 fn omits_clip_when_not_provided() {
-    let Some(seal) = real_seal() else {
-        return;
-    };
     let (certificate, secret) = make_certificate();
+    let seal = synthetic_seal(&certificate, &secret);
     let producer = Sm2SesSignatureProducer::new(seal, certificate, secret.to_bytes().to_vec())
         .expect("producer");
     let stamp = StampAppearance {

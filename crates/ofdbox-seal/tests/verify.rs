@@ -1,6 +1,3 @@
-use std::fs;
-use std::path::PathBuf;
-
 use ofdbox_crypto::sm3_digest;
 use ofdbox_seal::{
     CertificatePolicy, SM2_SM3_SIGNATURE_OID, SealError, SealFormat, SealVerifyOptions,
@@ -275,36 +272,4 @@ fn checks_digest_based_certificate_list() {
         signed_gb_seal_with_property(property, &leaf, &leaf_key.to_bytes(), "1234567812345678");
     assert!(signer_in_seal(&seal, &leaf).expect("digest list"));
     assert!(!signer_in_seal(&seal, &test_root_certificate()).expect("digest list"));
-}
-
-#[test]
-fn verifies_real_seals_of_known_formats() {
-    let _ = dotenvy::dotenv();
-    let Some(dir) = std::env::var_os("OFDBOX_TESTDATA_DIR").map(PathBuf::from) else {
-        return;
-    };
-    if !dir.is_dir() {
-        return;
-    }
-    let mut paths = Vec::new();
-    collect_seals(&dir, &mut paths);
-
-    let mut known = 0usize;
-    let mut unknown = 0usize;
-    for path in &paths {
-        let bytes = fs::read(path).expect("read seal sample");
-        let format = fingerprint_seal(&bytes)
-            .expect("fingerprint real seal")
-            .format();
-        if format == SealFormat::Unknown {
-            unknown += 1;
-            continue;
-        }
-        known += 1;
-        verify_seal(&bytes, format).expect("verify real seal");
-    }
-    if !paths.is_empty() {
-        assert_eq!(known + unknown, paths.len());
-        assert!(known > 0);
-    }
 }

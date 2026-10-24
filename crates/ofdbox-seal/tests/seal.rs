@@ -1,6 +1,3 @@
-use std::fs;
-use std::path::PathBuf;
-
 use ofdbox_core::{OfdPackage, ReadOptions};
 use ofdbox_seal::{
     OuterSignatureShape, SealError, SealFormat, TimeType, fingerprint_seal, identify_seal_format,
@@ -187,40 +184,4 @@ fn reads_seal_only_on_demand() {
         &package.read_seal_bytes(&view).expect("read seal")[..],
         b"not-a-seal"
     );
-}
-
-#[test]
-fn parses_real_seal_samples() {
-    let _ = dotenvy::dotenv();
-    let Some(dir) = std::env::var_os("OFDBOX_TESTDATA_DIR").map(PathBuf::from) else {
-        return;
-    };
-    if !dir.is_dir() {
-        return;
-    }
-    let mut paths = Vec::new();
-    collect_seals(&dir, &mut paths);
-
-    let mut total = 0usize;
-    let mut gm_t_0031 = 0usize;
-    let mut gb_t_38540 = 0usize;
-    let mut unknown = 0usize;
-    let mut with_picture = 0usize;
-    for path in &paths {
-        let bytes = fs::read(path).expect("read seal sample");
-        total += 1;
-        let display = parse_seal_for_display(&bytes).expect("parse real seal");
-        match display.format() {
-            SealFormat::GmT0031 => gm_t_0031 += 1,
-            SealFormat::GbT38540 => gb_t_38540 += 1,
-            SealFormat::Unknown => unknown += 1,
-        }
-        if !display.picture.data.is_empty() {
-            with_picture += 1;
-        }
-    }
-    if total > 0 {
-        assert_eq!(gm_t_0031 + gb_t_38540 + unknown, total);
-        assert_eq!(with_picture, total);
-    }
 }

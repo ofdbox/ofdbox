@@ -19,7 +19,6 @@ zeroize.workspace = true
 
 [dev-dependencies]
 der.workspace = true
-dotenvy.workspace = true
 sm2.workspace = true
 x509-cert = { workspace = true, features = ["builder"] }
 zip.workspace = true

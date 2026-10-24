@@ -20,4 +20,3 @@ zeroize.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
-dotenvy.workspace = true

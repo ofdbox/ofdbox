@@ -267,45 +267,6 @@ fn strict_reparse_accepts_generated_structure() {
         .expect("strict signature");
 }
 
-#[test]
-fn signs_real_document() {
-    let _ = dotenvy::dotenv();
-    let Some(dir) = std::env::var_os("OFDBOX_TESTDATA_DIR").map(std::path::PathBuf::from) else {
-        return;
-    };
-    let path = dir.join("ofd-files").join("samples").join("图元对象.ofd");
-    if !path.is_file() {
-        return;
-    }
-    let bytes = std::fs::read(path).expect("read sample");
-    let (certificate, secret) = make_certificate();
-    let (signed, id) = sign(&bytes, &certificate, &secret);
-    assert_eq!(id, "s001");
-
-    let mut document = OfdPackage::from_bytes(signed).expect("open signed");
-    let root = document.parse_root().expect("root");
-    let has_link = root
-        .doc_bodies()
-        .next()
-        .map(|body| body.signatures().is_some())
-        .unwrap_or(false);
-    assert!(has_link);
-    let signature = document
-        .parse_signature("Sign_0/Signature.xml")
-        .expect("signature");
-    let verifiers = SignatureVerifiers::new().with(Box::new(Sm2SignedDataVerifier::new()));
-    document
-        .verify_signature(&signature, &verifiers)
-        .expect("verify");
-    let checks = document
-        .verify_references(&signature, &PasswordBackend::new(""))
-        .expect("references");
-    assert!(!checks.is_empty());
-    for check in checks {
-        assert_eq!(check.expected, check.actual, "{}", check.file_ref);
-    }
-}
-
 const ENTRIES: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
 <ofd:DocEntries xmlns:ofd="http://www.ofdspec.org/2016" ID="1" CreatorName="OFDBox" Version="1.0">
   <ofd:FileList>

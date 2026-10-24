@@ -1,15 +1,6 @@
 use std::io::{Cursor, Write};
-use std::path::PathBuf;
-
 use zip::ZipWriter;
 use zip::write::SimpleFileOptions;
-
-#[allow(dead_code)]
-pub fn testdata_dir() -> Option<PathBuf> {
-    let _ = dotenvy::dotenv();
-    let path = PathBuf::from(std::env::var_os("OFDBOX_TESTDATA_DIR")?);
-    path.is_dir().then_some(path)
-}
 
 #[allow(dead_code)]
 pub fn zip_with_entry(name: &str, data: &[u8]) -> Vec<u8> {

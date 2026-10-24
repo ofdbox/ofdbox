@@ -25,6 +25,7 @@
 
 ### 修复
 
+- 签名的 `BaseLoc` / `SignedValue` 写成不带前导 `/` 的包内全路径时，先按相对路径解析，找不到再回退到包根解析；`References` 里指向目录（以 `/` 结尾）的条目跳过，不再报缺少条目。
 - `OFDEntries` 引用图补标准 `ST_Loc` 字段 `SchemaLoc`（`CustomTag` 的 schema 路径）；只按标准定义的字段名收集，不按 `Loc` 后缀猜测厂商自定义字段。
 - `OFDEntries.xml` 按表 D.1 把 `File/@FileLoc` 作为属性读写（此前误作子元素）；`CreatorName`/`Version`/`CreationDate` 仍为根元素属性。严格模式下子元素 `FileLoc` 与缺失 `FileLoc` 属性都会报错。
 - 盖章外观的元素定位与插入改用 `XmlDocument` 语法树和源字节区间，不再按字符串查找标签；同时修正 `XmlDocument` 元素 `Span` 只覆盖开始标签的问题（结束事件时补齐到结束标签之后）。
@@ -42,6 +43,7 @@
 
 ### 变更
 
+- 测试改为按标准自行构造：盖章测试用 `SealBuilder` 现场生成印章，不再依赖外部样张；外部语料只保留一个 `ofdbox/tests/corpus_compat.rs`（`#[ignore]`，需 `OFDBOX_TESTDATA_DIR`），统一做读包、重打包、验签与引用摘要的兼容性统计。
 - 渲染、格式转换与文档生成迁至独立仓库 `ofdbox-folio`。
 - 批量转换命令行迁至 `ofdbox-reader`，删除 `ofdbox-cli`。
 - 删除 `ofdbox-render`；`ofdbox` 门面移除 render/ofd/pdf/cpu/image feature 与相关导出，只保留 core、crypto、seal。

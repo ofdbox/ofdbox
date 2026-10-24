@@ -32,5 +32,4 @@ getrandom.workspace = true
 
 [dev-dependencies]
 base64.workspace = true
-dotenvy.workspace = true
 x509-cert = { workspace = true, features = ["builder"] }

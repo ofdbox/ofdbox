@@ -184,26 +184,6 @@ fn package_parses_encryption_descriptions() {
 }
 
 #[test]
-fn real_hello_enc_sample_parses() {
-    let Some(dir) = fixtures::testdata_dir() else {
-        return;
-    };
-    let base = dir.join("ofd-files").join("hello-enc");
-    let encryptions = std::fs::read(base.join("Encryptions.xml")).expect("Encryptions.xml");
-    let view =
-        EncryptionsView::from_xml(&encryptions, ReadOptions::STRICT).expect("sample Encryptions");
-    let info = view.encrypt_infos().next().expect("EncryptInfo");
-    assert_eq!(info.encrypt_scope(), Some("All"));
-    assert_eq!(info.decrypt_seed_loc(), Some("/decryptseed.dat"));
-
-    let seed = std::fs::read(base.join("decryptseed.dat")).expect("decryptseed.dat");
-    let view = DecryptSeedView::from_xml(&seed, ReadOptions::LENIENT).expect("sample DecryptSeed");
-    let user = view.users().next().expect("UserInfo");
-    assert_eq!(user.user_name(), Some("777"));
-    assert!(user.encrypted_work_key().is_some());
-}
-
-#[test]
 fn encrypt_entries_alias_is_accepted_and_normalized() {
     let alias = ENTRIES_MAP
         .replace("<ofd:EncryptedEntries", "<ofd:EncryptEntries")
