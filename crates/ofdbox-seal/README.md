@@ -144,7 +144,17 @@ SEQUENCE {
 }
 ```
 
-当前**不写入** `timeStamp` 字段，见第 6 节。
+签章值产生后，才能向 TSA 请求时间戳并附加：
+
+```rust
+use ofdbox_seal::{attach_time_stamp, parse_ses_signature};
+
+let ses = parse_ses_signature(&signed_value)?;
+let token = request_timestamp_from_tsa(/* SM3(ses.signature) */)?;
+let signed_with_timestamp = attach_time_stamp(&signed_value, &token)?;
+```
+
+`attach_time_stamp` 只负责把令牌写入 `timeStamp [0]`，不校验令牌；验证见第 5 节。
 
 ---
 
@@ -248,21 +258,22 @@ timeStamp [0] BIT STRING OPTIONAL   -- 对签名值的时间戳，DER 编码
 
 时间戳同时支持长期验证（LTV）：证明签名发生在证书有效期内。
 
-### 5.4 当前实现状态
+### 5.4 当前实现
 
-- 解析 `SES_Signature` 时允许第 5 个字段存在，但**丢弃**，`SesSignature` 没有 `time_stamp` 字段；
-- `Sm2SesSignatureProducer` **不写入** `timeStamp`；
-- `verify_ses_signature` **不校验**时间戳；
-- 因此目前带时间戳的厂商签章只能“解析通过”，时间戳不被信任也不被验证。
+已实现：
 
-完整实现需要：
+- `SesSignature.time_stamp`：解析 `timeStamp [0]` 中的令牌 DER；
+- `attach_time_stamp`：把 TSA 令牌写入已有 `SES_Signature`（已有令牌会被替换）；
+- `parse_time_stamp_token`：解析 CMS `SignedData` 与 `TSTInfo`；
+- `verify_time_stamp_token`：校验 TSA 的 CMS 签名、`messageImprint` 与 `signature` 值一致；
+- `SesVerifyOptions.check_timestamp` / `with_timestamp_check`：验章时可选开启时间戳验证；
+- `SesVerifyOptions.timestamp_certificate`：提供 TSA 信任策略时校验证书链与 `timeStamping` EKU。
 
-1. `SesSignature.time_stamp: Option<&[u8]>`；
-2. producer 增加 `with_timestamp(token: Vec<u8>)`；
-3. 20520 `TimeStampToken` / `TSTInfo` 解析；
-4. TSA 证书信任策略与 CMS 签名验证；
-5. `messageImprint` 与 `signature` 值比对；
-6. 测试用本地合成 TSA 证书与令牌，不依赖真实 TSA。
+限制：
+
+- 只支持 **SM2 + SM3** 的令牌；
+- 不提供 TSA 网络客户端，令牌必须由调用方从 TSA 获取；
+- 未配置 TSA 信任策略时，只验证令牌签名与摘要，不建立信任。
 
 ---
 
@@ -277,8 +288,8 @@ timeStamp [0] BIT STRING OPTIONAL   -- 对签名值的时间戳，DER 编码
 | 验章（签章者、制章者、证书链、有效期） | 支持 |
 | 0031 印章制作 | 支持 |
 | 0031 签章值（`SES_sign`）生成 | **未实现**（当前只有 38540 `SES_Signature` 生产者） |
-| `timeStamp` 字段读写 | **未实现** |
-| 20520 时间戳验签 | **未实现** |
+| `timeStamp` 字段读写 | 支持 |
+| 20520 时间戳验签 | 支持（SM2/SM3，可选 TSA 信任链） |
 | 盖章外观 / OFD 集成 | 由 `ofdbox-core` 完成 |
 
 ---

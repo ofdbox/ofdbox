@@ -30,8 +30,10 @@ pub use ofdbox_seal as seal;
 #[cfg(feature = "seal")]
 pub use ofdbox_seal::{
     SealBuilder, SealFormat, SealPictureInput, SealSpec, SealStandard, SealVerifyOptions,
-    SesSignatureVerifier, SesVerifyOptions, Sm2SesSignatureProducer, parse_seal_for_display,
-    parse_ses_signature, signer_in_seal, verify_seal, verify_ses_signature,
+    SesSignatureVerifier, SesVerifyOptions, Sm2SesSignatureProducer, TimeStampToken,
+    TimeStampVerification, TimeStampVerifyOptions, attach_time_stamp, parse_seal_for_display,
+    parse_ses_signature, parse_time_stamp_token, signer_in_seal, verify_seal, verify_ses_signature,
+    verify_time_stamp_token,
 };
 
 /// 门面统一错误。

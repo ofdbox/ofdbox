@@ -19,6 +19,7 @@ mod gmt0031;
 mod oids;
 mod signature;
 mod time;
+mod timestamp;
 
 pub use certificate::{
     CertificatePolicy, CertificateValidation, validate_certificate, validate_certificate_at,
@@ -35,3 +36,7 @@ pub use gbt38540::{
     parse_ses_signature, verify_ses_signature,
 };
 pub use oids::SM2_SM3_SIGNATURE_OID;
+pub use timestamp::{
+    TimeStampToken, TimeStampVerification, TimeStampVerifyOptions, attach_time_stamp,
+    parse_time_stamp_token, verify_time_stamp_token,
+};

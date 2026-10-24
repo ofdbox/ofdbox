@@ -31,6 +31,7 @@ use crate::eseal::verify::{SealVerifyOptions, verify_seal_with_options};
 use crate::fingerprint::SealFormat;
 use crate::oids::SM2_SM3_SIGNATURE_OID;
 use crate::signature::verify_sm2;
+use crate::timestamp::{TimeStampVerification, TimeStampVerifyOptions, verify_time_stamp_token};
 
 /// `SES_Signature` 的类型化视图。
 #[derive(Clone, Debug)]
@@ -53,6 +54,8 @@ pub struct SesSignature<'a> {
     pub signature: &'a [u8],
     /// `TBS_Sign` 的完整 DER，验签对象。
     pub tbs: &'a [u8],
+    /// `timeStamp [0]` 中的时间戳令牌 DER；未携带时为 `None`。
+    pub time_stamp: Option<&'a [u8]>,
 }
 
 /// 解析 `SES_Signature`。
@@ -74,6 +77,22 @@ pub fn parse_ses_signature(bytes: &[u8]) -> Result<SesSignature<'_>, SealError> 
     let algorithm = der::oid(items[2])?;
     let signature =
         der::bit_string_content(items[3]).ok_or(SealError::Invalid("签章签名值无效"))?;
+    let time_stamp = match items.get(4) {
+        Some(item) => {
+            der::expect_tag(*item, 0xA0, "签章时间戳不是 [0] 显式标签")?;
+            let mut children = item.children()?;
+            let value = children
+                .next()
+                .ok_or(SealError::Invalid("签章时间戳为空"))??;
+            let token = der::bit_string_content(value)
+                .ok_or(SealError::Invalid("签章时间戳不是 BIT STRING"))?;
+            if children.next().is_some() {
+                return Err(SealError::Invalid("签章时间戳包含多余字段"));
+            }
+            Some(token)
+        }
+        None => None,
+    };
 
     let fields = der::items(tbs)?;
     if fields.len() < 5 {
@@ -96,6 +115,7 @@ pub fn parse_ses_signature(bytes: &[u8]) -> Result<SesSignature<'_>, SealError> 
         algorithm,
         signature,
         tbs: tbs.full,
+        time_stamp,
     })
 }
 
@@ -112,6 +132,10 @@ pub struct SesVerifyOptions<'a> {
     pub check_seal: bool,
     /// 是否要求签章者证书出现在印章的签章者证书列表中。
     pub check_signer: bool,
+    /// 是否验证 `timeStamp` 时间戳令牌。
+    pub check_timestamp: bool,
+    /// TSA 证书链验证策略；提供时会校验 `timeStamping` EKU。
+    pub timestamp_certificate: Option<&'a CertificatePolicy>,
 }
 
 impl<'a> Default for SesVerifyOptions<'a> {
@@ -122,6 +146,8 @@ impl<'a> Default for SesVerifyOptions<'a> {
             verification_time: None,
             check_seal: true,
             check_signer: true,
+            check_timestamp: false,
+            timestamp_certificate: None,
         }
     }
 }
@@ -155,6 +181,19 @@ impl<'a> SesVerifyOptions<'a> {
         self.check_signer = false;
         self
     }
+
+    /// 启用 `timeStamp` 时间戳令牌验证。
+    pub fn with_timestamp_check(mut self) -> Self {
+        self.check_timestamp = true;
+        self
+    }
+
+    /// 启用时间戳验证，并指定 TSA 证书链策略。
+    pub fn with_timestamp_certificate_policy(mut self, policy: &'a CertificatePolicy) -> Self {
+        self.check_timestamp = true;
+        self.timestamp_certificate = Some(policy);
+        self
+    }
 }
 
 /// 签章验证结果。
@@ -166,6 +205,8 @@ pub struct SesVerification {
     pub seal_format: Option<SealFormat>,
     /// 是否已确认签章者证书出现在印章列表中。
     pub signer_in_seal: bool,
+    /// 时间戳验证结果；未启用或未携带时间戳时为 `None`。
+    pub timestamp: Option<TimeStampVerification>,
 }
 
 /// 验证一个 `SES_Signature` 对 `content`（通常是 `Signature.xml` 字节）的签章。
@@ -200,6 +241,7 @@ pub fn verify_ses_signature(
         time_info: signature.time_info.to_owned(),
         seal_format: None,
         signer_in_seal: false,
+        timestamp: None,
     };
     if options.check_seal {
         let format = identify_seal_format(signature.seal)?;
@@ -228,6 +270,19 @@ pub fn verify_ses_signature(
         let verification = verify_seal_with_options(signature.seal, format, &seal_options)?;
         result.seal_format = Some(verification.format);
         result.signer_in_seal = check_signer;
+    }
+    if options.check_timestamp
+        && let Some(token) = signature.time_stamp
+    {
+        result.timestamp = Some(verify_time_stamp_token(
+            token,
+            signature.signature,
+            &TimeStampVerifyOptions {
+                dist_id: options.dist_id,
+                certificate: options.timestamp_certificate,
+                require_time_stamping_eku: options.timestamp_certificate.is_some(),
+            },
+        )?);
     }
     Ok(result)
 }
@@ -305,6 +360,8 @@ impl SignatureVerifier for SesSignatureVerifier {
             verification_time: None,
             check_seal: self.check_seal,
             check_signer: self.check_signer,
+            check_timestamp: false,
+            timestamp_certificate: None,
         };
         verify_ses_signature(signed_value, content, &options)
             .map(|_| ())

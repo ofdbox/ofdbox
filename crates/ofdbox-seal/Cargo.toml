@@ -16,9 +16,11 @@ ofdbox-core = { path = "../ofdbox-core", version = "0.0.1" }
 ofdbox-crypto = { path = "../ofdbox-crypto", version = "0.0.1" }
 x509-cert.workspace = true
 zeroize.workspace = true
+cms.workspace = true
 
 [dev-dependencies]
 der.workspace = true
 sm2.workspace = true
+sm3.workspace = true
 x509-cert = { workspace = true, features = ["builder"] }
 zip.workspace = true

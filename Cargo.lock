@@ -440,10 +440,12 @@ dependencies = [
 name = "ofdbox-seal"
 version = "0.0.1"
 dependencies = [
+ "cms",
  "der",
  "ofdbox-core",
  "ofdbox-crypto",
  "sm2",
+ "sm3",
  "x509-cert",
  "zeroize",
  "zip",

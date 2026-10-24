@@ -3,7 +3,7 @@ mod common;
 use ofdbox_core::{DEFAULT_SIGNATURE_METHOD, SignedValueProducer, SigningContext};
 use ofdbox_seal::{
     SealBuilder, SealError, SealPictureInput, SealSpec, SealStandard, SesVerifyOptions,
-    Sm2SesSignatureProducer, parse_ses_signature, verify_ses_signature,
+    Sm2SesSignatureProducer, attach_time_stamp, parse_ses_signature, verify_ses_signature,
 };
 use sm2::SecretKey;
 
@@ -179,4 +179,36 @@ fn gmt_0031_rejects_digest_list() {
             .build()
             .is_err()
     );
+}
+
+#[test]
+fn roundtrips_time_stamp_token() {
+    let secret = common::test_secret();
+    let certificate = common::test_certificate(&secret);
+    let seal = make_seal(std::slice::from_ref(&certificate), &certificate, &secret);
+    let token = vec![0x30, 0x03, 0x02, 0x01, 0x01];
+    let ses =
+        attach_time_stamp(&make_ses(CONTENT, seal, &certificate, &secret), &token).expect("attach");
+
+    let parsed = parse_ses_signature(&ses).expect("parse");
+    assert_eq!(parsed.time_stamp, Some(token.as_slice()));
+    verify_ses_signature(&ses, CONTENT, &SesVerifyOptions::default()).expect("verify");
+}
+
+#[test]
+fn rejects_time_stamp_with_wrong_tag() {
+    let secret = common::test_secret();
+    let certificate = common::test_certificate(&secret);
+    let seal = make_seal(std::slice::from_ref(&certificate), &certificate, &secret);
+    let token = vec![0x30, 0x03, 0x02, 0x01, 0x01];
+    let mut ses =
+        attach_time_stamp(&make_ses(CONTENT, seal, &certificate, &secret), &token).expect("attach");
+
+    // 令牌前 5 个字节依次是 A0 len 03 len 00，把 [0] 标签改成非法标签。
+    let position = ses
+        .windows(token.len())
+        .rposition(|window| window == token.as_slice())
+        .expect("token");
+    ses[position - 5] = 0x80;
+    assert!(parse_ses_signature(&ses).is_err());
 }
