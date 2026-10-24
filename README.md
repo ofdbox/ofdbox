@@ -20,6 +20,7 @@ OFDBox 是一个 Rust 实现的 OFD 版式文档工具箱，依据 GB/T 33190—
 
 | crate | 职责 |
 | --- | --- |
+| `ofdbox-algo` | 国密算法原语、OID 元数据与算法注册表；不依赖其他 `ofdbox-*` crate |
 | `ofdbox-core` | ZIP/XML 解析、OFD/GM 结构模型、严格写出、缓存、解密会话 |
 | `ofdbox-crypto` | SM3-KDF、SM4-CBC、SM2 加解密/签名、证书链、SignedData |
 | `ofdbox-seal` | 印章结构识别、图片提取、印章验签 |

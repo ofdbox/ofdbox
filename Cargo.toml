@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/ofdbox-core", "crates/ofdbox-crypto", "crates/ofdbox-seal", "crates/ofdbox"]
+members = ["crates/ofdbox-algo", "crates/ofdbox-core", "crates/ofdbox-crypto", "crates/ofdbox-seal", "crates/ofdbox"]
 
 [workspace.package]
 version = "0.0.1"

@@ -404,6 +404,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "ofdbox-algo"
+version = "0.1.0"
+dependencies = [
+ "cbc",
+ "sm2",
+ "sm3",
+ "sm4",
+ "zeroize",
+]
+
+[[package]]
 name = "ofdbox-core"
 version = "0.0.1"
 dependencies = [
