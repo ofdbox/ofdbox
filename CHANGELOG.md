@@ -47,6 +47,7 @@
 - 测试改为按标准自行构造：盖章测试用 `SealBuilder` 现场生成印章，加密测试用 `encrypt_package` 现场造包，不再依赖外部样张；外部语料只保留一个 `ofdbox/tests/corpus_compat.rs`（`#[ignore]`，需 `OFDBOX_TESTDATA_DIR`），统一做读包、重打包、验签与引用摘要的兼容性统计。
 - 35275 `SignedData` 测试补齐负例：detached 内容篡改、缺 `signedAttrs`、未知摘要算法、缺证书、签名值篡改，以及旧 SM2 签名 OID `.301.1` 的正向兼容。
 - 38540/0031 测试补齐负例：篡改原文/签名值、未知签名算法、截断、尾随非零字节、签章者不在印章列表、空证书列表、0031 不支持摘要列表。
+- 新增 33190 黄金对测试：`OFD.xml`、`Document.xml`、`Res`、`Annotations`、`PageAnnot`、`Signatures`、`Signature` 的严格解析、字段断言、`to_xml` 逐字节比对与严格负例。
 - 渲染、格式转换与文档生成迁至独立仓库 `ofdbox-folio`。
 - 批量转换命令行迁至 `ofdbox-reader`，删除 `ofdbox-cli`。
 - 删除 `ofdbox-render`；`ofdbox` 门面移除 render/ofd/pdf/cpu/image feature 与相关导出，只保留 core、crypto、seal。
