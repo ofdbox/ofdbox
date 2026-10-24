@@ -59,6 +59,18 @@ pub(crate) fn prepare(
     let document = String::from_utf8(package.read_entry(document_entry)?.to_vec())
         .map_err(|error| OfdError::InvalidStructure(format!("Document.xml 不是 UTF-8: {error}")))?;
 
+    let page_exists = package.parse_document()?.pages().is_some_and(|pages| {
+        pages
+            .pages()
+            .any(|page| page.id() == Some(stamp.page_id.as_str()))
+    });
+    if !page_exists {
+        return Err(OfdError::InvalidStructure(format!(
+            "Document.xml 中不存在页面 {}",
+            stamp.page_id
+        )));
+    }
+
     let document_res = element_text(&document, "DocumentRes").ok_or_else(|| {
         OfdError::InvalidStructure("盖章需要 Document.xml 声明 DocumentRes".to_owned())
     })?;

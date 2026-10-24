@@ -6,7 +6,8 @@ use std::time::Duration;
 use der::Encode;
 use der::asn1::{BitString, ObjectIdentifier};
 use ofdbox_core::{
-    DEFAULT_SIGNATURE_METHOD, OfdPackage, SignatureVerifiers, SigningRequest, StampAppearance,
+    DEFAULT_SIGNATURE_METHOD, OfdError, OfdPackage, SignatureVerifiers, SigningRequest,
+    StampAppearance,
 };
 use ofdbox_crypto::PasswordBackend;
 use ofdbox_seal::{SesSignatureVerifier, Sm2SesSignatureProducer, parse_ses_signature};
@@ -44,7 +45,7 @@ const DOCUMENT: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
     <ofd:PageArea><ofd:PhysicalBox>0 0 210 297</ofd:PhysicalBox></ofd:PageArea>
     <ofd:DocumentRes>DocumentRes.xml</ofd:DocumentRes>
   </ofd:CommonData>
-  <ofd:Pages><ofd:Page ID="1" BaseLoc="Pages/Page_0/Content.xml"/></ofd:Pages>
+  <ofd:Pages><ofd:Page ID="1" BaseLoc="Pages/Page_0/Content.xml"/><ofd:Page ID="A&amp;B/C" BaseLoc="Pages/Page_1/Content.xml"/></ofd:Pages>
   <ofd:Annotations>Annotations.xml</ofd:Annotations>
 </ofd:Document>"#;
 
@@ -154,12 +155,13 @@ fn package() -> Vec<u8> {
 
 fn package_with(document_res: &str, annotations: &str, extra: &[(&str, &str)]) -> Vec<u8> {
     let mut writer = ZipWriter::new(Cursor::new(Vec::new()));
-    let entries: [(&str, &[u8]); 5] = [
+    let entries: [(&str, &[u8]); 6] = [
         ("OFD.xml", OFD_XML.as_bytes()),
         ("Doc_0/Document.xml", DOCUMENT.as_bytes()),
         ("Doc_0/DocumentRes.xml", document_res.as_bytes()),
         ("Doc_0/Annotations.xml", annotations.as_bytes()),
         ("Doc_0/Pages/Page_0/Content.xml", CONTENT.as_bytes()),
+        ("Doc_0/Pages/Page_1/Content.xml", CONTENT.as_bytes()),
     ];
     for (name, data) in entries {
         writer
@@ -425,4 +427,29 @@ fn reuses_existing_page_entry() {
     assert!(annotation.contains("ID=\"1\""));
     assert!(annotation.contains("ID=\"3\""));
     assert!(annotation.contains("Type=\"Stamp\""));
+}
+
+#[test]
+fn rejects_unknown_page_id() {
+    let Some(seal) = real_seal() else {
+        return;
+    };
+    let (certificate, secret) = make_certificate();
+    let producer = Sm2SesSignatureProducer::new(seal, certificate, secret.to_bytes().to_vec())
+        .expect("producer");
+    let stamp = StampAppearance {
+        page_id: "2".to_owned(),
+        boundary: [10.0, 20.0, 40.0, 40.0],
+        clip: None,
+        image: PNG.to_vec(),
+        image_format: "PNG".to_owned(),
+        image_width: 40.0,
+        image_height: 40.0,
+    };
+    let request = SigningRequest::new(DEFAULT_SIGNATURE_METHOD, "20261024050000").with_stamp(stamp);
+    let mut document = OfdPackage::from_bytes(package()).expect("open");
+    let error = document
+        .sign_package(&request, &producer, &mut Cursor::new(Vec::new()))
+        .expect_err("unknown page");
+    assert!(matches!(error, OfdError::InvalidStructure(_)));
 }
