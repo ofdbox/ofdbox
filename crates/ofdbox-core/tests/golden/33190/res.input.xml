@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ofd:Res xmlns:ofd="http://www.ofdspec.org/2016" BaseLoc="Res">
+  <ofd:MultiMedias>
+    <ofd:MultiMedia ID="1" Type="Image" Format="PNG"><ofd:MediaFile>image_0.png</ofd:MediaFile></ofd:MultiMedia>
+  </ofd:MultiMedias>
+  <ofd:Fonts>
+    <ofd:Font ID="2" FontName="SimSun" FamilyName="SimSun"><ofd:FontFile>font_0.ttf</ofd:FontFile></ofd:Font>
+  </ofd:Fonts>
+</ofd:Res>
