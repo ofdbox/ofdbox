@@ -288,7 +288,7 @@ timeStamp [0] BIT STRING OPTIONAL   -- 对签名值的时间戳，DER 编码
 | 签章（38540 `SES_Signature`） | 支持 |
 | 验章（签章者、制章者、证书链、有效期） | 支持 |
 | 0031 印章制作 | 支持 |
-| 0031 签章值（`SES_sign`）生成 | **未实现**（当前只有 38540 `SES_Signature` 生产者） |
+| GM/T 0031 签章值（`SES_sign`）解析/验签/生成 | 支持 |
 | `timeStamp` 字段读写 | 支持 |
 | 20520 时间戳验签 | 支持（SM2/SM3，可选 TSA 信任链） |
 | 盖章外观 / OFD 集成 | 由 `ofdbox-core` 完成 |
