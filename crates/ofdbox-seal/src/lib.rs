@@ -15,6 +15,7 @@ mod error;
 mod fingerprint;
 mod oids;
 mod seal;
+mod ses_signature;
 mod signature;
 mod time;
 mod verify;
@@ -28,6 +29,10 @@ pub use oids::SM2_SM3_SIGNATURE_OID;
 pub use seal::{
     SealDisplay, SealHeader, SealPicture, SealProperty, fingerprint_seal, identify_seal_format,
     parse_seal_for_display,
+};
+pub use ses_signature::{
+    SesSignature, SesSignatureVerifier, SesVerification, SesVerifyOptions, parse_ses_signature,
+    verify_ses_signature,
 };
 pub use verify::{
     SealVerification, SealVerifyOptions, signer_in_seal, verify_seal, verify_seal_with_options,

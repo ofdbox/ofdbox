@@ -12,12 +12,12 @@ categories = ["cryptography"]
 description = "电子印章结构的格式识别与解析。"
 
 [dependencies]
+ofdbox-core = { path = "../ofdbox-core", version = "0.0.1" }
 ofdbox-crypto = { path = "../ofdbox-crypto", version = "0.0.1" }
 x509-cert.workspace = true
 
 [dev-dependencies]
 dotenvy.workspace = true
-ofdbox-core = { path = "../ofdbox-core", version = "0.0.1" }
 sm2.workspace = true
 x509-cert = { workspace = true, features = ["builder"] }
 zip.workspace = true

@@ -131,9 +131,10 @@ pub(crate) fn parse_tlv(
 }
 
 pub(crate) fn bit_string_content(tlv: Tlv<'_>) -> Option<&[u8]> {
-    if tlv.tag != TAG_BIT_STRING || tlv.value.is_empty() || tlv.value[0] != 0 {
+    if tlv.tag != TAG_BIT_STRING || tlv.value.is_empty() {
         return None;
     }
+    // 部分厂商把 unused bits 写成非 0；内容仍按字节串解释。
     Some(&tlv.value[1..])
 }
 

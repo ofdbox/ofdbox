@@ -4,6 +4,7 @@
 
 ### 新增
 
+- `ofdbox-seal`：GB/T 38540 `SES_Signature` 解析与验签（`parse_ses_signature` / `verify_ses_signature` / `SesSignatureVerifier`），验证原文杂凑值、签章者签名、内嵌印章与签章者证书列表；43 份真实 `Type=Seal` 样本全部验通。
 - `ofdbox-core`：`OfdPackage::write_to` / `write_with` / `to_bytes` / `save` 重打包与编辑写出。未修改的 entry 直接复制压缩数据并保留压缩方式、时间、权限、extra field、文件注释与包注释；非 UTF-8 名称改用原始名称字节复制。
 - `ofdbox-core`：`OfdPackage::write_decrypted_to` 解密另存为未加密包，返回被移除条目与签名/完整性引用告警。
 - `ofdbox-core`：`PackageEdits`（替换/删除/新增）与 `PackageWriteOptions`（保留条目、压缩方式、时间、目录条目）。
@@ -25,6 +26,7 @@
 - `CheckMethod` 按 GB/T 33190 表 68 作为自由字符串校验，不再限定 `MD5`/`SHA1`/`SM3`（真实文件大量写 SM3 的 OID 与子弧写法）；生成的签名默认写 `1.2.156.10197.1.401`，与真实文件一致。
 - 示例与签名用例的 `SignatureDateTime` 改为 14 位 `YYYYMMDDHHMMSS`，与真实签名文件一致。
 - `signedAttrs` 补充 `signingTime`（UTCTime），与真实签名文件的属性集合一致（contentType + signingTime + messageDigest）。
+- `ofdbox-seal` 兼容厂商写法：BIT STRING 的 unused bits 非 0 时仍按字节串解释；`SES_Signature` 末尾容忍全零填充；签章者证书列表类型 3（厂商扩展）无法比对时跳过匹配但仍验证印章签名。
 - CI 的 feature matrix 改用现存 crate 与 feature，删除已无二进制目标的 release 工作流。
 
 ### 变更
