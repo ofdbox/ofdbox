@@ -140,6 +140,25 @@ impl AlgorithmRegistry {
         }
     }
 
+    /// 按复合算法 OID 生成签名。
+    pub fn sign_suite(
+        &self,
+        suite_oid: &str,
+        key: &crate::key::SecretKeyRef<'_>,
+        message: &[u8],
+        params: &SignatureParams<'_>,
+    ) -> Result<Vec<u8>, AlgorithmError> {
+        let suite = self.suite(suite_oid)?;
+        let signature_algorithm = self.signature(suite.signature_oid)?;
+        match suite.mode {
+            SuiteMode::Integrated => signature_algorithm.sign(key, message, params),
+            SuiteMode::Prehashed => {
+                let digest = self.digest(suite.digest_oid)?;
+                signature_algorithm.sign(key, &digest.digest(message), params)
+            }
+        }
+    }
+
     fn mismatch_or_unknown(&self, oid: &str, expected: &'static str) -> AlgorithmError {
         let actual = if self.digests.contains_key(oid) {
             Some("digest")

@@ -409,9 +409,12 @@ name = "ofdbox-algo"
 version = "0.1.0"
 dependencies = [
  "cbc",
+ "der",
+ "getrandom",
  "sm2",
  "sm3",
  "sm4",
+ "x509-cert",
  "zeroize",
 ]
 

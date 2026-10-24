@@ -8,9 +8,18 @@ description = "国产密码算法与 OID 注册表"
 keywords = ["gm", "sm2", "sm3", "sm4", "oid"]
 categories = ["cryptography"]
 
+[features]
+default = []
+x509 = ["dep:x509-cert", "dep:der"]
+
 [dependencies]
 sm3 = "0.5"
 sm2 = { version = "0.14", default-features = false, features = ["alloc", "arithmetic", "dsa", "der", "pkcs8", "pke", "precomputed-tables", "std"] }
 sm4 = "0.6"
 cbc = "0.2"
 zeroize = { version = "1", features = ["derive"] }
+x509-cert = { version = "0.3", default-features = false, features = ["std"], optional = true }
+der = { version = "0.8", optional = true }
+
+[dev-dependencies]
+getrandom = { version = "0.4", features = ["sys_rng"] }

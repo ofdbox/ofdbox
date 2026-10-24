@@ -141,3 +141,45 @@ fn algo_rejects_invalid_signing_key() {
         Err(AlgorithmError::InvalidKey)
     ));
 }
+
+#[test]
+fn registry_signs_and_verifies_suite() {
+    let registry = AlgorithmRegistry::gm_default();
+    let secret = sm2::SecretKey::from_slice(&[0x55u8; 32]).expect("secret");
+    let public = secret.public_key().to_sec1_bytes();
+    let secret_bytes = secret.to_bytes();
+    let params = SignatureParams::default();
+    let secret_ref = SecretKeyRef::new(SM2_CURVE_OID, &secret_bytes);
+
+    let signature = registry
+        .sign_suite(SM2_SM3_SIGN_OID, &secret_ref, b"suite sign", &params)
+        .expect("sign suite");
+    let key = PublicKeyRef::new(SM2_CURVE_OID, &public);
+    registry
+        .verify_suite(SM2_SM3_SIGN_OID, &key, b"suite sign", &signature, &params)
+        .expect("verify suite");
+}
+
+#[test]
+fn sm2_encrypt_roundtrip() {
+    let secret = sm2::SecretKey::from_slice(&[0x66u8; 32]).expect("secret");
+    let public = secret.public_key().to_sec1_bytes();
+    let mut rng = getrandom::SysRng;
+    let ciphertext =
+        ofdbox_algo::sm2_encrypt(&public, b"OFDBox plaintext", &mut rng).expect("encrypt");
+    let plaintext = ofdbox_algo::sm2_decrypt(&secret.to_bytes(), &ciphertext).expect("decrypt");
+    assert_eq!(plaintext, b"OFDBox plaintext");
+}
+
+#[cfg(feature = "x509")]
+#[test]
+fn converts_spki_to_public_key() {
+    use sm2::pkcs8::EncodePublicKey;
+
+    let secret = sm2::SecretKey::from_slice(&[0x77u8; 32]).expect("secret");
+    let signing = sm2::dsa::SigningKey::new("1234567812345678", &secret).expect("signing key");
+    let spki = signing.verifying_key().to_public_key_der().expect("spki");
+    let key = ofdbox_algo::public_key_from_spki(spki.as_bytes()).expect("public key");
+    assert_eq!(key.algorithm_oid, SM2_CURVE_OID);
+    assert_eq!(key.key_bytes, secret.public_key().to_sec1_bytes().to_vec());
+}
