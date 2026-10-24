@@ -13,6 +13,7 @@
 - `ofdbox-core`：`sign_package` 生成 `Type=Sign` 数字签名：按 `ProtectScope` 选文件、算 `References`、组装 `Signature.xml`、更新 `Signatures.xml`、必要时给 `OFD.xml` 补链接，再经 `PackageEdits` 写包；签名值由 `SignedValueProducer` 产出。
 - `ofdbox-crypto`：`Sm2SignedDataProducer` 产出 GB/T 35275 `SignedData`（`.2.2`、SM3、纯 SM2 `.301.1`），并内置 `messageDigest`/`contentType` 签名属性。
 - `ofdbox-crypto`：摘要校验支持 MD5 与 SHA1，用于历史文档的 `References`。
+- `ofdbox`：门面导出 `EncryptOptions`、`EncryptionScheme` 与 `encrypt_package`，示例演示“签名 → 口令加密 → 解密验签”全流程。
 
 ### 修复
 

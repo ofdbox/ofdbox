@@ -10,8 +10,9 @@ use std::time::Duration;
 use der::Encode;
 use der::asn1::{BitString, ObjectIdentifier};
 use ofdbox::{
-    DEFAULT_SIGNATURE_METHOD, OfdPackage, PasswordBackend, SignatureVerifiers, SigningRequest,
-    Sm2SignedDataProducer, Sm2SignedDataVerifier,
+    DEFAULT_SIGNATURE_METHOD, EncryptOptions, OfdError, OfdPackage, PasswordBackend,
+    SignatureVerifiers, SigningRequest, Sm2SignedDataProducer, Sm2SignedDataVerifier,
+    encrypt_package,
 };
 use sm2::SecretKey;
 use sm2::dsa::DerSignature;
@@ -115,12 +116,54 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let entry = index.signatures().next().expect("签名记录");
     let signature = saved.parse_signature(entry.base_loc().expect("BaseLoc"))?;
     saved.verify_signature(&signature, &verifiers)?;
-    let checks = saved.verify_references(&signature, &PasswordBackend::new("123456"))?;
+    let checks = saved.verify_references(&signature, &PasswordBackend::new(""))?;
     println!(
         "7. 重新打开验签通过，引用摘要 {}/{} 一致",
         checks.iter().filter(|c| c.expected == c.actual).count(),
         checks.len()
     );
+
+    // 8. 打包时加口令：整包按 GM/T 0099 口令方案加密后再写入 target。
+    let password = "123456";
+    let encrypted = encrypt_package(&signed, &EncryptOptions::password("alice", password))?;
+    let encrypted_path = target_dir.join("signed-encrypted-example.ofd");
+    std::fs::write(&encrypted_path, &encrypted)?;
+    let encrypted_path = std::fs::canonicalize(&encrypted_path)?;
+    let encrypted_display = encrypted_path.to_string_lossy();
+    let encrypted_display = encrypted_display
+        .strip_prefix(r"\\?\")
+        .unwrap_or(&encrypted_display);
+    println!("8. 已生成口令加密包 {encrypted_display}（口令 {password}）");
+
+    // 9. 不传口令打开应被拒绝。
+    let mut locked = OfdPackage::from_bytes(encrypted.clone())?;
+    match locked.parse_root() {
+        Err(OfdError::EncryptionRequired) => {
+            println!("9. 未传口令：按预期返回 EncryptionRequired");
+        }
+        other => return Err(format!("未加密包预期失败，实际 {other:?}").into()),
+    }
+
+    // 10. 传入口令解密，再验签。
+    let mut opened = OfdPackage::from_bytes(encrypted.clone())?;
+    opened.enable_decryption(Box::new(PasswordBackend::new(password)))?;
+    let index = opened.parse_signatures()?;
+    let entry = index.signatures().next().expect("签名记录");
+    let signature = opened.parse_signature(entry.base_loc().expect("BaseLoc"))?;
+    opened.verify_signature(&signature, &verifiers)?;
+    let checks = opened.verify_references(&signature, &PasswordBackend::new(""))?;
+    println!(
+        "10. 输入口令解密后验签通过，引用摘要 {}/{} 一致",
+        checks.iter().filter(|c| c.expected == c.actual).count(),
+        checks.len()
+    );
+
+    // 11. 错误口令应失败。
+    let mut wrong = OfdPackage::from_bytes(encrypted)?;
+    match wrong.enable_decryption(Box::new(PasswordBackend::new("wrong-password"))) {
+        Ok(()) => return Err("错误口令不应解出文件密钥".into()),
+        Err(error) => println!("11. 错误口令被拒绝：{error}"),
+    }
     Ok(())
 }
 
