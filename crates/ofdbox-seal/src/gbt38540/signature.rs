@@ -293,6 +293,8 @@ pub struct SesSignatureVerifier {
     certificate_policy: Option<CertificatePolicy>,
     check_seal: bool,
     check_signer: bool,
+    check_timestamp: bool,
+    timestamp_certificate_policy: Option<CertificatePolicy>,
 }
 
 impl SesSignatureVerifier {
@@ -303,6 +305,8 @@ impl SesSignatureVerifier {
             certificate_policy: None,
             check_seal: true,
             check_signer: true,
+            check_timestamp: false,
+            timestamp_certificate_policy: None,
         }
     }
 
@@ -327,6 +331,19 @@ impl SesSignatureVerifier {
     /// 关闭签章者证书匹配。
     pub fn without_signer_check(mut self) -> Self {
         self.check_signer = false;
+        self
+    }
+
+    /// 启用时间戳验证。
+    pub fn with_timestamp_check(mut self) -> Self {
+        self.check_timestamp = true;
+        self
+    }
+
+    /// 启用时间戳验证，并指定 TSA 证书链策略。
+    pub fn with_timestamp_certificate_policy(mut self, policy: CertificatePolicy) -> Self {
+        self.check_timestamp = true;
+        self.timestamp_certificate_policy = Some(policy);
         self
     }
 }
@@ -360,8 +377,8 @@ impl SignatureVerifier for SesSignatureVerifier {
             verification_time: None,
             check_seal: self.check_seal,
             check_signer: self.check_signer,
-            check_timestamp: false,
-            timestamp_certificate: None,
+            check_timestamp: self.check_timestamp,
+            timestamp_certificate: self.timestamp_certificate_policy.as_ref(),
         };
         verify_ses_signature(signed_value, content, &options)
             .map(|_| ())

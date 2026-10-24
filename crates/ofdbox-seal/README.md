@@ -267,6 +267,7 @@ timeStamp [0] BIT STRING OPTIONAL   -- 对签名值的时间戳，DER 编码
 - `parse_time_stamp_token`：解析 CMS `SignedData` 与 `TSTInfo`；
 - `verify_time_stamp_token`：校验 TSA 的 CMS 签名、`messageImprint` 与 `signature` 值一致；
 - `SesVerifyOptions.check_timestamp` / `with_timestamp_check`：验章时可选开启时间戳验证；
+- `SesSignatureVerifier::with_timestamp_check` / `with_timestamp_certificate_policy`：在 OFD 统一验签入口启用时间戳验证；
 - `SesVerifyOptions.timestamp_certificate`：提供 TSA 信任策略时校验证书链与 `timeStamping` EKU。
 
 限制：
