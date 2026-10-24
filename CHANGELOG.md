@@ -5,6 +5,7 @@
 ### 新增
 
 - 新增独立 crate `ofdbox-algo`：国密算法原语与 OID 注册表，不依赖其他 `ofdbox-*` crate。提供 SM3、SM2-1 签名/验签、SM2+SM3 复合签名、SM4-CBC、SM3-KDF，以及按角色（digest / signature / suite / cipher / kdf）注册的 `AlgorithmRegistry`；`ofdbox-crypto` 的 `sign_sm3` 改为复用。
+- `ofdbox-seal`：GM/T 0031 签章值支持。`SES_sign` 解析（`SEQUENCE { SES_SignInfo, BIT STRING }`）、SM2 验签、内嵌 `SESeal` 与签章者列表校验、`Sm2GmT0031SignatureProducer` 生成，以及 `SignedValueFormat::GmT0031Signature` 内容嗅探。
 - `ofdbox-seal`：GB/T 20520 时间戳支持。`SesSignature.time_stamp` 读写 38540 `timeStamp [0]`；`attach_time_stamp` 把 TSA 令牌附加到已有签章值；`parse_time_stamp_token` / `verify_time_stamp_token` 解析 CMS `SignedData`、`TSTInfo`，校验 TSA 签名、`messageImprint` 与签章值一致，可选校验 TSA 证书链与 `timeStamping` EKU；`SesVerifyOptions::with_timestamp_check` 与 `SesSignatureVerifier::with_timestamp_check` 在验章时启用。
 - `ofdbox-core`：`OfdPackage::write_ofd_entries` 生成并签署 `OFDEntries.xml`：按引用图列出夹带文件，写入 `FileList` 与 `SignedValueLoc`，签名值由 `SignedValueProducer` 产出；`EntriesWriteOptions` 控制 ID、元数据、签名值路径与是否覆盖。
 - `ofdbox-core`：`OfdPackage::verify_ofd_entries` 校验 `OFDEntries.xml`：`FileList` 中的文件必须存在且不重复，`SignedValueLoc` 指向的签名值按 GB/T 35275 验证其对 `OFDEntries.xml` 字节的签名；并沿 `OFD.xml`、`Encryptions.xml` 遍历文档引用图，报告未列入 `FileList` 的夹带文件以及“列入但仍被引用”的不一致。

@@ -30,10 +30,12 @@ pub use ofdbox_crypto::{
 pub use ofdbox_seal as seal;
 #[cfg(feature = "seal")]
 pub use ofdbox_seal::{
+    GmT0031Signature, GmT0031SignatureVerifier, GmT0031Verification, GmT0031VerifyOptions,
     SealBuilder, SealFormat, SealPictureInput, SealSpec, SealStandard, SealVerifyOptions,
-    SesSignatureVerifier, SesVerifyOptions, Sm2SesSignatureProducer, TimeStampToken,
-    TimeStampVerification, TimeStampVerifyOptions, attach_time_stamp, parse_seal_for_display,
-    parse_ses_signature, parse_time_stamp_token, signer_in_seal, verify_seal, verify_ses_signature,
+    SesSignatureVerifier, SesVerifyOptions, Sm2GmT0031SignatureProducer, Sm2SesSignatureProducer,
+    TimeStampToken, TimeStampVerification, TimeStampVerifyOptions, attach_time_stamp,
+    parse_gmt0031_signature, parse_seal_for_display, parse_ses_signature, parse_time_stamp_token,
+    signer_in_seal, verify_gmt0031_signature, verify_seal, verify_ses_signature,
     verify_time_stamp_token,
 };
 

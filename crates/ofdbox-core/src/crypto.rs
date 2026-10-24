@@ -184,6 +184,8 @@ pub enum SignedValueFormat {
     SignedData,
     /// GB/T 38540 的 `SES_Signature`。
     SesSignature,
+    /// GM/T 0031 的 `SES_sign`。
+    GmT0031Signature,
     /// 其他或无法识别的厂商自定义结构。
     Other,
 }
@@ -237,8 +239,16 @@ pub fn detect_signed_value_format(value: &[u8]) -> SignedValueFormat {
         return SignedValueFormat::Other;
     }
     if first_tag == 0x30 {
-        // SES_Signature ::= SEQUENCE { toSign, cert OCTET STRING, alg OID, signature BIT STRING, ... }
+        // GM/T 0031 `SES_sign ::= SEQUENCE { SES_SignInfo, BIT STRING }`
         let mut rest = &content[first_len..];
+        if let Some((second_tag, _, _)) = read_tlv(rest)
+            && second_tag == 0x03
+            && is_gmt0031_sign_info(first)
+        {
+            return SignedValueFormat::GmT0031Signature;
+        }
+
+        // SES_Signature ::= SEQUENCE { toSign, cert OCTET STRING, alg OID, signature BIT STRING, ... }
         let mut tags = [0u8; 3];
         for slot in &mut tags {
             let Some((tag, _, len)) = read_tlv(rest) else {
@@ -252,6 +262,20 @@ pub fn detect_signed_value_format(value: &[u8]) -> SignedValueFormat {
         }
     }
     SignedValueFormat::Other
+}
+
+/// `SES_SignInfo` 的字段形状：INTEGER 版本 + SEQUENCE 印章。
+fn is_gmt0031_sign_info(bytes: &[u8]) -> bool {
+    let Some((tag, _, len)) = read_tlv(bytes) else {
+        return false;
+    };
+    if tag != 0x02 {
+        return false;
+    }
+    let Some((next_tag, _, _)) = read_tlv(&bytes[len..]) else {
+        return false;
+    };
+    next_tag == 0x30
 }
 
 /// 签名值验签后端。
@@ -381,6 +405,13 @@ mod tests {
                 0x00,
             ]),
             SignedValueFormat::SesSignature
+        );
+        // GM/T 0031 SES_sign：SEQUENCE { SEQUENCE { INTEGER, SEQUENCE }, BIT STRING }
+        assert_eq!(
+            detect_signed_value_format(&[
+                0x30, 0x0A, 0x30, 0x05, 0x02, 0x01, 0x01, 0x30, 0x00, 0x03, 0x01, 0x00,
+            ]),
+            SignedValueFormat::GmT0031Signature
         );
         // 厂商自定义 / 非 DER
         assert_eq!(
