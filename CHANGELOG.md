@@ -25,6 +25,7 @@
 
 ### 修复
 
+- 0099 严格校验：`Encryptions` 检查 `EncryptInfo/@ID` 唯一，`EncryptedEntries` 的 `EncryptEntry` 要求 `EPath`；新增重复 ID、缺 `EPath`、篡改密文与密钥描述的负例测试。
 - 签名的 `BaseLoc` / `SignedValue` 写成不带前导 `/` 的包内全路径时，先按相对路径解析，找不到再回退到包根解析；`References` 里指向目录（以 `/` 结尾）的条目跳过，不再报缺少条目。
 - `OFDEntries` 引用图补标准 `ST_Loc` 字段 `SchemaLoc`（`CustomTag` 的 schema 路径）；只按标准定义的字段名收集，不按 `Loc` 后缀猜测厂商自定义字段。
 - `OFDEntries.xml` 按表 D.1 把 `File/@FileLoc` 作为属性读写（此前误作子元素）；`CreatorName`/`Version`/`CreationDate` 仍为根元素属性。严格模式下子元素 `FileLoc` 与缺失 `FileLoc` 属性都会报错。

@@ -128,7 +128,7 @@ fn validate_encrypt_entry(doc: &XmlDocument, node: NodeId, diagnostics: &mut Vec
         doc,
         node,
         &["Path", "EPath", "DecryptSeedLoc"],
-        &["Path"],
+        &["Path", "EPath"],
         diagnostics,
     );
     check_children_unordered(doc, node, &["DecryptSeedLoc"], &[], &[], diagnostics);

@@ -1,4 +1,4 @@
-use std::io::{Cursor, Write};
+use std::io::{Cursor, Read, Write};
 
 use ofdbox_core::{OfdError, OfdPackage};
 use ofdbox_crypto::{EncryptOptions, PasswordBackend, encrypt_package};
@@ -182,4 +182,64 @@ fn writes_plain_package_from_encrypted() {
     let mut plain = OfdPackage::from_bytes(output.into_inner()).expect("open plain");
     plain.parse_root().expect("plain root");
     plain.parse_document().expect("plain document");
+}
+
+#[test]
+fn tampered_ciphertext_is_rejected() {
+    let plain = zip_with_entries(&[
+        ("OFD.xml", ROOT.as_bytes()),
+        ("Doc_0/Document.xml", DOCUMENT.as_bytes()),
+    ]);
+    let encrypted =
+        encrypt_package(&plain, &EncryptOptions::password("alice", "secret")).expect("encrypt");
+    let corrupted = rewrite_entry(&encrypted, "ofd.dat", |data| {
+        data[0] ^= 0xFF;
+    });
+    let mut package = OfdPackage::from_bytes(corrupted).expect("open");
+    package
+        .enable_decryption(Box::new(PasswordBackend::new("secret")))
+        .expect("seed intact");
+    assert!(package.parse_root().is_err());
+}
+
+#[test]
+fn tampered_decrypt_seed_is_rejected() {
+    let plain = zip_with_entries(&[
+        ("OFD.xml", ROOT.as_bytes()),
+        ("Doc_0/Document.xml", DOCUMENT.as_bytes()),
+    ]);
+    let encrypted =
+        encrypt_package(&plain, &EncryptOptions::password("alice", "secret")).expect("encrypt");
+    let corrupted = rewrite_entry(&encrypted, "decryptseed.dat", |data| {
+        data.fill(b'x');
+    });
+    let mut package = OfdPackage::from_bytes(corrupted).expect("open");
+    assert!(
+        package
+            .enable_decryption(Box::new(PasswordBackend::new("secret")))
+            .is_err()
+    );
+}
+
+fn rewrite_entry(bytes: &[u8], target: &str, mutate: impl FnOnce(&mut Vec<u8>)) -> Vec<u8> {
+    let reader = Cursor::new(bytes.to_vec());
+    let mut archive = zip::ZipArchive::new(reader).expect("zip");
+    let mut writer = ZipWriter::new(Cursor::new(Vec::new()));
+    let mut mutate = Some(mutate);
+    for index in 0..archive.len() {
+        let mut entry = archive.by_index(index).expect("entry");
+        let name = entry.name().expect("name").into_owned();
+        let mut data = Vec::new();
+        entry.read_to_end(&mut data).expect("read");
+        if name.eq_ignore_ascii_case(target)
+            && let Some(mutate) = mutate.take()
+        {
+            mutate(&mut data);
+        }
+        writer
+            .start_file(name, SimpleFileOptions::default())
+            .expect("start");
+        writer.write_all(&data).expect("write");
+    }
+    writer.finish().expect("finish").into_inner()
 }

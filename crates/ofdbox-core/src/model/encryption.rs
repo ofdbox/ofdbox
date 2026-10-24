@@ -1,6 +1,7 @@
+use std::collections::HashSet;
 use std::sync::Arc;
 
-use crate::error::{Diagnostic, OfdError};
+use crate::error::{Diagnostic, DiagnosticCode, OfdError};
 use crate::model::ofd::{
     check_attributes, check_children_unordered, check_namespace, validate_text_element,
 };
@@ -72,7 +73,17 @@ impl EncryptionsView {
             &["EncryptInfo"],
             &mut diagnostics,
         );
+        let mut ids = HashSet::new();
         for info in self.doc.children_named(self.node, "EncryptInfo") {
+            if let Some(id) = self.doc.attribute(info, "ID")
+                && !ids.insert(id.to_owned())
+            {
+                diagnostics.push(Diagnostic::new(
+                    DiagnosticCode::DuplicateElement,
+                    format!("{}/@ID", self.doc.path(info)),
+                    "EncryptInfo 的 ID 重复",
+                ));
+            }
             validate_encrypt_info(&self.doc, info, &mut diagnostics);
         }
         if diagnostics.is_empty() {
