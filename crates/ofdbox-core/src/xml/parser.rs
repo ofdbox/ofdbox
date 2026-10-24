@@ -94,7 +94,10 @@ pub fn parse_xml(bytes: &[u8], options: ReadOptions) -> Result<XmlDocument, OfdE
                 }
             }
             Event::End(_) => {
-                stack.pop();
+                if let Some(id) = stack.pop() {
+                    // 元素跨度覆盖完整元素（开始标签到结束标签之后）。
+                    nodes[id].span.end = reader.buffer_position() as usize;
+                }
             }
             Event::Eof => break,
             _ => {}

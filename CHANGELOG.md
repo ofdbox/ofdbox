@@ -23,6 +23,7 @@
 
 ### 修复
 
+- 盖章外观的元素定位与插入改用 `XmlDocument` 语法树和源字节区间，不再按字符串查找标签；同时修正 `XmlDocument` 元素 `Span` 只覆盖开始标签的问题（结束事件时补齐到结束标签之后）。
 - 盖章外观：页 ID 与图片格式写入 XML 前转义；注释/资源文件名改用数字 ID，不再把页 ID 带进包内路径；支持 `<ofd:Annotations/>`、`<ofd:MultiMedias/>` 等自闭合容器并跳过 XML 注释；同一页已有 `<ofd:Page>` 时复用其注释文件，不再追加重复条目；`MaxUnitID` 缺失改为报错，并校验盖章页 ID 存在于 `Document/Pages`、盖章/裁剪/图片尺寸为有限正数。
 - 按 GM/T 0099 附录 C.1，`UserInfo` 缺少 `IVValue` 时按 16 个 0 处理，不再跳过该用户。
 - 按 GM/T 0099 附录 C.4 与图 C.3，`EncryptEntry/@DecryptSeedLoc` 改为属性读写（仍接受子元素旧写法），解密时按条目取独立密钥；单个条目解不开不再影响其他条目。

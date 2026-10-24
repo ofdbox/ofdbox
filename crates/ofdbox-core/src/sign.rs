@@ -333,7 +333,7 @@ pub(crate) fn insert_signatures_link(root_xml: &[u8], link: &str) -> Result<Vec<
 }
 
 /// 取根元素前缀（含冒号），无前缀返回空串。
-pub(crate) fn detect_prefix(xml: &str) -> Result<String, OfdError> {
+fn detect_prefix(xml: &str) -> Result<String, OfdError> {
     let mut rest = xml;
     loop {
         let start = rest
