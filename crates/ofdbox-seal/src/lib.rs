@@ -37,7 +37,8 @@ pub use gbt38540::{
 };
 pub use gmt0031::sign::{
     GmT0031Signature, GmT0031SignatureVerifier, GmT0031Verification, GmT0031VerifyOptions,
-    Sm2GmT0031SignatureProducer, parse_gmt0031_signature, verify_gmt0031_signature,
+    Sm2GmT0031SignatureProducer, parse_gmt0031_signature, parse_time_info,
+    verify_gmt0031_signature,
 };
 pub use oids::SM2_SM3_SIGNATURE_OID;
 pub use timestamp::{

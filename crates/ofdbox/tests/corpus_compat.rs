@@ -13,8 +13,8 @@
 use std::path::{Path, PathBuf};
 
 use ofdbox::{
-    OfdError, OfdPackage, PasswordBackend, SesSignatureVerifier, SignatureVerifiers,
-    Sm2SignedDataVerifier,
+    GmT0031SignatureVerifier, OfdError, OfdPackage, PasswordBackend, SesSignatureVerifier,
+    SignatureVerifiers, SignedValueFormat, Sm2SignedDataVerifier,
 };
 
 #[derive(Default)]
@@ -30,6 +30,8 @@ struct Stats {
     signature_failures: Vec<String>,
     reference_ok: usize,
     reference_failures: Vec<String>,
+    gmt0031_ok: usize,
+    gmt0031_failures: Vec<String>,
 }
 
 #[test]
@@ -53,12 +55,13 @@ fn corpus_compat() {
     }
 
     eprintln!(
-        "语料 {} 份：可读 {}，加密 {}，无效 {}；签名通过 {}、未支持 {}、失败 {}；引用通过 {}、失败 {}",
+        "语料 {} 份：可读 {}，加密 {}，无效 {}；签名通过 {}（0031 {}）、未支持 {}、失败 {}；引用通过 {}、失败 {}",
         stats.files,
         stats.readable,
         stats.encrypted,
         stats.invalid,
         stats.signature_ok,
+        stats.gmt0031_ok,
         stats.signature_unsupported,
         stats.signature_failures.len(),
         stats.reference_ok,
@@ -69,6 +72,7 @@ fn corpus_compat() {
         .iter()
         .chain(stats.repack_failures.iter())
         .chain(stats.signature_failures.iter())
+        .chain(stats.gmt0031_failures.iter())
         .chain(stats.reference_failures.iter())
     {
         eprintln!("  {failure}");
@@ -174,7 +178,8 @@ fn check_package(path: &Path, stats: &mut Stats) {
     };
     let verifiers = SignatureVerifiers::new()
         .with(Box::new(Sm2SignedDataVerifier::new()))
-        .with(Box::new(SesSignatureVerifier::new()));
+        .with(Box::new(SesSignatureVerifier::new()))
+        .with(Box::new(GmT0031SignatureVerifier::new()));
     for entry in index.signatures() {
         let Some(base_loc) = entry.base_loc() else {
             continue;
@@ -188,12 +193,29 @@ fn check_package(path: &Path, stats: &mut Stats) {
                 continue;
             }
         };
+        let format = signature
+            .signed_value()
+            .and_then(|loc| package.read_entry(loc).ok())
+            .map(|bytes| ofdbox::core::detect_signed_value_format(&bytes));
         match package.verify_signature(&signature, &verifiers) {
-            Ok(()) => stats.signature_ok += 1,
+            Ok(()) => {
+                stats.signature_ok += 1;
+                if format == Some(SignedValueFormat::GmT0031Signature) {
+                    stats.gmt0031_ok += 1;
+                }
+            }
             Err(OfdError::UnsupportedSignature(_)) => stats.signature_unsupported += 1,
-            Err(error) => stats
-                .signature_failures
-                .push(format!("{}: {base_loc}: {error}", path.display())),
+            Err(error) => {
+                if format == Some(SignedValueFormat::GmT0031Signature) {
+                    stats
+                        .gmt0031_failures
+                        .push(format!("{}: {base_loc}: {error}", path.display()));
+                } else {
+                    stats
+                        .signature_failures
+                        .push(format!("{}: {base_loc}: {error}", path.display()));
+                }
+            }
         }
         match package.verify_references(&signature, &PasswordBackend::new("")) {
             Ok(_) => stats.reference_ok += 1,

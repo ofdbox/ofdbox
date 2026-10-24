@@ -103,6 +103,9 @@ pub fn parse_gmt0031_signature(bytes: &[u8]) -> Result<GmT0031Signature<'_>, Sea
     let time_info = der::bit_string_content(fields[2])
         .and_then(|bytes| std::str::from_utf8(bytes).ok())
         .ok_or(SealError::Invalid("签章时间无效"))?;
+    if parse_time_info(time_info).is_none() {
+        return Err(SealError::Invalid("签章时间格式不受支持"));
+    }
     let data_hash =
         der::bit_string_content(fields[3]).ok_or(SealError::Invalid("原文杂凑值无效"))?;
     if fields[4].tag != der::TAG_IA5_STRING {
@@ -298,6 +301,41 @@ impl SignedValueProducer for Sm2GmT0031SignatureProducer {
         content.extend(bit_string(&signature));
         Ok(der::wrap(der::TAG_SEQUENCE, &content))
     }
+}
+
+/// 校验并返回 0031 签章时间文本。
+///
+/// 支持：
+/// - `YYYY-MM-DDTHH:MM:SSZ`
+/// - `YYYY-MM-DDTHH:MM:SS.sssZ`
+/// - `YYYY-MM-DDTHH:MM:SS+HH:MM` / `-HH:MM`
+pub fn parse_time_info(text: &str) -> Option<String> {
+    let bytes = text.as_bytes();
+    if bytes.len() < 20 || bytes[4] != b'-' || bytes[7] != b'-' || bytes[10] != b'T' {
+        return None;
+    }
+    if bytes[13] != b':' || bytes[16] != b':' {
+        return None;
+    }
+    if !bytes[..4].iter().all(u8::is_ascii_digit)
+        || !bytes[5..7].iter().all(u8::is_ascii_digit)
+        || !bytes[8..10].iter().all(u8::is_ascii_digit)
+        || !bytes[11..13].iter().all(u8::is_ascii_digit)
+        || !bytes[14..16].iter().all(u8::is_ascii_digit)
+        || !bytes[17..19].iter().all(u8::is_ascii_digit)
+    {
+        return None;
+    }
+    let suffix = &bytes[19..];
+    let valid = match suffix {
+        b"Z" => true,
+        [b'.', digits @ .., b'Z'] => !digits.is_empty() && digits.iter().all(u8::is_ascii_digit),
+        [b'+' | b'-', a, b, b':', c, d] => {
+            a.is_ascii_digit() && b.is_ascii_digit() && c.is_ascii_digit() && d.is_ascii_digit()
+        }
+        _ => false,
+    };
+    valid.then(|| text.to_owned())
 }
 
 fn time_info(signed_at: &str) -> Option<String> {
