@@ -1,6 +1,7 @@
+use std::collections::HashSet;
 use std::sync::Arc;
 
-use crate::error::{Diagnostic, OfdError};
+use crate::error::{Diagnostic, DiagnosticCode, OfdError};
 use crate::model::ofd::{
     check_attributes, check_children_unordered, check_namespace, validate_text_element,
 };
@@ -106,7 +107,7 @@ impl DocEntriesView {
             &self.doc,
             self.node,
             &["FileList", "SignedValueLoc"],
-            &["FileList"],
+            &["FileList", "SignedValueLoc"],
             &[],
             &mut diagnostics,
         );
@@ -147,6 +148,8 @@ fn validate_file_list(doc: &XmlDocument, node: NodeId, diagnostics: &mut Vec<Dia
     check_namespace(doc, node, diagnostics);
     check_attributes(doc, node, &[], &[], diagnostics);
     check_children_unordered(doc, node, &["File"], &["File"], &["File"], diagnostics);
+    let mut ids = HashSet::new();
+    let mut locations = HashSet::new();
     for file in doc.children_named(node, "File") {
         check_namespace(doc, file, diagnostics);
         check_attributes(
@@ -157,5 +160,30 @@ fn validate_file_list(doc: &XmlDocument, node: NodeId, diagnostics: &mut Vec<Dia
             diagnostics,
         );
         check_children_unordered(doc, file, &[], &[], &[], diagnostics);
+        if let Some(id) = doc.attribute(file, "ID")
+            && !ids.insert(id.to_owned())
+        {
+            diagnostics.push(Diagnostic::new(
+                DiagnosticCode::DuplicateElement,
+                format!("{}/@ID", doc.path(file)),
+                "File 的 ID 重复",
+            ));
+        }
+        if let Some(location) = doc.attribute(file, "FileLoc") {
+            if !location.starts_with('/') {
+                diagnostics.push(Diagnostic::new(
+                    DiagnosticCode::InvalidValue,
+                    format!("{}/@FileLoc", doc.path(file)),
+                    "FileLoc 必须是包内绝对路径",
+                ));
+            }
+            if !locations.insert(location.to_owned()) {
+                diagnostics.push(Diagnostic::new(
+                    DiagnosticCode::DuplicateElement,
+                    format!("{}/@FileLoc", doc.path(file)),
+                    "FileLoc 重复",
+                ));
+            }
+        }
     }
 }
