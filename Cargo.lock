@@ -448,11 +448,13 @@ dependencies = [
 name = "ofdbox-seal"
 version = "0.0.1"
 dependencies = [
+ "der",
  "dotenvy",
  "ofdbox-core",
  "ofdbox-crypto",
  "sm2",
  "x509-cert",
+ "zeroize",
  "zip",
 ]
 

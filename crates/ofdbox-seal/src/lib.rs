@@ -15,6 +15,7 @@ mod error;
 mod fingerprint;
 mod oids;
 mod seal;
+mod ses_producer;
 mod ses_signature;
 mod signature;
 mod time;
@@ -30,6 +31,7 @@ pub use seal::{
     SealDisplay, SealHeader, SealPicture, SealProperty, fingerprint_seal, identify_seal_format,
     parse_seal_for_display,
 };
+pub use ses_producer::Sm2SesSignatureProducer;
 pub use ses_signature::{
     SesSignature, SesSignatureVerifier, SesVerification, SesVerifyOptions, parse_ses_signature,
     verify_ses_signature,

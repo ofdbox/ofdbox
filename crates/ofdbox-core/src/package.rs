@@ -1377,19 +1377,24 @@ impl OfdPackage {
         }
 
         let signed_value_path = format!("/{signed_value_entry}");
+        let signed_entry_path = format!("/{signature_entry}");
         let signature_xml =
             crate::sign::write_signature_xml(request, &references, &signed_value_path)?;
         let context = SigningContext {
             content: signature_xml.as_bytes(),
+            signed_entry: &signed_entry_path,
             signature_method: request.signature_method,
             signed_at: &request.signed_at,
             references: &references,
         };
         let signed_value = producer.produce(&context)?;
 
+        let signature_type = producer.signature_type();
         let signatures_xml = match self.read_entry(&signatures_entry) {
-            Ok(existing) => crate::sign::append_signature(&existing, &id, &base_loc, &id)?,
-            Err(_) => crate::sign::new_signatures_xml(&id, &base_loc).into_bytes(),
+            Ok(existing) => {
+                crate::sign::append_signature(&existing, &id, &base_loc, &id, signature_type)?
+            }
+            Err(_) => crate::sign::new_signatures_xml(&id, &base_loc, signature_type).into_bytes(),
         };
 
         let mut edits = PackageEdits::new();

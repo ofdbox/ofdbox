@@ -31,6 +31,11 @@ pub trait SignedValueProducer {
     /// 产出签名值文件的内容。
     fn produce(&self, context: &SigningContext<'_>) -> Result<Vec<u8>, OfdError>;
 
+    /// 签名类型，写入 `Signatures.xml` 的 `Signature/@Type`；默认 `Sign`。
+    fn signature_type(&self) -> &str {
+        "Sign"
+    }
+
     /// 签名值文件名，默认 `SignedValue.dat`。
     fn value_name(&self) -> &str {
         "SignedValue.dat"
@@ -41,6 +46,8 @@ pub trait SignedValueProducer {
 pub struct SigningContext<'a> {
     /// 待签名的 `Signature.xml` 字节。
     pub content: &'a [u8],
+    /// `Signature.xml` 在包内的绝对路径。
+    pub signed_entry: &'a str,
     /// `SignatureMethod`。
     pub signature_method: &'a str,
     /// `SignatureDateTime`，按原样写入。
@@ -211,10 +218,10 @@ pub(crate) fn write_signature_xml(
 }
 
 /// 新建 `Signatures.xml`。
-pub(crate) fn new_signatures_xml(id: &str, base_loc: &str) -> String {
+pub(crate) fn new_signatures_xml(id: &str, base_loc: &str, signature_type: &str) -> String {
     format!(
         r#"<?xml version="1.0" encoding="UTF-8"?>
-<ofd:Signatures xmlns:ofd="{OFD_NAMESPACE}"><ofd:MaxSignId>{id}</ofd:MaxSignId><ofd:Signature ID="{id}" Type="Sign" BaseLoc="{base_loc}"/></ofd:Signatures>"#
+<ofd:Signatures xmlns:ofd="{OFD_NAMESPACE}"><ofd:MaxSignId>{id}</ofd:MaxSignId><ofd:Signature ID="{id}" Type="{signature_type}" BaseLoc="{base_loc}"/></ofd:Signatures>"#
     )
 }
 
@@ -224,13 +231,15 @@ pub(crate) fn append_signature(
     id: &str,
     base_loc: &str,
     max_id: &str,
+    signature_type: &str,
 ) -> Result<Vec<u8>, OfdError> {
     let text = std::str::from_utf8(existing).map_err(|error| {
         OfdError::InvalidStructure(format!("Signatures.xml 不是 UTF-8: {error}"))
     })?;
     let prefix = detect_prefix(text)?;
     let root = format!("<{prefix}Signatures");
-    let entry = format!(r#"<{prefix}Signature ID="{id}" Type="Sign" BaseLoc="{base_loc}"/>"#);
+    let entry =
+        format!(r#"<{prefix}Signature ID="{id}" Type="{signature_type}" BaseLoc="{base_loc}"/>"#);
     let close = format!("</{prefix}Signatures>");
     let end = text
         .find(&close)
