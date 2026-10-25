@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 
 use ofdbox::{
     GmT0031SignatureVerifier, OfdError, OfdPackage, PasswordBackend, SesSignatureVerifier,
-    SignatureVerifiers, SignedValueFormat, Sm2SignedDataVerifier,
+    SignatureVerifiers, SignedValueFormat, Sm2SignedDataVerifier, parse_ses_signature,
 };
 
 #[derive(Default)]
@@ -32,6 +32,7 @@ struct Stats {
     reference_failures: Vec<String>,
     gmt0031_ok: usize,
     gmt0031_failures: Vec<String>,
+    timestamp_present: usize,
 }
 
 #[test]
@@ -55,13 +56,14 @@ fn corpus_compat() {
     }
 
     eprintln!(
-        "语料 {} 份：可读 {}，加密 {}，无效 {}；签名通过 {}（0031 {}）、未支持 {}、失败 {}；引用通过 {}、失败 {}",
+        "语料 {} 份：可读 {}，加密 {}，无效 {}；签名通过 {}（0031 {}，带时间戳 {}）、未支持 {}、失败 {}；引用通过 {}、失败 {}",
         stats.files,
         stats.readable,
         stats.encrypted,
         stats.invalid,
         stats.signature_ok,
         stats.gmt0031_ok,
+        stats.timestamp_present,
         stats.signature_unsupported,
         stats.signature_failures.len(),
         stats.reference_ok,
@@ -193,10 +195,19 @@ fn check_package(path: &Path, stats: &mut Stats) {
                 continue;
             }
         };
-        let format = signature
+        let signed_value_bytes = signature
             .signed_value()
-            .and_then(|loc| package.read_entry(loc).ok())
-            .map(|bytes| ofdbox::core::detect_signed_value_format(&bytes));
+            .and_then(|loc| package.read_entry(loc).ok());
+        let format = signed_value_bytes
+            .as_deref()
+            .map(ofdbox::core::detect_signed_value_format);
+        if format == Some(SignedValueFormat::SesSignature)
+            && let Some(bytes) = signed_value_bytes.as_deref()
+            && let Ok(ses) = parse_ses_signature(bytes)
+            && ses.time_stamp.is_some()
+        {
+            stats.timestamp_present += 1;
+        }
         match package.verify_signature(&signature, &verifiers) {
             Ok(()) => {
                 stats.signature_ok += 1;

@@ -314,6 +314,8 @@ pub fn verify_ses_signature(
                 dist_id: options.dist_id,
                 certificate: options.timestamp_certificate,
                 require_time_stamping_eku: options.timestamp_certificate.is_some(),
+                nonce: None,
+                policy: None,
             },
         )?);
     }

@@ -13,7 +13,8 @@ use der::{Decode, Encode};
 use ofdbox_core::{DEFAULT_SIGNATURE_METHOD, SignedValueProducer, SigningContext};
 use ofdbox_seal::{
     SealBuilder, SealPictureInput, SealSpec, SealStandard, SesVerifyOptions,
-    Sm2SesSignatureProducer, TimeStampVerifyOptions, attach_time_stamp, parse_ses_signature,
+    Sm2SesSignatureProducer, TimeStampRequest, TimeStampVerifyOptions, attach_time_stamp,
+    parse_ses_signature, parse_time_stamp_request, parse_time_stamp_response,
     parse_time_stamp_token, verify_ses_signature, verify_time_stamp_token,
 };
 use sm2::dsa::DerSignature;
@@ -245,7 +246,13 @@ fn validates_certificate_with_trust_anchor() {
     let signed_value = b"signature-value";
     let imprint = Sm3::digest(signed_value);
     let (token, certificate) = build_token(imprint.as_slice(), SM3_OID, true);
-    let mut policy = ofdbox_seal::CertificatePolicy::new().with_trust_anchor(certificate);
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("time")
+        .as_secs();
+    let mut policy = ofdbox_seal::CertificatePolicy::new()
+        .with_trust_anchor(certificate)
+        .at_time(now);
     // 测试证书没有 KeyUsage 扩展，关闭该检查以专注信任链验证。
     policy.require_digital_signature = false;
 
@@ -363,4 +370,56 @@ fn ses_verification_checks_attached_timestamp() {
     let timestamp = verification.timestamp.expect("timestamp");
     assert_eq!(timestamp.gen_time, "20261024050000Z");
     assert!(!timestamp.certificate_validated);
+}
+
+#[test]
+fn time_stamp_request_roundtrip() {
+    let imprint = Sm3::digest(b"signed-value");
+    let request = TimeStampRequest::new(SM3_OID, imprint.to_vec())
+        .with_nonce(42)
+        .with_policy(POLICY_OID)
+        .with_cert_req(true);
+    let der = request.to_der().expect("encode request");
+    let parsed = parse_time_stamp_request(&der).expect("parse request");
+    assert_eq!(parsed.version, 1);
+    assert_eq!(parsed.hash_algorithm, SM3_OID);
+    assert_eq!(parsed.hashed_message, imprint.to_vec());
+    assert_eq!(parsed.nonce, Some(42));
+    assert_eq!(parsed.policy.as_deref(), Some(POLICY_OID));
+    assert!(parsed.cert_req);
+}
+
+#[test]
+fn time_stamp_response_parses_token() {
+    let imprint = Sm3::digest(b"signature-value");
+    let (token, _) = build_token(imprint.as_slice(), SM3_OID, true);
+    let status = sequence(&[tlv(Tag::Integer, &[0])]);
+    let response = sequence(&[status, token.clone()]);
+    let parsed = parse_time_stamp_response(&response).expect("parse response");
+    assert_eq!(parsed.status, 0);
+    assert_eq!(parsed.token.as_deref(), Some(token.as_slice()));
+}
+
+#[test]
+fn rejects_timestamp_nonce_mismatch() {
+    let signed_value = b"signature-value";
+    let imprint = Sm3::digest(signed_value);
+    let (token, _) = build_token(imprint.as_slice(), SM3_OID, true);
+    let mismatch = TimeStampVerifyOptions {
+        nonce: Some(7),
+        ..options()
+    };
+    assert!(verify_time_stamp_token(&token, signed_value, &mismatch).is_err());
+}
+
+#[test]
+fn rejects_timestamp_policy_mismatch() {
+    let signed_value = b"signature-value";
+    let imprint = Sm3::digest(signed_value);
+    let (token, _) = build_token(imprint.as_slice(), SM3_OID, true);
+    let mismatch = TimeStampVerifyOptions {
+        policy: Some("1.2.3.5"),
+        ..options()
+    };
+    assert!(verify_time_stamp_token(&token, signed_value, &mismatch).is_err());
 }

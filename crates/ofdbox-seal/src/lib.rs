@@ -42,6 +42,7 @@ pub use gmt0031::sign::{
 };
 pub use oids::SM2_SM3_SIGNATURE_OID;
 pub use timestamp::{
-    TimeStampToken, TimeStampVerification, TimeStampVerifyOptions, attach_time_stamp,
+    TimeStampRequest, TimeStampResponse, TimeStampToken, TimeStampVerification,
+    TimeStampVerifyOptions, attach_time_stamp, parse_time_stamp_request, parse_time_stamp_response,
     parse_time_stamp_token, verify_time_stamp_token,
 };

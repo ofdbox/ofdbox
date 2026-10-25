@@ -244,6 +244,11 @@ timeStamp [0] BIT STRING OPTIONAL   -- 对签名值的时间戳，DER 编码
 
 库不内置网络客户端；token 应由调用方获取后传入。
 
+### 5.2.1 请求与响应编解码
+
+`TimeStampRequest::to_der` / `parse_time_stamp_request` 生成和解析 `TimeStampReq`；
+`parse_time_stamp_response` 解析 `TimeStampResp` 并取出令牌。库不内置 HTTP 客户端。
+
 ### 5.3 语义
 
 时间戳证明的是：
