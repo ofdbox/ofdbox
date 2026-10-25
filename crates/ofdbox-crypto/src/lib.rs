@@ -17,6 +17,7 @@ mod certificate;
 mod cipher;
 mod digest;
 mod encrypt;
+mod entries;
 mod error;
 mod kdf;
 mod password;
@@ -34,6 +35,7 @@ pub use digest::sm3_digest;
 #[cfg(not(target_arch = "wasm32"))]
 pub use encrypt::encrypt_package;
 pub use encrypt::{EncryptOptions, EncryptionFilter, EncryptionScheme, encrypt_package_with_rng};
+pub use entries::write_ofd_entries_encrypted;
 pub use error::CryptoError;
 pub use kdf::sm3_kdf;
 pub use password::{
