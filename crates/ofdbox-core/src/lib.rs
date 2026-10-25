@@ -26,7 +26,8 @@ mod write;
 mod xml;
 
 pub use annotation_edit::{
-    AnnotationEditReport, AnnotationEditor, AnnotationImage, AnnotationPatch, AnnotationSpec,
+    AnnotationEditReport, AnnotationEditor, AnnotationImage, AnnotationPatch, AnnotationPath,
+    AnnotationSpec, AnnotationText,
 };
 pub use crypto::canonical_digest_method;
 pub use crypto::{

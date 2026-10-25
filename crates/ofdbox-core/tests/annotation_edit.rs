@@ -2,7 +2,9 @@ mod fixtures;
 
 use std::io::Cursor;
 
-use ofdbox_core::{AnnotationEditor, AnnotationPatch, AnnotationSpec, OfdPackage, ReadOptions};
+use ofdbox_core::{
+    AnnotationEditor, AnnotationPatch, AnnotationSpec, OfdPackage, PageAnnotView, ReadOptions,
+};
 
 const OFD_XML: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
 <ofd:OFD xmlns:ofd="http://www.ofdspec.org/2016" Version="1.0" DocType="OFD">
@@ -195,4 +197,42 @@ fn adds_image_annotation_and_resource() {
     let text = std::str::from_utf8(&raw).expect("utf8");
     assert!(text.contains("ImageObject"), "{text}");
     assert!(text.contains("ResourceID="), "{text}");
+}
+
+#[test]
+fn adds_text_and_path_appearances() {
+    let mut source = open();
+    let mut editor = AnnotationEditor::new(&mut source, false).expect("editor");
+    editor
+        .add(
+            "1",
+            &AnnotationSpec::new("Highlight", "10 10 100 30").with_text("review", "1", 12.0),
+        )
+        .expect("text");
+    editor
+        .add(
+            "1",
+            &AnnotationSpec::new("Path", "10 40 100 80").with_path("M 10 40 L 100 80"),
+        )
+        .expect("path");
+    let mut output = Vec::new();
+    editor.write(Cursor::new(&mut output)).expect("write");
+
+    let mut package = OfdPackage::from_bytes(output).expect("reopen");
+    let raw = package
+        .read_entry("Doc_0/Annots/Page_1.xml")
+        .expect("page annot");
+    let text = std::str::from_utf8(&raw).expect("utf8");
+    assert!(text.contains("<ofd:TextObject"), "{text}");
+    assert!(
+        text.contains("<ofd:TextCode X=\"0\" Y=\"0\">review</ofd:TextCode>"),
+        "{text}"
+    );
+    assert!(text.contains("<ofd:PathObject"), "{text}");
+    assert!(
+        text.contains("<ofd:AbbreviatedData>M 10 40 L 100 80</ofd:AbbreviatedData>"),
+        "{text}"
+    );
+
+    PageAnnotView::from_xml(&raw, ReadOptions::STRICT).expect("strict page annot");
 }

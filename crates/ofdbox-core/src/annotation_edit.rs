@@ -26,6 +26,28 @@ pub struct AnnotationSpec {
     pub last_mod_date: String,
     /// 可选图片外观。
     pub image: Option<AnnotationImage>,
+    /// 可选文字外观。
+    pub text: Option<AnnotationText>,
+    /// 可选路径外观。
+    pub path: Option<AnnotationPath>,
+}
+
+/// 文字外观。
+#[derive(Clone, Debug)]
+pub struct AnnotationText {
+    /// 文字内容。
+    pub text: String,
+    /// 字体资源 ID。
+    pub font: String,
+    /// 字号。
+    pub size: f64,
+}
+
+/// 路径外观。
+#[derive(Clone, Debug)]
+pub struct AnnotationPath {
+    /// OFD 路径缩写数据。
+    pub data: String,
 }
 
 /// 注释的图片外观。
@@ -50,7 +72,30 @@ impl AnnotationSpec {
             creator: "OFDBox".to_owned(),
             last_mod_date: "2026-10-25".to_owned(),
             image: None,
+            text: None,
+            path: None,
         }
+    }
+
+    /// 附加文字外观。
+    pub fn with_text(
+        mut self,
+        text: impl Into<String>,
+        font: impl Into<String>,
+        size: f64,
+    ) -> Self {
+        self.text = Some(AnnotationText {
+            text: text.into(),
+            font: font.into(),
+            size,
+        });
+        self
+    }
+
+    /// 附加路径外观。
+    pub fn with_path(mut self, data: impl Into<String>) -> Self {
+        self.path = Some(AnnotationPath { data: data.into() });
+        self
     }
 
     /// 附加图片外观。
@@ -151,6 +196,7 @@ struct PendingAnnotation {
     spec: AnnotationSpec,
     image_object_id: Option<i64>,
     multimedia_id: Option<i64>,
+    object_id: Option<i64>,
 }
 
 /// 注释编辑器。
@@ -257,17 +303,24 @@ impl<'a> AnnotationEditor<'a> {
                 spec.annot_type
             )));
         }
+        if spec.image.is_some() && (spec.text.is_some() || spec.path.is_some()) {
+            return Err(OfdError::InvalidStructure(
+                "注释只能选择一种外观".to_owned(),
+            ));
+        }
         let id = self.next_id;
-        let (image_object_id, multimedia_id) = if let Some(image) = &spec.image {
+        let (image_object_id, multimedia_id, object_id) = if let Some(image) = &spec.image {
             if image.data.is_empty() || image.width <= 0 || image.height <= 0 {
                 return Err(OfdError::InvalidStructure("注释图片参数无效".to_owned()));
             }
-            let ids = (Some(id + 1), Some(id + 2));
             self.next_id += 3;
-            ids
+            (Some(id + 1), Some(id + 2), None)
+        } else if spec.text.is_some() || spec.path.is_some() {
+            self.next_id += 2;
+            (None, None, Some(id + 1))
         } else {
             self.next_id += 1;
-            (None, None)
+            (None, None, None)
         };
         let id = id.to_string();
         self.pending
@@ -278,6 +331,7 @@ impl<'a> AnnotationEditor<'a> {
                 spec: spec.clone(),
                 image_object_id,
                 multimedia_id,
+                object_id,
             });
         Ok(id)
     }
@@ -374,7 +428,7 @@ impl<'a> AnnotationEditor<'a> {
                             image.height,
                         ));
                     }
-                    let raw = build_annotation(&pending.id, &spec, image_ref);
+                    let raw = build_annotation(&pending.id, &spec, image_ref, pending.object_id);
                     annots.push((pending.id, raw));
                 }
             }
@@ -466,13 +520,27 @@ fn build_annotation(
     id: &str,
     spec: &AnnotationSpec,
     image: Option<(i64, i64, i64, i64)>,
+    object_id: Option<i64>,
 ) -> String {
-    let appearance = match image {
-        Some((image_object_id, multimedia_id, width, height)) => format!(
-            "<ofd:Appearance Boundary=\"{}\"><ofd:ImageObject ID=\"{image_object_id}\" ResourceID=\"{multimedia_id}\" Boundary=\"0 0 {width} {height}\" CTM=\"{width} 0 0 {height} 0 0\"/></ofd:Appearance>",
-            escape(&spec.boundary)
-        ),
-        None => format!("<ofd:Appearance Boundary=\"{}\"/>", escape(&spec.boundary)),
+    let boundary = escape(&spec.boundary);
+    let appearance = if let Some((image_object_id, multimedia_id, width, height)) = image {
+        format!(
+            "<ofd:Appearance Boundary=\"{boundary}\"><ofd:ImageObject ID=\"{image_object_id}\" ResourceID=\"{multimedia_id}\" Boundary=\"0 0 {width} {height}\" CTM=\"{width} 0 0 {height} 0 0\"/></ofd:Appearance>"
+        )
+    } else if let (Some(text), Some(object_id)) = (&spec.text, object_id) {
+        format!(
+            "<ofd:Appearance Boundary=\"{boundary}\"><ofd:TextObject ID=\"{object_id}\" Boundary=\"{boundary}\" Font=\"{}\" Size=\"{}\"><ofd:TextCode X=\"0\" Y=\"0\">{}</ofd:TextCode></ofd:TextObject></ofd:Appearance>",
+            escape(&text.font),
+            text.size,
+            escape(&text.text)
+        )
+    } else if let (Some(path), Some(object_id)) = (&spec.path, object_id) {
+        format!(
+            "<ofd:Appearance Boundary=\"{boundary}\"><ofd:PathObject ID=\"{object_id}\" Boundary=\"{boundary}\"><ofd:AbbreviatedData>{}</ofd:AbbreviatedData></ofd:PathObject></ofd:Appearance>",
+            escape(&path.data)
+        )
+    } else {
+        format!("<ofd:Appearance Boundary=\"{boundary}\"/>")
     };
     format!(
         "<ofd:Annot ID=\"{}\" Type=\"{}\" Creator=\"{}\" LastModDate=\"{}\">{appearance}</ofd:Annot>",
