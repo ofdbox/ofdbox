@@ -17,6 +17,7 @@ mod fingerprint;
 mod gbt38540;
 mod gmt0031;
 mod oids;
+mod report;
 mod signature;
 mod time;
 mod timestamp;
@@ -41,6 +42,11 @@ pub use gmt0031::sign::{
     verify_gmt0031_signature,
 };
 pub use oids::SM2_SM3_SIGNATURE_OID;
+pub use report::{
+    CertificateRole, CertificateState, CertificateStatus, ReferenceStatus, ReportOptions,
+    ReportVerdict, SignatureReport, SignatureState, SignatureStatus, SignatureSummary,
+    TimestampStatus, verify_signature_report,
+};
 pub use timestamp::{
     TimeStampRequest, TimeStampResponse, TimeStampToken, TimeStampVerification,
     TimeStampVerifyOptions, attach_time_stamp, parse_time_stamp_request, parse_time_stamp_response,

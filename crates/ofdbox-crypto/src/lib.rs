@@ -46,4 +46,7 @@ pub use password::{
 };
 pub use producer::Sm2SignedDataProducer;
 pub use signature::{DEFAULT_DIST_ID, sign_sm3, verify_sm3, verify_sm3_raw};
-pub use signed_data::{Sm2SignedDataVerifier, verify_signed_data};
+pub use signed_data::{
+    Sm2SignedDataVerifier, signed_data_signer_certificate, verify_signed_data,
+    verify_signed_data_with,
+};

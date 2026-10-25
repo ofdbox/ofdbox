@@ -9,6 +9,7 @@
 - `ofdbox-seal`：GB/T 20520 时间戳支持。`SesSignature.time_stamp` 读写 38540 `timeStamp [0]`；`attach_time_stamp` 把 TSA 令牌附加到已有签章值；`parse_time_stamp_token` / `verify_time_stamp_token` 解析 CMS `SignedData`、`TSTInfo`，校验 TSA 签名、`messageImprint` 与签章值一致，可选校验 TSA 证书链与 `timeStamping` EKU；`SesVerifyOptions::with_timestamp_check` 与 `SesSignatureVerifier::with_timestamp_check` 在验章时启用。
 
 - 20520 收口：`TimeStampReq` / `TimeStampResp` DER 编解码；`verify_time_stamp_token` 支持 `nonce` / `policy` 校验，TSA 证书默认按 `genTime` 做长期验证（策略显式时间可覆盖）；`corpus_compat` 统计带时间戳的签章。
+- `ofdbox-seal`：全量签名验证报告 `verify_signature_report`：遍历所有签名/签章，汇总加密验证、引用摘要、证书状态（主题/签发者/序列号/SM3 指纹/有效期/链长/吊销）与时间戳，输出每个签名状态及整体结论；支持 `require_references` / `require_timestamp` / `require_trusted_chain` / `minimum_valid` 策略。
 - `ofdbox-core`：`OfdPackage::write_ofd_entries` 生成并签署 `OFDEntries.xml`：按引用图列出夹带文件，写入 `FileList` 与 `SignedValueLoc`，签名值由 `SignedValueProducer` 产出；`EntriesWriteOptions` 控制 ID、元数据、签名值路径与是否覆盖。
 - `ofdbox-core`：`AnnotationEditor` 注释编辑 API：`add` / `remove` / `update` / `write`，自动维护 `Annotations.xml` 索引、`PageAnnot` 文件与 `MaxUnitID`；支持 `AnnotationPatch` 局部修改并保留未知内容；`AnnotationSpec::with_image` 写入 `DocumentRes` 图片资源与 `ImageObject`，`with_text` / `with_path` / `with_composite` 写 `TextObject` / `PathObject` / `CompositeObject` 外观，`with_cg_transform` 支持文字 `CGTransform`；默认拒绝对已签名文档编辑。
 - `ofdbox-crypto`：`write_ofd_entries_encrypted` 封装“解密 → 生成 `OFDEntries.xml` → 重新加密”，支持加密包的完整性保护生成。

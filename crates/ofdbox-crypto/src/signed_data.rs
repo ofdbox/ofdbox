@@ -154,6 +154,28 @@ pub fn verify_signed_data_with(
     result.map_err(|_| CryptoError::InvalidSignature)
 }
 
+/// 从 GB/T 35275 SignedData 中提取签名者证书 DER。
+pub fn signed_data_signer_certificate(signed_value: &[u8]) -> Result<Vec<u8>, CryptoError> {
+    let info = ContentInfo::from_der(signed_value).map_err(|_| CryptoError::InvalidEncoding)?;
+    let signed_data: SignedData = info
+        .content
+        .decode_as()
+        .map_err(|_| CryptoError::InvalidEncoding)?;
+    let certificate = signed_data
+        .certificates
+        .as_ref()
+        .and_then(|certificates| {
+            certificates.0.iter().find_map(|choice| match choice {
+                CertificateChoices::Certificate(certificate) => Some(certificate),
+                _ => None,
+            })
+        })
+        .ok_or(CryptoError::InvalidCertificate)?;
+    certificate
+        .to_der()
+        .map_err(|_| CryptoError::InvalidCertificate)
+}
+
 #[cfg(test)]
 mod tests {
     use super::{Sm2SignedDataVerifier, verify_signed_data};
