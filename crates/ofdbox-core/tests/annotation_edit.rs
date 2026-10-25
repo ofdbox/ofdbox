@@ -2,7 +2,7 @@ mod fixtures;
 
 use std::io::Cursor;
 
-use ofdbox_core::{AnnotationEditor, AnnotationSpec, OfdPackage, ReadOptions};
+use ofdbox_core::{AnnotationEditor, AnnotationPatch, AnnotationSpec, OfdPackage, ReadOptions};
 
 const OFD_XML: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
 <ofd:OFD xmlns:ofd="http://www.ofdspec.org/2016" Version="1.0" DocType="OFD">
@@ -32,7 +32,7 @@ const ANNOTATIONS: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
 <ofd:Annotations xmlns:ofd="http://www.ofdspec.org/2016"><ofd:Page PageID="1"><ofd:FileLoc>Page_1.xml</ofd:FileLoc></ofd:Page></ofd:Annotations>"#;
 
 const PAGE_ANNOT: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
-<ofd:PageAnnot xmlns:ofd="http://www.ofdspec.org/2016"><ofd:Annot ID="1" Type="Highlight" Creator="tester" LastModDate="2026-01-01"><ofd:Appearance Boundary="10 10 20 20"/></ofd:Annot></ofd:PageAnnot>"#;
+<ofd:PageAnnot xmlns:ofd="http://www.ofdspec.org/2016"><ofd:Annot ID="1" Type="Highlight" Creator="tester" LastModDate="2026-01-01"><ofd:Remark>keep</ofd:Remark><ofd:Appearance Boundary="10 10 20 20"/></ofd:Annot></ofd:PageAnnot>"#;
 
 fn package() -> Vec<u8> {
     fixtures::zip_with_entries(&[
@@ -107,4 +107,92 @@ fn adds_annotation_to_page_without_index_entry() {
         .parse_page_annot("PageAnnot_2.xml")
         .expect("page annot");
     assert_eq!(annots.annots().count(), 1);
+}
+
+#[test]
+fn updates_annotation_preserving_unknown_content() {
+    let mut source = open();
+    let mut editor = AnnotationEditor::new(&mut source, false).expect("editor");
+    editor
+        .update(
+            "1",
+            AnnotationPatch::new()
+                .with_boundary("30 40 50 60")
+                .with_creator("reviewer")
+                .with_visible(true),
+        )
+        .expect("update");
+    let mut output = Vec::new();
+    let report = editor.write(Cursor::new(&mut output)).expect("write");
+    assert_eq!(report.updated, 1);
+
+    let mut package = OfdPackage::from_bytes(output).expect("reopen");
+    let raw = package
+        .read_entry("Doc_0/Annots/Page_1.xml")
+        .expect("page annot");
+    let text = std::str::from_utf8(&raw).expect("utf8");
+    assert!(text.contains(r#"Creator="reviewer""#), "{text}");
+    assert!(text.contains(r#"Visible="true""#), "{text}");
+    assert!(text.contains(r#"Boundary="30 40 50 60""#), "{text}");
+    assert!(text.contains("<ofd:Remark>keep</ofd:Remark>"), "{text}");
+}
+
+const DOCUMENT_WITH_RES: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<ofd:Document xmlns:ofd="http://www.ofdspec.org/2016">
+  <ofd:CommonData>
+    <ofd:MaxUnitID>2</ofd:MaxUnitID>
+    <ofd:PageArea><ofd:PhysicalBox>0 0 210 297</ofd:PhysicalBox></ofd:PageArea>
+    <ofd:DocumentRes>DocumentRes.xml</ofd:DocumentRes>
+  </ofd:CommonData>
+  <ofd:Pages><ofd:Page ID="1" BaseLoc="Pages/Page_0/Content.xml"/></ofd:Pages>
+  <ofd:Annotations>Annots/Annotations.xml</ofd:Annotations>
+</ofd:Document>"#;
+
+const DOCUMENT_RES: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<ofd:Res xmlns:ofd="http://www.ofdspec.org/2016" BaseLoc="Res"><ofd:MultiMedias/></ofd:Res>"#;
+
+#[test]
+fn adds_image_annotation_and_resource() {
+    let bytes = fixtures::zip_with_entries(&[
+        ("OFD.xml", OFD_XML.as_bytes()),
+        ("Doc_0/Document.xml", DOCUMENT_WITH_RES.as_bytes()),
+        ("Doc_0/DocumentRes.xml", DOCUMENT_RES.as_bytes()),
+        ("Doc_0/Pages/Page_0/Content.xml", PAGE.as_bytes()),
+        ("Doc_0/Annots/Annotations.xml", ANNOTATIONS.as_bytes()),
+        ("Doc_0/Annots/Page_1.xml", PAGE_ANNOT.as_bytes()),
+    ]);
+    let mut source =
+        OfdPackage::from_bytes_with_options(bytes, ReadOptions::LENIENT, Default::default())
+            .expect("open");
+    let mut editor = AnnotationEditor::new(&mut source, false).expect("editor");
+    editor
+        .add(
+            "1",
+            &AnnotationSpec::new("Stamp", "10 10 100 100").with_image(
+                b"fake-png".to_vec(),
+                "PNG",
+                40,
+                40,
+            ),
+        )
+        .expect("add image");
+    let mut output = Vec::new();
+    editor.write(Cursor::new(&mut output)).expect("write");
+
+    let mut package = OfdPackage::from_bytes(output).expect("reopen");
+    let res = package
+        .parse_res_from_document("DocumentRes.xml")
+        .expect("document res");
+    let media: Vec<_> = res.multi_medias().collect();
+    assert_eq!(media.len(), 1);
+    let file = media[0].media_file().expect("media file");
+    assert_eq!(file, "annotation_3.png");
+    assert!(package.contains("Doc_0/Res/annotation_3.png"));
+
+    let raw = package
+        .read_entry("Doc_0/Annots/Page_1.xml")
+        .expect("page annot");
+    let text = std::str::from_utf8(&raw).expect("utf8");
+    assert!(text.contains("ImageObject"), "{text}");
+    assert!(text.contains("ResourceID="), "{text}");
 }

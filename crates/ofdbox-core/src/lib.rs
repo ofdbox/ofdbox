@@ -25,7 +25,9 @@ mod stamp;
 mod write;
 mod xml;
 
-pub use annotation_edit::{AnnotationEditReport, AnnotationEditor, AnnotationSpec};
+pub use annotation_edit::{
+    AnnotationEditReport, AnnotationEditor, AnnotationImage, AnnotationPatch, AnnotationSpec,
+};
 pub use crypto::canonical_digest_method;
 pub use crypto::{
     CryptoBackend, CryptoRegistry, FileKey, SignatureVerifier, SignatureVerifiers,
