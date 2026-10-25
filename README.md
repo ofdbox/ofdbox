@@ -35,7 +35,7 @@ let mut package = OfdPackage::open("sample.ofd")?;
 let document = package.parse_document()?;
 ```
 
-签名与加密的完整流程见 `crates/ofdbox/examples/sign_and_verify.rs`：建包 → 签名（35275）→ 验签 → 口令加密 → 解密再验签。加密文档也可直接使用 `PasswordBackend` / `CertificateBackend` 与 `enable_decryption`；签章验签见 `ofdbox::SesSignatureVerifier`。
+签名与加密的完整流程见 `crates/ofdbox/examples/sign_and_verify.rs`：建包 → 签名（35275）→ 验签 → 口令加密 → 解密再验签。加密文档也可直接使用 `PasswordBackend` / `CertificateBackend` 与 `enable_decryption`；签章验签见 `SesSignatureVerifier` / `GmT0031SignatureVerifier`，时间戳见 `verify_time_stamp_token`。
 
 ### Feature
 
@@ -48,8 +48,10 @@ ofdbox = { path = "...", default-features = false, features = ["seal"] }
 
 ## 标准覆盖
 
-- **GB/T 33190—2016**：文档结构已覆盖。
-- **GM/T 0099—2020**：签名扩展和加密结构已覆盖。
+- **GB/T 33190—2016**：文档结构、签名结构已覆盖。
+- **GM/T 0099—2020**：签名扩展、加密结构、完整性保护（`OFDEntries.xml`）已覆盖。
+- **GB/T 38540—2020 / GM/T 0031—2014**：制章、签章值（38540 `SES_Signature`、0031 `SES_sign`）与验章已覆盖。
+- **GB/T 20520**：时间戳令牌验证、`TimeStampReq` / `TimeStampResp` 编解码已覆盖；不内置 TSA 网络客户端。
 - **OFD/A、OFD-H**：未覆盖。
 
 ## 开发
