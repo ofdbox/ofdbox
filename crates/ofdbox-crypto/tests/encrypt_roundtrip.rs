@@ -1,7 +1,7 @@
 use std::io::{Cursor, Read, Write};
 
 use ofdbox_core::{OfdError, OfdPackage};
-use ofdbox_crypto::{EncryptOptions, PasswordBackend, encrypt_package};
+use ofdbox_crypto::{EncryptOptions, EncryptionRecipient, PasswordBackend, encrypt_package};
 use zip::ZipWriter;
 use zip::write::SimpleFileOptions;
 
@@ -242,4 +242,30 @@ fn rewrite_entry(bytes: &[u8], target: &str, mutate: impl FnOnce(&mut Vec<u8>)) 
         writer.write_all(&data).expect("write");
     }
     writer.finish().expect("finish").into_inner()
+}
+
+#[test]
+fn decrypts_with_each_password_recipient() {
+    let plain = zip_with_entries(&[
+        ("OFD.xml", ROOT.as_bytes()),
+        ("Doc_0/Document.xml", DOCUMENT.as_bytes()),
+    ]);
+    let options = EncryptOptions::password("alice", "first")
+        .with_recipient(EncryptionRecipient::password("bob", "second"));
+    let encrypted = encrypt_package(&plain, &options).expect("encrypt");
+
+    for password in ["first", "second"] {
+        let mut package = OfdPackage::from_bytes(encrypted.clone()).expect("open");
+        package
+            .enable_decryption(Box::new(PasswordBackend::new(password)))
+            .expect("decrypt");
+        package.parse_root().expect("root");
+    }
+
+    let mut package = OfdPackage::from_bytes(encrypted).expect("open");
+    assert!(
+        package
+            .enable_decryption(Box::new(PasswordBackend::new("wrong")))
+            .is_err()
+    );
 }

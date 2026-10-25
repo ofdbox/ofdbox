@@ -34,7 +34,10 @@ pub use cipher::{decrypt_cbc, encrypt_cbc};
 pub use digest::sm3_digest;
 #[cfg(not(target_arch = "wasm32"))]
 pub use encrypt::encrypt_package;
-pub use encrypt::{EncryptOptions, EncryptionFilter, EncryptionScheme, encrypt_package_with_rng};
+pub use encrypt::{
+    EncryptOptions, EncryptionFilter, EncryptionRecipient, EncryptionScheme,
+    encrypt_package_with_rng,
+};
 pub use entries::write_ofd_entries_encrypted;
 pub use error::CryptoError;
 pub use kdf::sm3_kdf;

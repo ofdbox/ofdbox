@@ -22,6 +22,65 @@ pub enum EncryptionScheme {
     Certificate(Vec<u8>),
 }
 
+/// 附加接收方。
+#[derive(Clone, Debug)]
+pub enum EncryptionRecipient {
+    /// 口令接收方。
+    Password {
+        /// 用户名。
+        username: String,
+        /// 用户角色类型。
+        user_type: Option<String>,
+        /// 口令。
+        password: String,
+    },
+    /// 证书接收方。
+    Certificate {
+        /// 用户名。
+        username: String,
+        /// 用户角色类型。
+        user_type: Option<String>,
+        /// X.509 证书 DER。
+        certificate: Vec<u8>,
+    },
+}
+
+impl EncryptionRecipient {
+    /// 口令接收方。
+    pub fn password(username: impl Into<String>, password: impl Into<String>) -> Self {
+        Self::Password {
+            username: username.into(),
+            user_type: None,
+            password: password.into(),
+        }
+    }
+
+    /// 证书接收方。
+    pub fn certificate(username: impl Into<String>, certificate: Vec<u8>) -> Self {
+        Self::Certificate {
+            username: username.into(),
+            user_type: None,
+            certificate,
+        }
+    }
+
+    /// 设置用户角色类型。
+    pub fn with_user_type(mut self, user_type: impl Into<String>) -> Self {
+        let user_type = Some(user_type.into());
+        match &mut self {
+            Self::Password {
+                user_type: value, ..
+            }
+            | Self::Certificate {
+                user_type: value, ..
+            } => {
+                *value = user_type;
+            }
+        }
+        self
+    }
+}
+
 /// 文件过滤函数。
 pub type EncryptionFilter = Arc<dyn Fn(&str) -> bool + Send + Sync>;
 
@@ -33,6 +92,8 @@ pub struct EncryptOptions {
     pub user_type: Option<String>,
     /// 加密方案。
     pub scheme: EncryptionScheme,
+    /// 附加接收方；与主方案必须使用同一方案类型。
+    pub recipients: Vec<EncryptionRecipient>,
     /// 文件过滤；返回 false 的文件保持明文。
     pub filter: Option<EncryptionFilter>,
 }
@@ -44,6 +105,7 @@ impl EncryptOptions {
             username: username.into(),
             user_type: None,
             scheme: EncryptionScheme::Password(password.into()),
+            recipients: Vec::new(),
             filter: None,
         }
     }
@@ -54,6 +116,7 @@ impl EncryptOptions {
             username: username.into(),
             user_type: None,
             scheme: EncryptionScheme::Certificate(certificate_der),
+            recipients: Vec::new(),
             filter: None,
         }
     }
@@ -61,6 +124,12 @@ impl EncryptOptions {
     /// 设置用户角色类型。
     pub fn with_user_type(mut self, user_type: impl Into<String>) -> Self {
         self.user_type = Some(user_type.into());
+        self
+    }
+
+    /// 追加一个接收方。
+    pub fn with_recipient(mut self, recipient: EncryptionRecipient) -> Self {
+        self.recipients.push(recipient);
         self
     }
 
@@ -138,28 +207,73 @@ pub fn encrypt_package_with_rng<R: TryCryptoRng>(
     let map_xml = build_entries_map(&mappings);
     let encrypted_map = encrypt_cbc(&file_key, &iv, map_xml.as_bytes())
         .map_err(|_| OfdError::Crypto("映射表加密失败".to_owned()))?;
-    let (case_id, wrapped_key, user_cert) = match &options.scheme {
-        EncryptionScheme::Password(password) => (
-            PASSWORD_CASE_ID,
-            wrap_file_key(password, &iv, &file_key)
-                .map_err(|_| OfdError::Crypto("文件密钥包装失败".to_owned()))?,
-            None,
-        ),
-        EncryptionScheme::Certificate(certificate) => (
-            CERTIFICATE_CASE_ID,
-            encrypt_file_key_with_certificate(certificate, &file_key, rng)
-                .map_err(|_| OfdError::Crypto("证书加密失败".to_owned()))?,
-            Some(certificate.clone()),
-        ),
+    let mut users = Vec::new();
+    let mut case_id = match &options.scheme {
+        EncryptionScheme::Password(password) => {
+            users.push(SeedUser {
+                username: options.username.clone(),
+                user_type: options.user_type.clone(),
+                wrapped_key: wrap_file_key(password, &iv, &file_key)
+                    .map_err(|_| OfdError::Crypto("文件密钥包装失败".to_owned()))?,
+                certificate: None,
+            });
+            Some(PASSWORD_CASE_ID)
+        }
+        EncryptionScheme::Certificate(certificate) => {
+            users.push(SeedUser {
+                username: options.username.clone(),
+                user_type: options.user_type.clone(),
+                wrapped_key: encrypt_file_key_with_certificate(certificate, &file_key, rng)
+                    .map_err(|_| OfdError::Crypto("证书加密失败".to_owned()))?,
+                certificate: Some(certificate.clone()),
+            });
+            Some(CERTIFICATE_CASE_ID)
+        }
     };
-    let seed_xml = build_decrypt_seed(
-        case_id,
-        &options.username,
-        options.user_type.as_deref(),
-        &iv,
-        &wrapped_key,
-        user_cert.as_deref(),
-    );
+    for recipient in &options.recipients {
+        let (username, user_type, wrapped_key, certificate, recipient_case) = match recipient {
+            EncryptionRecipient::Password {
+                username,
+                user_type,
+                password,
+            } => (
+                username.clone(),
+                user_type.clone(),
+                wrap_file_key(password, &iv, &file_key)
+                    .map_err(|_| OfdError::Crypto("文件密钥包装失败".to_owned()))?,
+                None,
+                PASSWORD_CASE_ID,
+            ),
+            EncryptionRecipient::Certificate {
+                username,
+                user_type,
+                certificate,
+            } => (
+                username.clone(),
+                user_type.clone(),
+                encrypt_file_key_with_certificate(certificate, &file_key, rng)
+                    .map_err(|_| OfdError::Crypto("证书加密失败".to_owned()))?,
+                Some(certificate.clone()),
+                CERTIFICATE_CASE_ID,
+            ),
+        };
+        if let Some(case_id) = case_id
+            && case_id != recipient_case
+        {
+            return Err(OfdError::Crypto(
+                "多个接收方必须使用相同的加密方案类型".to_owned(),
+            ));
+        }
+        case_id = Some(recipient_case);
+        users.push(SeedUser {
+            username,
+            user_type,
+            wrapped_key,
+            certificate,
+        });
+    }
+    let case_id = case_id.ok_or_else(|| OfdError::Crypto("没有接收方".to_owned()))?;
+    let seed_xml = build_decrypt_seed(case_id, &users, &iv);
     let encryptions_xml = build_encryptions();
 
     output_entries.push(("entriesmap.dat".to_owned(), encrypted_map));
@@ -217,36 +331,39 @@ fn build_entries_map(mappings: &[(String, String)]) -> String {
     xml
 }
 
-fn build_decrypt_seed(
-    case_id: &str,
-    username: &str,
-    user_type: Option<&str>,
-    iv: &[u8],
-    wrapped_key: &[u8],
-    user_cert: Option<&[u8]>,
-) -> String {
+struct SeedUser {
+    username: String,
+    user_type: Option<String>,
+    wrapped_key: Vec<u8>,
+    certificate: Option<Vec<u8>>,
+}
+
+fn build_decrypt_seed(case_id: &str, users: &[SeedUser], iv: &[u8]) -> String {
     let mut xml = format!(
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n\
          <ofd:DecryptSeed xmlns:ofd=\"http://www.ofdspec.org/2016\" ID=\"1\" EncryptCaseId=\"{}\">",
         escape_attr(case_id)
     );
-    xml.push_str(&format!(
-        "<ofd:UserInfo UserName=\"{}\"",
-        escape_attr(username)
-    ));
-    if let Some(user_type) = user_type {
-        xml.push_str(&format!(" UserType=\"{}\"", escape_attr(user_type)));
+    for user in users {
+        xml.push_str(&format!(
+            "<ofd:UserInfo UserName=\"{}\"",
+            escape_attr(&user.username)
+        ));
+        if let Some(user_type) = &user.user_type {
+            xml.push_str(&format!(" UserType=\"{}\"", escape_attr(user_type)));
+        }
+        xml.push('>');
+        if let Some(cert) = &user.certificate {
+            xml.push_str(&format!("<ofd:UserCert>{}</ofd:UserCert>", encode(cert)));
+        }
+        xml.push_str(&format!(
+            "<ofd:EncryptedWK>{}</ofd:EncryptedWK>",
+            encode(&user.wrapped_key)
+        ));
+        xml.push_str(&format!("<ofd:IVValue>{}</ofd:IVValue>", encode(iv)));
+        xml.push_str("</ofd:UserInfo>");
     }
-    xml.push('>');
-    if let Some(cert) = user_cert {
-        xml.push_str(&format!("<ofd:UserCert>{}</ofd:UserCert>", encode(cert)));
-    }
-    xml.push_str(&format!(
-        "<ofd:EncryptedWK>{}</ofd:EncryptedWK>",
-        encode(wrapped_key)
-    ));
-    xml.push_str(&format!("<ofd:IVValue>{}</ofd:IVValue>", encode(iv)));
-    xml.push_str("</ofd:UserInfo><ofd:ExtendParams/></ofd:DecryptSeed>");
+    xml.push_str("<ofd:ExtendParams/></ofd:DecryptSeed>");
     xml
 }
 

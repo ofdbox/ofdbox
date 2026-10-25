@@ -12,6 +12,7 @@
 - `ofdbox-core`：`OfdPackage::write_ofd_entries` 生成并签署 `OFDEntries.xml`：按引用图列出夹带文件，写入 `FileList` 与 `SignedValueLoc`，签名值由 `SignedValueProducer` 产出；`EntriesWriteOptions` 控制 ID、元数据、签名值路径与是否覆盖。
 - `ofdbox-core`：`AnnotationEditor` 注释编辑 API：`add` / `remove` / `update` / `write`，自动维护 `Annotations.xml` 索引、`PageAnnot` 文件与 `MaxUnitID`；支持 `AnnotationPatch` 局部修改并保留未知内容；`AnnotationSpec::with_image` 写入 `DocumentRes` 图片资源与 `ImageObject`；默认拒绝对已签名文档编辑。
 - `ofdbox-crypto`：`write_ofd_entries_encrypted` 封装“解密 → 生成 `OFDEntries.xml` → 重新加密”，支持加密包的完整性保护生成。
+- `ofdbox-crypto`：多接收方加密。`EncryptOptions::with_recipient` + `EncryptionRecipient` 支持多个同方案接收方（多个口令或多个证书），`DecryptSeed` 写多个 `UserInfo`，每个接收方都能独立解密。
 - 引用图扩展：`ReferenceGraphOptions` 允许调用方补充厂商自定义的文本/属性路径字段；新增 `verify_ofd_entries_with` / `write_ofd_entries_with`。
 - `ofdbox-core`：`OfdPackage::verify_ofd_entries` 校验 `OFDEntries.xml`：`FileList` 中的文件必须存在且不重复，`SignedValueLoc` 指向的签名值按 GB/T 35275 验证其对 `OFDEntries.xml` 字节的签名；并沿 `OFD.xml`、`Encryptions.xml` 遍历文档引用图，报告未列入 `FileList` 的夹带文件以及“列入但仍被引用”的不一致。
 - `ofdbox-core`：盖章外观支持一次写多枚章（`SigningRequest::with_stamps`），跨页/同页均可；注释文件按页复用，单元 ID 连续分配；`Clip` 只在显式提供时写入。

@@ -23,8 +23,8 @@ pub use ofdbox_core::{
 pub use ofdbox_crypto as crypto;
 #[cfg(feature = "crypto")]
 pub use ofdbox_crypto::{
-    CertificateBackend, EncryptOptions, EncryptionScheme, PasswordBackend, Sm2SignedDataProducer,
-    Sm2SignedDataVerifier, encrypt_package, write_ofd_entries_encrypted,
+    CertificateBackend, EncryptOptions, EncryptionRecipient, EncryptionScheme, PasswordBackend,
+    Sm2SignedDataProducer, Sm2SignedDataVerifier, encrypt_package, write_ofd_entries_encrypted,
 };
 
 #[cfg(feature = "seal")]
