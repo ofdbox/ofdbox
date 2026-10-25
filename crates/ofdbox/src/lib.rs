@@ -12,10 +12,11 @@
 pub use ofdbox_algo as algo;
 pub use ofdbox_core as core;
 pub use ofdbox_core::{
-    CacheOptions, DEFAULT_SIGNATURE_METHOD, DocumentView, EntriesVerification, EntriesWriteOptions,
-    EntriesWriteReport, OfdError, OfdPackage, PackageDateTime, PackageEdits, PackageWriteOptions,
-    PageView, ProtectScope, ProviderInfo, ReadOptions, ReferenceGraphOptions, SignatureVerifiers,
-    SignedValueFormat, SignedValueProducer, SigningReport, SigningRequest, StampAppearance,
+    AnnotationEditReport, AnnotationEditor, AnnotationSpec, CacheOptions, DEFAULT_SIGNATURE_METHOD,
+    DocumentView, EntriesVerification, EntriesWriteOptions, EntriesWriteReport, OfdError,
+    OfdPackage, PackageDateTime, PackageEdits, PackageWriteOptions, PageView, ProtectScope,
+    ProviderInfo, ReadOptions, ReferenceGraphOptions, SignatureVerifiers, SignedValueFormat,
+    SignedValueProducer, SigningReport, SigningRequest, StampAppearance,
 };
 
 #[cfg(feature = "crypto")]

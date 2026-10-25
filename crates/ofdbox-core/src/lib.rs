@@ -11,6 +11,7 @@
 //! - 严格写出只从类型化视图产出标准命名空间、标准前缀和 XSD 顺序；
 //! - 缓存按需解压的 entry 字节和解析后的 XML 语法树。
 
+mod annotation_edit;
 mod cache;
 mod crypto;
 mod error;
@@ -24,6 +25,7 @@ mod stamp;
 mod write;
 mod xml;
 
+pub use annotation_edit::{AnnotationEditReport, AnnotationEditor, AnnotationSpec};
 pub use crypto::canonical_digest_method;
 pub use crypto::{
     CryptoBackend, CryptoRegistry, FileKey, SignatureVerifier, SignatureVerifiers,
