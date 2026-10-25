@@ -236,3 +236,60 @@ fn adds_text_and_path_appearances() {
 
     PageAnnotView::from_xml(&raw, ReadOptions::STRICT).expect("strict page annot");
 }
+
+#[test]
+fn adds_cg_transform_and_composite_appearance() {
+    let mut source = open();
+    let mut editor = AnnotationEditor::new(&mut source, false).expect("editor");
+    editor
+        .add(
+            "1",
+            &AnnotationSpec::new("Highlight", "10 10 100 30")
+                .with_text("abc", "1", 12.0)
+                .with_cg_transform(0, Some(3), Some(3), Some("abc".to_owned())),
+        )
+        .expect("text cg");
+    editor
+        .add(
+            "1",
+            &AnnotationSpec::new("Stamp", "10 40 100 80").with_composite("1"),
+        )
+        .expect("composite");
+    let mut output = Vec::new();
+    editor.write(Cursor::new(&mut output)).expect("write");
+
+    let mut package = OfdPackage::from_bytes(output).expect("reopen");
+    let raw = package
+        .read_entry("Doc_0/Annots/Page_1.xml")
+        .expect("page annot");
+    let text = std::str::from_utf8(&raw).expect("utf8");
+    assert!(
+        text.contains("<ofd:CGTransform CodePosition=\"0\" CodeCount=\"3\" GlyphCount=\"3\">"),
+        "{text}"
+    );
+    assert!(text.contains("<ofd:Glyphs>abc</ofd:Glyphs>"), "{text}");
+    assert!(
+        text.contains("<ofd:CompositeObject ID=\"") && text.contains("ResourceID=\"1\""),
+        "{text}"
+    );
+    PageAnnotView::from_xml(&raw, ReadOptions::STRICT).expect("strict page annot");
+}
+
+#[test]
+fn rejects_cg_transform_without_text() {
+    let mut source = open();
+    let mut editor = AnnotationEditor::new(&mut source, false).expect("editor");
+    assert!(
+        editor
+            .add(
+                "1",
+                &AnnotationSpec::new("Highlight", "1 2 3 4").with_cg_transform(
+                    0,
+                    Some(1),
+                    Some(1),
+                    None
+                ),
+            )
+            .is_err()
+    );
+}

@@ -30,6 +30,30 @@ pub struct AnnotationSpec {
     pub text: Option<AnnotationText>,
     /// 可选路径外观。
     pub path: Option<AnnotationPath>,
+    /// 可选复合外观。
+    pub composite: Option<AnnotationComposite>,
+    /// 文字 CGTransform。
+    pub cg_transform: Option<AnnotationCgTransform>,
+}
+
+/// 复合外观。
+#[derive(Clone, Debug)]
+pub struct AnnotationComposite {
+    /// `CompositeGraphicUnit` 的资源 ID。
+    pub resource_id: String,
+}
+
+/// 文字的 `CGTransform`。
+#[derive(Clone, Debug)]
+pub struct AnnotationCgTransform {
+    /// 起始字符位置。
+    pub code_position: i64,
+    /// 字符数量。
+    pub code_count: Option<i64>,
+    /// 字形数量。
+    pub glyph_count: Option<i64>,
+    /// 可选 `Glyphs` 文本。
+    pub glyphs: Option<String>,
 }
 
 /// 文字外观。
@@ -74,6 +98,8 @@ impl AnnotationSpec {
             image: None,
             text: None,
             path: None,
+            composite: None,
+            cg_transform: None,
         }
     }
 
@@ -88,6 +114,31 @@ impl AnnotationSpec {
             text: text.into(),
             font: font.into(),
             size,
+        });
+        self
+    }
+
+    /// 附加复合外观（引用 `DocumentRes` 中的复合图元）。
+    pub fn with_composite(mut self, resource_id: impl Into<String>) -> Self {
+        self.composite = Some(AnnotationComposite {
+            resource_id: resource_id.into(),
+        });
+        self
+    }
+
+    /// 为文字外观附加 `CGTransform`。
+    pub fn with_cg_transform(
+        mut self,
+        code_position: i64,
+        code_count: Option<i64>,
+        glyph_count: Option<i64>,
+        glyphs: Option<String>,
+    ) -> Self {
+        self.cg_transform = Some(AnnotationCgTransform {
+            code_position,
+            code_count,
+            glyph_count,
+            glyphs,
         });
         self
     }
@@ -303,9 +354,23 @@ impl<'a> AnnotationEditor<'a> {
                 spec.annot_type
             )));
         }
-        if spec.image.is_some() && (spec.text.is_some() || spec.path.is_some()) {
+        let appearances = [
+            spec.image.is_some(),
+            spec.text.is_some(),
+            spec.path.is_some(),
+            spec.composite.is_some(),
+        ]
+        .into_iter()
+        .filter(|selected| *selected)
+        .count();
+        if appearances > 1 {
             return Err(OfdError::InvalidStructure(
                 "注释只能选择一种外观".to_owned(),
+            ));
+        }
+        if spec.cg_transform.is_some() && spec.text.is_none() {
+            return Err(OfdError::InvalidStructure(
+                "CGTransform 只能用于文字外观".to_owned(),
             ));
         }
         let id = self.next_id;
@@ -315,7 +380,7 @@ impl<'a> AnnotationEditor<'a> {
             }
             self.next_id += 3;
             (Some(id + 1), Some(id + 2), None)
-        } else if spec.text.is_some() || spec.path.is_some() {
+        } else if spec.text.is_some() || spec.path.is_some() || spec.composite.is_some() {
             self.next_id += 2;
             (None, None, Some(id + 1))
         } else {
@@ -528,8 +593,29 @@ fn build_annotation(
             "<ofd:Appearance Boundary=\"{boundary}\"><ofd:ImageObject ID=\"{image_object_id}\" ResourceID=\"{multimedia_id}\" Boundary=\"0 0 {width} {height}\" CTM=\"{width} 0 0 {height} 0 0\"/></ofd:Appearance>"
         )
     } else if let (Some(text), Some(object_id)) = (&spec.text, object_id) {
+        let mut cg = String::new();
+        if let Some(transform) = &spec.cg_transform {
+            cg.push_str(&format!(
+                "<ofd:CGTransform CodePosition=\"{}\"",
+                transform.code_position
+            ));
+            if let Some(count) = transform.code_count {
+                cg.push_str(&format!(" CodeCount=\"{count}\""));
+            }
+            if let Some(count) = transform.glyph_count {
+                cg.push_str(&format!(" GlyphCount=\"{count}\""));
+            }
+            if let Some(glyphs) = &transform.glyphs {
+                cg.push_str(&format!(
+                    "><ofd:Glyphs>{}</ofd:Glyphs></ofd:CGTransform>",
+                    escape(glyphs)
+                ));
+            } else {
+                cg.push_str("/>");
+            }
+        }
         format!(
-            "<ofd:Appearance Boundary=\"{boundary}\"><ofd:TextObject ID=\"{object_id}\" Boundary=\"{boundary}\" Font=\"{}\" Size=\"{}\"><ofd:TextCode X=\"0\" Y=\"0\">{}</ofd:TextCode></ofd:TextObject></ofd:Appearance>",
+            "<ofd:Appearance Boundary=\"{boundary}\"><ofd:TextObject ID=\"{object_id}\" Boundary=\"{boundary}\" Font=\"{}\" Size=\"{}\">{cg}<ofd:TextCode X=\"0\" Y=\"0\">{}</ofd:TextCode></ofd:TextObject></ofd:Appearance>",
             escape(&text.font),
             text.size,
             escape(&text.text)
@@ -538,6 +624,11 @@ fn build_annotation(
         format!(
             "<ofd:Appearance Boundary=\"{boundary}\"><ofd:PathObject ID=\"{object_id}\" Boundary=\"{boundary}\"><ofd:AbbreviatedData>{}</ofd:AbbreviatedData></ofd:PathObject></ofd:Appearance>",
             escape(&path.data)
+        )
+    } else if let (Some(composite), Some(object_id)) = (&spec.composite, object_id) {
+        format!(
+            "<ofd:Appearance Boundary=\"{boundary}\"><ofd:CompositeObject ID=\"{object_id}\" Boundary=\"{boundary}\" ResourceID=\"{}\"/></ofd:Appearance>",
+            escape(&composite.resource_id)
         )
     } else {
         format!("<ofd:Appearance Boundary=\"{boundary}\"/>")

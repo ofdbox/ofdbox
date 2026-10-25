@@ -10,7 +10,7 @@
 
 - 20520 收口：`TimeStampReq` / `TimeStampResp` DER 编解码；`verify_time_stamp_token` 支持 `nonce` / `policy` 校验，TSA 证书默认按 `genTime` 做长期验证（策略显式时间可覆盖）；`corpus_compat` 统计带时间戳的签章。
 - `ofdbox-core`：`OfdPackage::write_ofd_entries` 生成并签署 `OFDEntries.xml`：按引用图列出夹带文件，写入 `FileList` 与 `SignedValueLoc`，签名值由 `SignedValueProducer` 产出；`EntriesWriteOptions` 控制 ID、元数据、签名值路径与是否覆盖。
-- `ofdbox-core`：`AnnotationEditor` 注释编辑 API：`add` / `remove` / `update` / `write`，自动维护 `Annotations.xml` 索引、`PageAnnot` 文件与 `MaxUnitID`；支持 `AnnotationPatch` 局部修改并保留未知内容；`AnnotationSpec::with_image` 写入 `DocumentRes` 图片资源与 `ImageObject`，`with_text` / `with_path` 写 `TextObject` / `PathObject` 外观；默认拒绝对已签名文档编辑。
+- `ofdbox-core`：`AnnotationEditor` 注释编辑 API：`add` / `remove` / `update` / `write`，自动维护 `Annotations.xml` 索引、`PageAnnot` 文件与 `MaxUnitID`；支持 `AnnotationPatch` 局部修改并保留未知内容；`AnnotationSpec::with_image` 写入 `DocumentRes` 图片资源与 `ImageObject`，`with_text` / `with_path` / `with_composite` 写 `TextObject` / `PathObject` / `CompositeObject` 外观，`with_cg_transform` 支持文字 `CGTransform`；默认拒绝对已签名文档编辑。
 - `ofdbox-crypto`：`write_ofd_entries_encrypted` 封装“解密 → 生成 `OFDEntries.xml` → 重新加密”，支持加密包的完整性保护生成。
 - `ofdbox-crypto`：多接收方加密。`EncryptOptions::with_recipient` + `EncryptionRecipient` 支持多个同方案接收方（多个口令或多个证书），`DecryptSeed` 写多个 `UserInfo`，每个接收方都能独立解密。
 - 引用图扩展：`ReferenceGraphOptions` 允许调用方补充厂商自定义的文本/属性路径字段；新增 `verify_ofd_entries_with` / `write_ofd_entries_with`。
