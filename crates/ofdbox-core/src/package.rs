@@ -1147,6 +1147,15 @@ impl OfdPackage {
         &mut self,
         verifiers: &SignatureVerifiers,
     ) -> Result<EntriesVerification, OfdError> {
+        self.verify_ofd_entries_with(verifiers, &crate::refs::ReferenceGraphOptions::default())
+    }
+
+    /// 同 [`Self::verify_ofd_entries`]，但允许补充厂商自定义的引用字段。
+    pub fn verify_ofd_entries_with(
+        &mut self,
+        verifiers: &SignatureVerifiers,
+        graph: &crate::refs::ReferenceGraphOptions,
+    ) -> Result<EntriesVerification, OfdError> {
         let entries_entry = resolve_loc("", "OFDEntries.xml")?;
         let entries_bytes = self.read_entry(&entries_entry)?;
         let view = self.parse_ofd_entries()?;
@@ -1182,7 +1191,7 @@ impl OfdPackage {
             None => None,
         };
 
-        let referenced = crate::refs::referenced_entries(self)?;
+        let referenced = crate::refs::referenced_entries_with(self, graph)?;
         let mut all = HashMap::new();
         for name in self.entry_names()? {
             if !name.ends_with('/') {
@@ -1238,9 +1247,25 @@ impl OfdPackage {
     /// 按 GB/T 35275 覆盖 `OFDEntries.xml` 字节。
     pub fn write_ofd_entries<W: Write + Seek>(
         &mut self,
+        writer: W,
+        producer: &dyn SignedValueProducer,
+        options: &EntriesWriteOptions,
+    ) -> Result<EntriesWriteReport, OfdError> {
+        self.write_ofd_entries_with(
+            writer,
+            producer,
+            options,
+            &crate::refs::ReferenceGraphOptions::default(),
+        )
+    }
+
+    /// 同 [`Self::write_ofd_entries`]，但允许补充厂商自定义的引用字段。
+    pub fn write_ofd_entries_with<W: Write + Seek>(
+        &mut self,
         mut writer: W,
         producer: &dyn SignedValueProducer,
         options: &EntriesWriteOptions,
+        graph: &crate::refs::ReferenceGraphOptions,
     ) -> Result<EntriesWriteReport, OfdError> {
         let entries_entry = resolve_loc("", "OFDEntries.xml")?;
         if self.contains(&entries_entry) && !options.replace_existing {
@@ -1250,7 +1275,7 @@ impl OfdPackage {
         }
         let signed_entry = resolve_loc("", &options.signed_value_entry)?;
 
-        let referenced = crate::refs::referenced_entries(self)?;
+        let referenced = crate::refs::referenced_entries_with(self, graph)?;
         let mut all = HashMap::new();
         for name in self.entry_names()? {
             if !name.ends_with('/') {

@@ -82,6 +82,7 @@ pub use package::{
 pub use package_write::{
     DecryptedWriteReport, EntryCompression, PackageDateTime, PackageEdits, PackageWriteOptions,
 };
+pub use refs::ReferenceGraphOptions;
 pub use sign::{
     DEFAULT_CHECK_METHOD, DEFAULT_SIGNATURE_METHOD, ProtectScope, ProviderInfo,
     SignedValueProducer, SigningContext, SigningReport, SigningRequest,

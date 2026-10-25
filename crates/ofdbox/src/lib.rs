@@ -14,8 +14,8 @@ pub use ofdbox_core as core;
 pub use ofdbox_core::{
     CacheOptions, DEFAULT_SIGNATURE_METHOD, DocumentView, EntriesVerification, EntriesWriteOptions,
     EntriesWriteReport, OfdError, OfdPackage, PackageDateTime, PackageEdits, PackageWriteOptions,
-    PageView, ProtectScope, ProviderInfo, ReadOptions, SignatureVerifiers, SignedValueFormat,
-    SignedValueProducer, SigningReport, SigningRequest, StampAppearance,
+    PageView, ProtectScope, ProviderInfo, ReadOptions, ReferenceGraphOptions, SignatureVerifiers,
+    SignedValueFormat, SignedValueProducer, SigningReport, SigningRequest, StampAppearance,
 };
 
 #[cfg(feature = "crypto")]

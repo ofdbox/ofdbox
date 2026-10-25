@@ -6,7 +6,7 @@ use der::asn1::{BitString, ObjectIdentifier};
 use der::{Decode, Encode};
 use ofdbox_core::{
     DEFAULT_SIGNATURE_METHOD, EntriesWriteOptions, OfdError, OfdPackage, PackageEdits, ReadOptions,
-    SignatureVerifiers, SignedValueProducer, SigningContext, SigningRequest,
+    ReferenceGraphOptions, SignatureVerifiers, SignedValueProducer, SigningContext, SigningRequest,
 };
 use ofdbox_crypto::{PasswordBackend, Sm2SignedDataProducer, Sm2SignedDataVerifier};
 use sm2::SecretKey;
@@ -584,4 +584,54 @@ fn verify_without_signed_value_loc_skips_signature() {
         .verify_ofd_entries(&verifiers)
         .expect("verify entries");
     assert_eq!(report.signed_value, None);
+}
+
+#[test]
+fn reference_graph_extension_recognizes_vendor_paths() {
+    let (certificate, secret) = make_certificate();
+    let producer = Sm2SignedDataProducer::new(certificate, secret.to_bytes().to_vec());
+    let context = SigningContext {
+        content: ENTRIES.as_bytes(),
+        signed_entry: "/OFDEntries.xml",
+        signature_method: DEFAULT_SIGNATURE_METHOD,
+        signed_at: "20261024050000",
+        references: &[],
+    };
+    let value = producer.produce(&context).expect("signed value");
+
+    let document = DOCUMENT.replace(
+        "</ofd:Document>",
+        "<ofd:VendorPath>vendor.txt</ofd:VendorPath></ofd:Document>",
+    );
+    let mut edits = PackageEdits::new();
+    edits.replace("Doc_0/Document.xml", document.into_bytes());
+    edits.add("Doc_0/vendor.txt", b"vendor".to_vec());
+    edits.add("Doc_0/extra.txt", b"extra".to_vec());
+    edits.add("OFDEntries.xml", ENTRIES.as_bytes().to_vec());
+    edits.add("Integrity/SignedValue.dat", value);
+    let mut output = Vec::new();
+    OfdPackage::from_bytes(package())
+        .expect("open")
+        .write_with(&mut Cursor::new(&mut output), &edits, &Default::default())
+        .expect("write");
+    let mut opened = OfdPackage::from_bytes(output).expect("open entries");
+    let verifiers = SignatureVerifiers::new().with(Box::new(Sm2SignedDataVerifier::new()));
+
+    let default = opened
+        .verify_ofd_entries(&verifiers)
+        .expect("default verify");
+    assert!(
+        default.unlisted.contains(&"/Doc_0/vendor.txt".to_owned()),
+        "{:?}",
+        default.unlisted
+    );
+
+    let options = ReferenceGraphOptions {
+        extra_text_refs: vec!["VendorPath".to_owned()],
+        ..Default::default()
+    };
+    let extended = opened
+        .verify_ofd_entries_with(&verifiers, &options)
+        .expect("extended verify");
+    assert!(extended.unlisted.is_empty(), "{:?}", extended.unlisted);
 }

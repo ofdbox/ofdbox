@@ -33,7 +33,19 @@ const TEXT_REFS: &[&str] = &[
 /// 以属性形式给出路径的元素属性。
 const ATTRIBUTE_REFS: &[&str] = &["BaseLoc", "FileLoc", "ImageLoc", "Annotations"];
 
-pub(crate) fn referenced_entries(package: &mut OfdPackage) -> Result<HashSet<String>, OfdError> {
+/// 引用图扩展：允许调用方补充厂商自定义的路径字段。
+#[derive(Clone, Debug, Default)]
+pub struct ReferenceGraphOptions {
+    /// 额外按文本路径解析的元素名。
+    pub extra_text_refs: Vec<String>,
+    /// 额外按属性路径解析的属性名。
+    pub extra_attribute_refs: Vec<String>,
+}
+
+pub(crate) fn referenced_entries_with(
+    package: &mut OfdPackage,
+    options: &ReferenceGraphOptions,
+) -> Result<HashSet<String>, OfdError> {
     let mut referenced = HashSet::new();
     let mut visited = HashSet::new();
     let mut queue = VecDeque::new();
@@ -67,7 +79,9 @@ pub(crate) fn referenced_entries(package: &mut OfdPackage) -> Result<HashSet<Str
         let mut refs: Vec<(String, String)> = Vec::new();
         for node in doc.nodes() {
             let name = node.name.local.as_str();
-            if TEXT_REFS.contains(&name) {
+            if TEXT_REFS.contains(&name)
+                || options.extra_text_refs.iter().any(|extra| extra == name)
+            {
                 let text = node.text.trim();
                 if !text.is_empty() {
                     let base = if matches!(name, "MediaFile" | "FontFile") {
@@ -82,7 +96,12 @@ pub(crate) fn referenced_entries(package: &mut OfdPackage) -> Result<HashSet<Str
                 continue;
             }
             for attribute in &node.attributes {
-                if ATTRIBUTE_REFS.contains(&attribute.name.local.as_str()) {
+                if ATTRIBUTE_REFS.contains(&attribute.name.local.as_str())
+                    || options
+                        .extra_attribute_refs
+                        .iter()
+                        .any(|extra| extra == attribute.name.local.as_str())
+                {
                     let value = attribute.value.trim();
                     if !value.is_empty() {
                         refs.push((dir.clone(), value.to_owned()));
