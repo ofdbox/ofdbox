@@ -338,16 +338,17 @@ pub fn verify_signature_report(
             SignatureState::TimestampInvalid => summary.invalid += 1,
         }
     }
-    let verdict = if summary.total == 0 || summary.valid == 0 {
-        ReportVerdict::Invalid
-    } else if summary.valid == summary.total {
-        ReportVerdict::AllValid
-    } else {
-        ReportVerdict::PartiallyValid {
-            valid: summary.valid,
-            total: summary.total,
-        }
-    };
+    let verdict =
+        if summary.total == 0 || summary.valid == 0 || summary.valid < options.minimum_valid {
+            ReportVerdict::Invalid
+        } else if summary.valid == summary.total {
+            ReportVerdict::AllValid
+        } else {
+            ReportVerdict::PartiallyValid {
+                valid: summary.valid,
+                total: summary.total,
+            }
+        };
 
     Ok(SignatureReport {
         signatures,

@@ -185,3 +185,21 @@ fn reports_missing_timestamp() {
     assert_eq!(report.signatures[0].state, SignatureState::TimestampMissing);
     assert_eq!(report.verdict, ReportVerdict::Invalid);
 }
+
+#[test]
+fn enforces_minimum_valid_signatures() {
+    let (signed, _) = signed_package();
+    let mut package = OfdPackage::from_bytes(signed).expect("open");
+    let verifiers = SignatureVerifiers::new().with(Box::new(SesSignatureVerifier::new()));
+    let report = verify_signature_report(
+        &mut package,
+        &verifiers,
+        &ReportOptions {
+            minimum_valid: 2,
+            ..Default::default()
+        },
+    )
+    .expect("report");
+    assert_eq!(report.summary.valid, 1);
+    assert_eq!(report.verdict, ReportVerdict::Invalid);
+}
