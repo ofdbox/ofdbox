@@ -6,6 +6,7 @@
 
 - 新增独立 crate `ofdbox-algo`：国密算法原语与 OID 注册表，不依赖其他 `ofdbox-*` crate。提供 SM3、SM2-1 签名/验签、SM2+SM3 复合签名、SM4-CBC、SM3-KDF，以及按角色（digest / signature / suite / cipher / kdf）注册的 `AlgorithmRegistry`；`ofdbox-crypto` 的 `sign_sm3` 改为复用。后续增加：`x509` feature（SPKI/证书 → 公钥，`id-ecPublicKey` 归一化为 SM2）、SM2-3 加解密、`AlgorithmRegistry::sign_suite`、SM4-ECB/CTR、HMAC-SM3，及 `Mac` 角色注册；`ofdbox-crypto` 的证书公钥提取改为复用。
 - `ofdbox-seal`：GM/T 0031 签章值支持。`SES_sign` 解析（`SEQUENCE { SES_SignInfo, BIT STRING }`）、SM2 验签、内嵌 `SESeal` 与签章者列表校验、`Sm2GmT0031SignatureProducer` 生成，以及 `SignedValueFormat::GmT0031Signature` 内容嗅探。
+- 兼容性修复：38540 `timeStamp` 接受省略 `[0]` 的裸 BIT STRING，令牌 ContentInfo 同时接受 GB/T 35275 SignedData OID；0031 签章时间接受 `YYMMDDHHMMSSZ`、空格分隔、BIT STRING 内嵌 UTCTime 等真实语料写法；新增 `OfdPackage::read_signature_signed_value` 按签名描述目录解析相对 `SignedValue`。
 - `ofdbox-seal`：GB/T 20520 时间戳支持。`SesSignature.time_stamp` 读写 38540 `timeStamp [0]`；`attach_time_stamp` 把 TSA 令牌附加到已有签章值；`parse_time_stamp_token` / `verify_time_stamp_token` 解析 CMS `SignedData`、`TSTInfo`，校验 TSA 签名、`messageImprint` 与签章值一致，可选校验 TSA 证书链与 `timeStamping` EKU；`SesVerifyOptions::with_timestamp_check` 与 `SesSignatureVerifier::with_timestamp_check` 在验章时启用。
 
 - 20520 收口：`TimeStampReq` / `TimeStampResp` DER 编解码；`verify_time_stamp_token` 支持 `nonce` / `policy` 校验，TSA 证书默认按 `genTime` 做长期验证（策略显式时间可覆盖）；`corpus_compat` 统计带时间戳的签章。

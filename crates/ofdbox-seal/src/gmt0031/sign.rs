@@ -305,37 +305,48 @@ impl SignedValueProducer for Sm2GmT0031SignatureProducer {
 
 /// 校验并返回 0031 签章时间文本。
 ///
-/// 支持：
-/// - `YYYY-MM-DDTHH:MM:SSZ`
-/// - `YYYY-MM-DDTHH:MM:SS.sssZ`
-/// - `YYYY-MM-DDTHH:MM:SS+HH:MM` / `-HH:MM`
+/// 兼容真实语料中的多种写法：
+/// - `YYYY-MM-DDTHH:MM:SS[.sss][Z|+HH:MM]`
+/// - `YYYY-MM-DD HH:MM:SS`
+/// - `YYMMDDHHMMSSZ`
+/// - BIT STRING 内嵌 DER `UTCTime`/`GeneralizedTime`
 pub fn parse_time_info(text: &str) -> Option<String> {
     let bytes = text.as_bytes();
-    if bytes.len() < 20 || bytes[4] != b'-' || bytes[7] != b'-' || bytes[10] != b'T' {
-        return None;
-    }
-    if bytes[13] != b':' || bytes[16] != b':' {
-        return None;
-    }
-    if !bytes[..4].iter().all(u8::is_ascii_digit)
-        || !bytes[5..7].iter().all(u8::is_ascii_digit)
-        || !bytes[8..10].iter().all(u8::is_ascii_digit)
-        || !bytes[11..13].iter().all(u8::is_ascii_digit)
-        || !bytes[14..16].iter().all(u8::is_ascii_digit)
-        || !bytes[17..19].iter().all(u8::is_ascii_digit)
-    {
-        return None;
-    }
-    let suffix = &bytes[19..];
-    let valid = match suffix {
-        b"Z" => true,
-        [b'.', digits @ .., b'Z'] => !digits.is_empty() && digits.iter().all(u8::is_ascii_digit),
-        [b'+' | b'-', a, b, b':', c, d] => {
-            a.is_ascii_digit() && b.is_ascii_digit() && c.is_ascii_digit() && d.is_ascii_digit()
+    if matches!(bytes.first(), Some(0x17) | Some(0x18)) && bytes.len() >= 2 {
+        let length = bytes[1] as usize;
+        if let Some(content) = bytes.get(2..2 + length)
+            && let Ok(value) = std::str::from_utf8(content)
+            && valid_time_text(value)
+        {
+            return Some(value.to_owned());
         }
-        _ => false,
-    };
-    valid.then(|| text.to_owned())
+    }
+    valid_time_text(text).then(|| text.to_owned())
+}
+
+fn valid_time_text(text: &str) -> bool {
+    let bytes = text.as_bytes();
+    if bytes.len() >= 19
+        && bytes[4] == b'-'
+        && bytes[7] == b'-'
+        && (bytes[10] == b'T' || bytes[10] == b' ')
+    {
+        return bytes[..4].iter().all(u8::is_ascii_digit)
+            && bytes[5..7].iter().all(u8::is_ascii_digit)
+            && bytes[8..10].iter().all(u8::is_ascii_digit)
+            && bytes[11..13].iter().all(u8::is_ascii_digit)
+            && bytes[14..16].iter().all(u8::is_ascii_digit)
+            && bytes[17..19].iter().all(u8::is_ascii_digit);
+    }
+    // YYMMDDHHMMSSZ
+    if bytes.len() == 13 && bytes[12] == b'Z' {
+        return bytes[..12].iter().all(u8::is_ascii_digit);
+    }
+    // 只有 12/14 位数字的原始写法
+    if matches!(bytes.len(), 12 | 14) {
+        return bytes.iter().all(u8::is_ascii_digit);
+    }
+    false
 }
 
 fn time_info(signed_at: &str) -> Option<String> {

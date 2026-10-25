@@ -79,8 +79,7 @@ pub fn parse_ses_signature(bytes: &[u8]) -> Result<SesSignature<'_>, SealError> 
     let signature =
         der::bit_string_content(items[3]).ok_or(SealError::Invalid("签章签名值无效"))?;
     let time_stamp = match items.get(4) {
-        Some(item) => {
-            der::expect_tag(*item, 0xA0, "签章时间戳不是 [0] 显式标签")?;
+        Some(item) if item.tag == 0xA0 => {
             let mut children = item.children()?;
             let value = children
                 .next()
@@ -92,6 +91,11 @@ pub fn parse_ses_signature(bytes: &[u8]) -> Result<SesSignature<'_>, SealError> 
             }
             Some(token)
         }
+        // 厂商变体：省略 [0] 外层，直接写 BIT STRING。
+        Some(item) => Some(
+            der::bit_string_content(*item)
+                .ok_or(SealError::Invalid("签章时间戳不是 BIT STRING"))?,
+        ),
         None => None,
     };
 

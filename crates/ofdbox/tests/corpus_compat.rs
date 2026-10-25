@@ -195,9 +195,7 @@ fn check_package(path: &Path, stats: &mut Stats) {
                 continue;
             }
         };
-        let signed_value_bytes = signature
-            .signed_value()
-            .and_then(|loc| package.read_entry(loc).ok());
+        let signed_value_bytes = package.read_signature_signed_value(&signature).ok();
         let format = signed_value_bytes
             .as_deref()
             .map(ofdbox::core::detect_signed_value_format);

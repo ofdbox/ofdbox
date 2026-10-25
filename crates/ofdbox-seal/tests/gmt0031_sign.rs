@@ -174,6 +174,6 @@ fn time_info_accepts_common_formats() {
     assert!(parse_time_info("2026-10-24T05:00:00Z").is_some());
     assert!(parse_time_info("2026-10-24T05:00:00.123Z").is_some());
     assert!(parse_time_info("2026-10-24T05:00:00+08:00").is_some());
-    assert!(parse_time_info("2026-10-24 05:00:00Z").is_none());
+    assert!(parse_time_info("2026-10-24 05:00:00Z").is_some());
     assert!(parse_time_info("2026/10/24T05:00:00Z").is_none());
 }

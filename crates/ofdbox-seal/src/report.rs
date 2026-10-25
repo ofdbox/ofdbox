@@ -233,10 +233,7 @@ pub fn verify_signature_report(
             .signed_info()
             .and_then(|info| info.signature_date_time().map(str::to_owned));
 
-        let signed_value = signature
-            .signed_value()
-            .map(|loc| package.read_entry(loc))
-            .transpose()?;
+        let signed_value = package.read_signature_signed_value(&signature).ok();
         let format = signed_value
             .as_deref()
             .map(detect_signed_value_format)

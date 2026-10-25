@@ -152,6 +152,15 @@ fn tst_info(imprint: &[u8], hash_oid: &str) -> Vec<u8> {
 }
 
 fn build_token(imprint: &[u8], hash_oid: &str, with_econtent: bool) -> (Vec<u8>, Vec<u8>) {
+    build_token_with_oid(imprint, hash_oid, with_econtent, ID_SIGNED_DATA)
+}
+
+fn build_token_with_oid(
+    imprint: &[u8],
+    hash_oid: &str,
+    with_econtent: bool,
+    content_oid: &str,
+) -> (Vec<u8>, Vec<u8>) {
     let (certificate_der, secret) = tsa_certificate();
     let certificate = Certificate::from_der(&certificate_der).expect("certificate");
     let info = tst_info(imprint, hash_oid);
@@ -208,7 +217,7 @@ fn build_token(imprint: &[u8], hash_oid: &str, with_econtent: bool) -> (Vec<u8>,
     };
     let signed_data_der = signed_data.to_der().expect("signed data");
     let content_info = ContentInfo {
-        content_type: ObjectIdentifier::new_unwrap(ID_SIGNED_DATA),
+        content_type: ObjectIdentifier::new_unwrap(content_oid),
         content: Any::from(AnyRef::try_from(signed_data_der.as_slice()).expect("any ref")),
     };
     (
@@ -422,4 +431,17 @@ fn rejects_timestamp_policy_mismatch() {
         ..options()
     };
     assert!(verify_time_stamp_token(&token, signed_value, &mismatch).is_err());
+}
+
+#[test]
+fn parses_gmt_signed_data_timestamp_token() {
+    let signed_value = b"signature-value";
+    let imprint = Sm3::digest(signed_value);
+    let (token, _) =
+        build_token_with_oid(imprint.as_slice(), SM3_OID, true, "1.2.156.10197.6.1.4.2.2");
+    let parsed = parse_time_stamp_token(&token).expect("parse gmt token");
+    assert_eq!(parsed.policy, POLICY_OID);
+    let verification =
+        verify_time_stamp_token(&token, signed_value, &options()).expect("verify gmt token");
+    assert_eq!(verification.gen_time, "20261024050000Z");
 }

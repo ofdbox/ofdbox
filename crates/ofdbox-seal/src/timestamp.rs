@@ -14,8 +14,10 @@ use crate::certificate::CertificatePolicy;
 use crate::der;
 use crate::error::SealError;
 
-/// CMS `signedData` 的 OID。
+/// PKCS#7 `signedData` 的 OID。
 const ID_SIGNED_DATA: &str = "1.2.840.113549.1.7.2";
+/// GB/T 35275（沿用 GM/T 0010）的 `signedData` OID。
+const ID_SIGNED_DATA_GMT: &str = "1.2.156.10197.6.1.4.2.2";
 /// SM3 的 OID。
 const ID_SM3: &str = "1.2.156.10197.1.401";
 /// `id-kp-timeStamping` 的 OID。
@@ -209,7 +211,8 @@ pub fn attach_time_stamp(signed_value: &[u8], token: &[u8]) -> Result<Vec<u8>, S
 fn decode_token(bytes: &[u8]) -> Result<(SignedData, Vec<u8>), SealError> {
     let info = ContentInfo::from_der(bytes)
         .map_err(|_| SealError::Invalid("时间戳令牌不是 CMS ContentInfo"))?;
-    if info.content_type.to_string() != ID_SIGNED_DATA {
+    let content_type = info.content_type.to_string();
+    if content_type != ID_SIGNED_DATA && content_type != ID_SIGNED_DATA_GMT {
         return Err(SealError::Invalid("时间戳令牌的内容类型不是 signedData"));
     }
     let signed_data: SignedData = info

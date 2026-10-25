@@ -212,3 +212,49 @@ fn rejects_time_stamp_with_wrong_tag() {
     ses[position - 5] = 0x80;
     assert!(parse_ses_signature(&ses).is_err());
 }
+
+fn tlv(tag: u8, content: &[u8]) -> Vec<u8> {
+    let length = content.len();
+    let mut out = vec![tag];
+    if length < 0x80 {
+        out.push(length as u8);
+    } else if length <= 0xFF {
+        out.push(0x81);
+        out.push(length as u8);
+    } else if length <= 0xFFFF {
+        out.push(0x82);
+        out.push((length >> 8) as u8);
+        out.push(length as u8);
+    } else {
+        out.push(0x83);
+        out.push((length >> 16) as u8);
+        out.push((length >> 8) as u8);
+        out.push(length as u8);
+    }
+    out.extend_from_slice(content);
+    out
+}
+
+#[test]
+fn accepts_bare_bit_string_timestamp() {
+    let version = tlv(0x02, &[1]);
+    let eseal = tlv(0x30, &[]);
+    let time = tlv(0x18, b"20261024050000Z");
+    let mut hash = vec![0u8];
+    hash.extend_from_slice(&[0xAA; 32]);
+    let data_hash = tlv(0x03, &hash);
+    let property = tlv(0x16, b"/Doc_0/Signs/Sign_0/Signature.xml");
+    let tbs = tlv(0x30, &[version, eseal, time, data_hash, property].concat());
+    let cert = tlv(0x04, &[]);
+    let algorithm = tlv(0x06, &[0x2A]);
+    let signature = tlv(0x03, &[0]);
+
+    let token = [0x30u8, 0x03, 0x02, 0x01, 0x01];
+    let mut bits = vec![0u8];
+    bits.extend_from_slice(&token);
+    let timestamp = tlv(0x03, &bits);
+    let ses = tlv(0x30, &[tbs, cert, algorithm, signature, timestamp].concat());
+
+    let parsed = parse_ses_signature(&ses).expect("bare timestamp");
+    assert_eq!(parsed.time_stamp, Some(token.as_slice()));
+}

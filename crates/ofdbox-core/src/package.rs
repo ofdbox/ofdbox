@@ -1082,6 +1082,26 @@ impl OfdPackage {
         verifiers.verify(format, &method, &content, &signed_value)
     }
 
+    /// 读取签名描述引用的 `SignedValue` 文件。
+    ///
+    /// `SignedValue` 相对于签名描述文件所在目录解析。
+    pub fn read_signature_signed_value(
+        &mut self,
+        signature: &SignatureView,
+    ) -> Result<std::sync::Arc<[u8]>, OfdError> {
+        let entry = self
+            .signature_entry
+            .clone()
+            .ok_or_else(|| OfdError::InvalidStructure("尚未解析 Signature.xml".to_owned()))?;
+        let value = signature
+            .signed_value()
+            .ok_or_else(|| OfdError::InvalidStructure("签名缺少 SignedValue".to_owned()))?;
+        let base = parent_dir(&entry)
+            .ok_or_else(|| OfdError::InvalidStructure("无法解析签名值路径".to_owned()))?;
+        let path = self.resolve_existing_loc(base, value)?;
+        self.read_entry(&path)
+    }
+
     /// 校验一个签名描述中的 `References` 文件摘要。
     ///
     /// 只校验文件摘要，不验证 `SignedValue` 的密码学签名。
