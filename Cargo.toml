@@ -3,7 +3,7 @@ resolver = "3"
 members = ["crates/ofdbox-algo", "crates/ofdbox-core", "crates/ofdbox-crypto", "crates/ofdbox-seal", "crates/ofdbox"]
 
 [workspace.package]
-version = "0.0.2"
+version = "0.0.1"
 edition = "2024"
 authors = ["OFDBox contributors"]
 repository = "https://github.com/ofdbox/ofdbox"

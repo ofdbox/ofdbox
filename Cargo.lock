@@ -391,7 +391,7 @@ dependencies = [
 
 [[package]]
 name = "ofdbox"
-version = "0.0.2"
+version = "0.0.1"
 dependencies = [
  "der",
  "ofdbox-algo",
@@ -420,7 +420,7 @@ dependencies = [
 
 [[package]]
 name = "ofdbox-core"
-version = "0.0.2"
+version = "0.0.1"
 dependencies = [
  "base64",
  "ofdbox-algo",
@@ -433,7 +433,7 @@ dependencies = [
 
 [[package]]
 name = "ofdbox-crypto"
-version = "0.0.2"
+version = "0.0.1"
 dependencies = [
  "base64",
  "cbc",
@@ -455,7 +455,7 @@ dependencies = [
 
 [[package]]
 name = "ofdbox-seal"
-version = "0.0.2"
+version = "0.0.1"
 dependencies = [
  "cms",
  "der",
