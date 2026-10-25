@@ -2,12 +2,16 @@ use std::collections::HashMap;
 use std::fmt;
 use std::sync::Arc;
 
-use crate::cipher::{Cipher, Sm4Cbc};
+use crate::cipher::{Cipher, Sm4Cbc, Sm4Ctr, Sm4Ecb};
 use crate::digest::{DigestAlgorithm, Sm3Digest};
 use crate::error::AlgorithmError;
 use crate::kdf::{Kdf, Sm3Kdf};
 use crate::key::PublicKeyRef;
-use crate::oid::{SM2_SIGN_OID, SM2_SM3_SIGN_OID, SM3_KDF_ID, SM3_OID, SM4_CBC_OID};
+use crate::mac::{HmacSm3, Mac};
+use crate::oid::{
+    SM2_SIGN_OID, SM2_SM3_SIGN_OID, SM3_HMAC_OID, SM3_KDF_ID, SM3_OID, SM4_CBC_OID, SM4_CTR_OID,
+    SM4_ECB_OID,
+};
 use crate::signature::{RawSignatureAlgorithm, SignatureParams, Sm2RawSignature};
 use crate::suite::{SignatureSuite, SuiteMode};
 
@@ -19,6 +23,7 @@ pub struct AlgorithmRegistry {
     suites: HashMap<String, SignatureSuite>,
     ciphers: HashMap<String, Arc<dyn Cipher>>,
     kdfs: HashMap<String, Arc<dyn Kdf>>,
+    macs: HashMap<String, Arc<dyn Mac>>,
 }
 
 impl AlgorithmRegistry {
@@ -40,7 +45,10 @@ impl AlgorithmRegistry {
                 mode: SuiteMode::Integrated,
             })
             .with_cipher(SM4_CBC_OID, Sm4Cbc)
+            .with_cipher(SM4_ECB_OID, Sm4Ecb)
+            .with_cipher(SM4_CTR_OID, Sm4Ctr)
             .with_kdf(SM3_KDF_ID, Sm3Kdf)
+            .with_mac(SM3_HMAC_OID, HmacSm3)
     }
 
     /// 注册摘要算法。
@@ -81,6 +89,12 @@ impl AlgorithmRegistry {
         self
     }
 
+    /// 注册 MAC。
+    pub fn with_mac(mut self, oid: impl Into<String>, algorithm: impl Mac + 'static) -> Self {
+        self.macs.insert(oid.into(), Arc::new(algorithm));
+        self
+    }
+
     /// 查找摘要算法。
     pub fn digest(&self, oid: &str) -> Result<&dyn DigestAlgorithm, AlgorithmError> {
         self.digests
@@ -118,6 +132,14 @@ impl AlgorithmRegistry {
             .get(id)
             .map(Arc::as_ref)
             .ok_or_else(|| self.mismatch_or_unknown(id, "kdf"))
+    }
+
+    /// 查找 MAC。
+    pub fn mac(&self, oid: &str) -> Result<&dyn Mac, AlgorithmError> {
+        self.macs
+            .get(oid)
+            .map(Arc::as_ref)
+            .ok_or_else(|| self.mismatch_or_unknown(oid, "mac"))
     }
 
     /// 按复合算法 OID 验签。
@@ -170,6 +192,8 @@ impl AlgorithmRegistry {
             Some("cipher")
         } else if self.kdfs.contains_key(oid) {
             Some("kdf")
+        } else if self.macs.contains_key(oid) {
+            Some("mac")
         } else {
             None
         };
@@ -196,6 +220,7 @@ impl fmt::Debug for AlgorithmRegistry {
             .field("suites", &self.suites.len())
             .field("ciphers", &self.ciphers.len())
             .field("kdfs", &self.kdfs.len())
+            .field("macs", &self.macs.len())
             .finish()
     }
 }

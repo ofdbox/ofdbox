@@ -11,6 +11,7 @@ mod digest;
 mod error;
 mod kdf;
 mod key;
+mod mac;
 mod oid;
 mod pke;
 mod registry;
@@ -18,13 +19,14 @@ mod role;
 mod signature;
 mod suite;
 
-pub use cipher::{Cipher, Sm4Cbc};
+pub use cipher::{Cipher, Sm4Cbc, Sm4Ctr, Sm4Ecb};
 pub use digest::{DigestAlgorithm, Sm3Digest};
 pub use error::AlgorithmError;
 pub use kdf::{Kdf, Sm3Kdf};
 pub use key::{PublicKey, PublicKeyRef, SecretKeyRef};
 #[cfg(feature = "x509")]
 pub use key::{public_key_from_certificate, public_key_from_spki};
+pub use mac::{HmacSm3, Mac};
 pub use oid::*;
 pub use pke::{sm2_decrypt, sm2_encrypt};
 pub use registry::AlgorithmRegistry;

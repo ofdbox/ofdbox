@@ -1,7 +1,5 @@
-use der::Decode;
 use sm2::elliptic_curve::rand_core::TryCryptoRng;
 use sm2::pke::{DecryptingKey, EncryptingKey};
-use x509_cert::Certificate;
 use zeroize::Zeroizing;
 
 use crate::error::CryptoError;
@@ -9,17 +7,12 @@ use crate::password::FILE_KEY_LEN;
 
 /// 从 X.509 证书中提取 SEC1 编码的 SM2 公钥。
 pub fn public_key_from_certificate(certificate_der: &[u8]) -> Result<Vec<u8>, CryptoError> {
-    let certificate =
-        Certificate::from_der(certificate_der).map_err(|_| CryptoError::InvalidCertificate)?;
-    let public_key = certificate
-        .tbs_certificate()
-        .subject_public_key_info()
-        .subject_public_key
-        .raw_bytes();
-    if public_key.is_empty() {
+    let key = ofdbox_algo::public_key_from_certificate(certificate_der)
+        .map_err(|_| CryptoError::InvalidCertificate)?;
+    if key.key_bytes.is_empty() {
         return Err(CryptoError::InvalidCertificate);
     }
-    Ok(public_key.to_vec())
+    Ok(key.key_bytes)
 }
 
 /// 证书方案 1.1.2：用证书公钥加密文件加密密钥，输出 SM2Cipher DER。

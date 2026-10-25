@@ -1,7 +1,8 @@
 use ofdbox_algo::{
-    AlgorithmError, AlgorithmRegistry, AlgorithmRole, Cipher, DigestAlgorithm, Kdf, PublicKeyRef,
-    RawSignatureAlgorithm, SM2_CURVE_OID, SM2_SIGN_OID, SM2_SM3_SIGN_OID, SM3_KDF_ID, SM3_OID,
-    SM4_CBC_OID, SecretKeyRef, SignatureParams, Sm2RawSignature, Sm3Digest, Sm3Kdf, Sm4Cbc,
+    AlgorithmError, AlgorithmRegistry, AlgorithmRole, Cipher, DigestAlgorithm, HmacSm3, Kdf, Mac,
+    PublicKeyRef, RawSignatureAlgorithm, SM2_CURVE_OID, SM2_SIGN_OID, SM2_SM3_SIGN_OID,
+    SM3_HMAC_OID, SM3_KDF_ID, SM3_OID, SM4_CBC_OID, SM4_CTR_OID, SM4_ECB_OID, SecretKeyRef,
+    SignatureParams, Sm2RawSignature, Sm3Digest, Sm3Kdf, Sm4Cbc, Sm4Ctr, Sm4Ecb,
 };
 
 #[test]
@@ -182,4 +183,43 @@ fn converts_spki_to_public_key() {
     let key = ofdbox_algo::public_key_from_spki(spki.as_bytes()).expect("public key");
     assert_eq!(key.algorithm_oid, SM2_CURVE_OID);
     assert_eq!(key.key_bytes, secret.public_key().to_sec1_bytes().to_vec());
+}
+
+#[test]
+fn sm4_ecb_and_ctr_roundtrip() {
+    let key = [0x11u8; 16];
+    let iv = [0x22u8; 16];
+    let plaintext = b"OFDBox SM4 modes";
+
+    let ecb = Sm4Ecb.encrypt(&key, None, plaintext).expect("ecb encrypt");
+    assert_eq!(
+        Sm4Ecb.decrypt(&key, None, &ecb).expect("ecb decrypt"),
+        plaintext
+    );
+
+    let ctr = Sm4Ctr
+        .encrypt(&key, Some(&iv), plaintext)
+        .expect("ctr encrypt");
+    assert_eq!(ctr.len(), plaintext.len());
+    assert_eq!(
+        Sm4Ctr.decrypt(&key, Some(&iv), &ctr).expect("ctr decrypt"),
+        plaintext
+    );
+}
+
+#[test]
+fn hmac_sm3_marks_and_verifies() {
+    let tag = HmacSm3.mac(b"key", b"data").expect("mac");
+    assert_eq!(tag.len(), 32);
+    HmacSm3.verify(b"key", b"data", &tag).expect("verify");
+    assert!(HmacSm3.verify(b"key", b"modified", &tag).is_err());
+    assert_ne!(HmacSm3.mac(b"other", b"data").expect("mac"), tag);
+}
+
+#[test]
+fn registry_exposes_new_modes() {
+    let registry = AlgorithmRegistry::gm_default();
+    assert!(registry.cipher(SM4_ECB_OID).is_ok());
+    assert!(registry.cipher(SM4_CTR_OID).is_ok());
+    assert!(registry.mac(SM3_HMAC_OID).is_ok());
 }

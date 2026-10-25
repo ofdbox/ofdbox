@@ -57,6 +57,7 @@ jobs:
       - run: cargo check -p ofdbox-crypto --target wasm32-unknown-unknown
       - run: cargo check -p ofdbox-seal --target wasm32-unknown-unknown
       - run: cargo check -p ofdbox --target wasm32-unknown-unknown --no-default-features --features crypto
+      - run: cargo test -p ofdbox-algo --features x509 --locked
 
   corpus:
     name: corpus compatibility
