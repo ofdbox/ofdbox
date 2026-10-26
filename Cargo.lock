@@ -454,6 +454,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "ofdbox-model"
+version = "0.0.1"
+
+[[package]]
 name = "ofdbox-seal"
 version = "0.0.1"
 dependencies = [
