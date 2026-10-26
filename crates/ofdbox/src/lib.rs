@@ -15,9 +15,9 @@ pub use ofdbox_core::model;
 pub use ofdbox_core::model::document::{Document, PageEntry};
 pub use ofdbox_core::{
     AnnotationEditReport, AnnotationEditor, AnnotationSpec, CacheOptions, DEFAULT_SIGNATURE_METHOD,
-    EntriesVerification, EntriesWriteOptions, EntriesWriteReport, OfdError, OfdPackage,
-    PackageDateTime, PackageEdits, PackageWriteOptions, ProtectScope, ProviderInfo, ReadOptions,
-    ReferenceGraphOptions, SignatureVerifiers, SignedValueFormat, SignedValueProducer,
+    EntriesVerification, EntriesWriteOptions, EntriesWriteReport, OfdError, OfdPackage, OfdWriter,
+    PackageDateTime, PackageEdits, PackageWriteOptions, PageSize, ProtectScope, ProviderInfo,
+    ReadOptions, ReferenceGraphOptions, SignatureVerifiers, SignedValueFormat, SignedValueProducer,
     SigningReport, SigningRequest, StampAppearance,
 };
 
