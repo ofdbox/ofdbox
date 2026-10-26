@@ -38,8 +38,8 @@ pub use crypto::{
 pub use error::{Diagnostic, DiagnosticCode, OfdError};
 pub use options::{CacheOptions, ReadOptions};
 pub use package::{
-    CacheStats, EntriesVerification, EntriesWriteOptions, EntriesWriteReport, OfdPackage,
-    ROOT_ENTRY,
+    CacheStats, DocumentEntry, EntriesVerification, EntriesWriteOptions, EntriesWriteReport,
+    OfdPackage, ROOT_ENTRY,
 };
 pub use package_write::{
     DecryptedWriteReport, EntryCompression, PackageDateTime, PackageEdits, PackageWriteOptions,

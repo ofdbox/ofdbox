@@ -181,6 +181,17 @@ impl std::fmt::Debug for OfdPackage {
     }
 }
 
+/// OFD 文档入口（DocBody）描述。
+#[derive(Clone, Debug)]
+pub struct DocumentEntry {
+    /// DocBody 序号。
+    pub index: usize,
+    /// DocID。
+    pub doc_id: Option<String>,
+    /// DocRoot 路径。
+    pub doc_root: Option<String>,
+}
+
 impl OfdPackage {
     /// 从内存字节打开包，使用宽松读取模式和默认缓存。
     pub fn from_bytes(bytes: Vec<u8>) -> Result<Self, OfdError> {
@@ -559,6 +570,84 @@ impl OfdPackage {
     pub fn parse_page(&mut self, loc: &str) -> Result<Page, OfdError> {
         let entry = resolve_loc("", loc)?;
         self.parse_page_entry(entry)
+    }
+
+    /// 枚举包内所有 DocBody。
+    pub fn documents(&mut self) -> Result<Vec<DocumentEntry>, OfdError> {
+        let root = self.parse_root()?;
+        let bodies: Vec<_> = root.doc_bodies().collect();
+        let entries = bodies
+            .iter()
+            .enumerate()
+            .map(|(index, body)| DocumentEntry {
+                index,
+                doc_id: body
+                    .doc_info()
+                    .and_then(|info| info.doc_id().map(str::to_owned)),
+                doc_root: body.doc_root().map(str::to_owned),
+            })
+            .collect();
+        Ok(entries)
+    }
+
+    /// 按 DocBody 序号解析 `Document.xml`。
+    pub fn parse_document_at(&mut self, index: usize) -> Result<Document, OfdError> {
+        let doc_root = {
+            let root = self.parse_root()?;
+            root.doc_bodies()
+                .nth(index)
+                .and_then(|body| body.doc_root().map(str::to_owned))
+        }
+        .ok_or_else(|| OfdError::InvalidStructure(format!("DocBody 不存在: {index}")))?;
+        let entry = resolve_loc("", &doc_root)?;
+        let key = (entry.clone(), self.options.strict);
+        if let Some(doc) = self.xml_cache.get(&key) {
+            return Document::from_document(doc, self.options);
+        }
+        let bytes = self.read_entry(&entry)?;
+        let doc = Arc::new(parse_xml(&bytes, self.options)?);
+        self.xml_cache
+            .insert(key, Arc::clone(&doc), doc.estimated_size());
+        Document::from_document(doc, self.options)
+    }
+
+    /// 解析指定 DocBody 的页面对象。
+    pub fn parse_page_for_document(
+        &mut self,
+        index: usize,
+        page: &PageEntry,
+    ) -> Result<Page, OfdError> {
+        let doc_root = {
+            let root = self.parse_root()?;
+            root.doc_bodies()
+                .nth(index)
+                .and_then(|body| body.doc_root().map(str::to_owned))
+        }
+        .ok_or_else(|| OfdError::InvalidStructure(format!("DocBody 不存在: {index}")))?;
+        let doc_entry = resolve_loc("", &doc_root)?;
+        let base = parent_dir(&doc_entry)
+            .ok_or_else(|| OfdError::InvalidStructure("无法解析 Document.xml 目录".to_owned()))?;
+        let loc = page
+            .base_loc()
+            .ok_or_else(|| OfdError::InvalidStructure("Page 缺少 BaseLoc".to_owned()))?;
+        let entry = resolve_loc(base, loc)?;
+        self.parse_page_entry(entry)
+    }
+
+    /// 解析指定 DocBody 的资源文件。
+    pub fn parse_res_for_document(&mut self, index: usize, loc: &str) -> Result<Res, OfdError> {
+        let doc_root = {
+            let root = self.parse_root()?;
+            root.doc_bodies()
+                .nth(index)
+                .and_then(|body| body.doc_root().map(str::to_owned))
+        }
+        .ok_or_else(|| OfdError::InvalidStructure(format!("DocBody 不存在: {index}")))?;
+        let doc_entry = resolve_loc("", &doc_root)?;
+        let base = parent_dir(&doc_entry)
+            .ok_or_else(|| OfdError::InvalidStructure("无法解析 Document.xml 目录".to_owned()))?;
+        let entry = resolve_loc(base, loc)?;
+        self.parse_res_entry(entry)
     }
 
     /// 解析 `Document.xml` 中某个页面指向的内容文件。
