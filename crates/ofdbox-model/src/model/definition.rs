@@ -3,7 +3,9 @@
 //! 该模块没有对应的文档根对象，只提供其他模块共享的类型。
 
 /// 文档内对象 ID。
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(
+    Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, yaserde::PrimitiveYaSerde,
+)]
 pub struct StId(pub u32);
 
 impl StId {
@@ -25,7 +27,9 @@ impl From<u32> for StId {
 }
 
 /// 资源引用 ID。
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(
+    Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, yaserde::PrimitiveYaSerde,
+)]
 pub struct StRefId(pub u32);
 
 impl StRefId {
@@ -42,7 +46,9 @@ impl From<u32> for StRefId {
 }
 
 /// 包内相对路径。
-#[derive(Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(
+    Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, yaserde::PrimitiveYaSerde,
+)]
 pub struct StLoc(pub String);
 
 impl StLoc {
@@ -64,7 +70,7 @@ impl From<&str> for StLoc {
 }
 
 /// 数值数组。
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, yaserde::DefaultYaSerde)]
 pub struct StArray(pub Vec<f64>);
 
 impl StArray {
@@ -75,7 +81,7 @@ impl StArray {
 }
 
 /// 坐标点。
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, yaserde::DefaultYaSerde)]
 pub struct StPos {
     /// X 坐标。
     pub x: f64,
@@ -84,7 +90,7 @@ pub struct StPos {
 }
 
 /// 矩形区域，对应 `x y width height`。
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, yaserde::DefaultYaSerde)]
 pub struct StBox {
     /// 左上角 X。
     pub x: f64,
@@ -109,7 +115,8 @@ impl StBox {
 }
 
 /// 目标位置类型。
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[yaserde(rename = "DestType")]
 pub enum DestType {
     /// `XYZ`。
     #[default]
@@ -146,15 +153,20 @@ pub struct Dest {
 }
 
 /// 页面区域。
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[yaserde(rename = "PageArea")]
 pub struct PageArea {
     /// 物理区域。
+    #[yaserde(rename = "PhysicalBox")]
     pub physical_box: StBox,
     /// 应用区域。
+    #[yaserde(rename = "ApplicationBox")]
     pub application_box: Option<StBox>,
     /// 内容区域。
+    #[yaserde(rename = "ContentBox")]
     pub content_box: Option<StBox>,
     /// 出血区域。
+    #[yaserde(rename = "BleedBox")]
     pub bleed_box: Option<StBox>,
 }
 
@@ -339,4 +351,91 @@ pub enum RegionCommand {
     },
     /// 闭合路径。
     Close,
+}
+
+impl std::fmt::Display for StArray {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let text = self
+            .0
+            .iter()
+            .map(f64::to_string)
+            .collect::<Vec<_>>()
+            .join(" ");
+        formatter.write_str(&text)
+    }
+}
+
+impl std::str::FromStr for StArray {
+    type Err = String;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        let values = value
+            .split_whitespace()
+            .map(|item| {
+                item.parse::<f64>()
+                    .map_err(|error| format!("无法解析数组元素 {item}: {error}"))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(Self(values))
+    }
+}
+
+impl std::fmt::Display for StBox {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            formatter,
+            "{} {} {} {}",
+            self.x, self.y, self.width, self.height
+        )
+    }
+}
+
+impl std::str::FromStr for StBox {
+    type Err = String;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        let values = value
+            .split_whitespace()
+            .map(|item| {
+                item.parse::<f64>()
+                    .map_err(|error| format!("无法解析区域值 {item}: {error}"))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        if values.len() != 4 {
+            return Err(format!("区域需要 4 个值，实际 {}", values.len()));
+        }
+        Ok(Self {
+            x: values[0],
+            y: values[1],
+            width: values[2],
+            height: values[3],
+        })
+    }
+}
+
+impl std::fmt::Display for StPos {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(formatter, "{} {}", self.x, self.y)
+    }
+}
+
+impl std::str::FromStr for StPos {
+    type Err = String;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        let values = value
+            .split_whitespace()
+            .map(|item| {
+                item.parse::<f64>()
+                    .map_err(|error| format!("无法解析坐标值 {item}: {error}"))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        if values.len() != 2 {
+            return Err(format!("坐标需要 2 个值，实际 {}", values.len()));
+        }
+        Ok(Self {
+            x: values[0],
+            y: values[1],
+        })
+    }
 }

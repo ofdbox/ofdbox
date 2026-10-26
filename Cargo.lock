@@ -301,6 +301,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ed5909b6e89a2db4456e54cd5f673791d7eca6732202bbf2a9cc504fe2f9b84a"
 
 [[package]]
+name = "heck"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
+
+[[package]]
 name = "hmac"
 version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -351,6 +357,12 @@ name = "linux-raw-sys"
 version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32a66949e030da00e8c7d4434b251670a91556f4144941d37452769c25d58a53"
+
+[[package]]
+name = "log"
+version = "0.4.34"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f9f8bd3e56ce4dfc153cf470fffbfa98c7620958b312ca5c3a4b8d5181fd13c6"
 
 [[package]]
 name = "md-5"
@@ -456,6 +468,9 @@ dependencies = [
 [[package]]
 name = "ofdbox-model"
 version = "0.0.1"
+dependencies = [
+ "yaserde",
+]
 
 [[package]]
 name = "ofdbox-seal"
@@ -599,6 +614,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4148590afebada386688f18773da617792bf2ef03ffc1e4cbd2b1d45b023e0ba"
 dependencies = [
  "serde_core",
+ "serde_derive",
 ]
 
 [[package]]
@@ -618,6 +634,18 @@ checksum = "e7a5d71263a5a7d47b41f6b3f06ba276f10cc18b0931f1799f710578e2309348"
 dependencies = [
  "proc-macro2",
  "quote",
+ "syn 3.0.9",
+]
+
+[[package]]
+name = "serde_tokenstream"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "db95b8acf6eca5bc1bc771a7d7fb1a0d1485bdef0c46eec2f573bbaf4b4118f8"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "serde",
  "syn 3.0.9",
 ]
 
@@ -835,6 +863,36 @@ dependencies = [
  "signature",
  "spki",
  "tls_codec",
+]
+
+[[package]]
+name = "xml"
+version = "1.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2f45bb2c13fec6a6cb4c0f76a7e94839e110a14ec803ec2940777a94c347bc52"
+
+[[package]]
+name = "yaserde"
+version = "0.13.1"
+source = "git+https://github.com/ofdbox/yaserde.git?rev=f79e6c5#f79e6c5d58dd18c4419dfe7bb1c807954f0fa8e3"
+dependencies = [
+ "log",
+ "xml",
+ "yaserde_derive",
+]
+
+[[package]]
+name = "yaserde_derive"
+version = "0.13.1"
+source = "git+https://github.com/ofdbox/yaserde.git?rev=f79e6c5#f79e6c5d58dd18c4419dfe7bb1c807954f0fa8e3"
+dependencies = [
+ "heck",
+ "log",
+ "proc-macro2",
+ "quote",
+ "serde",
+ "serde_tokenstream",
+ "syn 3.0.9",
 ]
 
 [[package]]
