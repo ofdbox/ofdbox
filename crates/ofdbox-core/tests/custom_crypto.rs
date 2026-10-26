@@ -1,8 +1,8 @@
 mod fixtures;
 
-use ofdbox_core::{
-    CryptoBackend, CryptoRegistry, DecryptSeedView, EncryptInfoView, FileKey, OfdError, OfdPackage,
-};
+use ofdbox_core::model::decrypt_seed::DecryptSeed;
+use ofdbox_core::model::encryption::EncryptInfo;
+use ofdbox_core::{CryptoBackend, CryptoRegistry, FileKey, OfdError, OfdPackage};
 
 const ROOT: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
 <ofd:OFD xmlns:ofd="http://www.ofdspec.org/2016" Version="1.0" DocType="OFD">
@@ -45,8 +45,8 @@ impl CryptoBackend for DongleBackend {
 
     fn unwrap_file_key(
         &self,
-        _operation: &EncryptInfoView,
-        _seed: &DecryptSeedView,
+        _operation: &EncryptInfo,
+        _seed: &DecryptSeed,
     ) -> Result<FileKey, OfdError> {
         Ok(FileKey::new(vec![0u8; 16], vec![0u8; 16]).with_scheme("1.1.200"))
     }
@@ -146,8 +146,8 @@ impl CryptoBackend for LayeredBackend {
 
     fn unwrap_file_key(
         &self,
-        _operation: &EncryptInfoView,
-        seed: &DecryptSeedView,
+        _operation: &EncryptInfo,
+        seed: &DecryptSeed,
     ) -> Result<FileKey, OfdError> {
         let scheme = seed.encrypt_case_id().unwrap_or_default().to_owned();
         let byte = if scheme == "1.1.300" { 0x11 } else { 0x22 };

@@ -1,8 +1,8 @@
 mod fixtures;
 
-use ofdbox_core::{
-    CryptoBackend, DecryptSeedView, EncryptInfoView, FileKey, OfdError, OfdPackage, ReadOptions,
-};
+use ofdbox_core::model::decrypt_seed::DecryptSeed;
+use ofdbox_core::model::encryption::EncryptInfo;
+use ofdbox_core::{CryptoBackend, FileKey, OfdError, OfdPackage, ReadOptions};
 
 const ROOT: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
 <ofd:OFD xmlns:ofd="http://www.ofdspec.org/2016" Version="1.0" DocType="OFD">
@@ -24,8 +24,8 @@ struct ZeroBackend;
 impl CryptoBackend for ZeroBackend {
     fn unwrap_file_key(
         &self,
-        _operation: &EncryptInfoView,
-        _seed: &DecryptSeedView,
+        _operation: &EncryptInfo,
+        _seed: &DecryptSeed,
     ) -> Result<FileKey, OfdError> {
         Err(OfdError::Crypto("unused".to_owned()))
     }

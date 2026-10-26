@@ -1,8 +1,7 @@
 mod fixtures;
 
-use ofdbox_core::{
-    DiagnosticCode, GraphicObjectKind, OfdError, OfdPackage, PageContentView, ReadOptions,
-};
+use ofdbox_core::model::page::{GraphicObjectKind, Page};
+use ofdbox_core::{DiagnosticCode, OfdError, OfdPackage, ReadOptions};
 
 const PAGE: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
 <ofd:Page xmlns:ofd="http://www.ofdspec.org/2016">
@@ -51,8 +50,8 @@ const DOCUMENT: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
   <ofd:Pages><ofd:Page ID="1" BaseLoc="Pages/Page_0/Content.xml"/></ofd:Pages>
 </ofd:Document>"#;
 
-fn parse(xml: &str, options: ReadOptions) -> Result<PageContentView, OfdError> {
-    PageContentView::from_xml(xml.as_bytes(), options)
+fn parse(xml: &str, options: ReadOptions) -> Result<Page, OfdError> {
+    Page::from_xml(xml.as_bytes(), options)
 }
 
 #[test]
@@ -99,7 +98,7 @@ fn writer_emits_canonical_page_and_roundtrips() {
     assert!(xml.contains("<ofd:TextCode"));
     assert!(xml.contains("Hello"));
 
-    let reparsed = PageContentView::from_xml(xml.as_bytes(), ReadOptions::STRICT)
+    let reparsed = Page::from_xml(xml.as_bytes(), ReadOptions::STRICT)
         .expect("canonical output should pass strict parsing");
     assert_eq!(
         reparsed

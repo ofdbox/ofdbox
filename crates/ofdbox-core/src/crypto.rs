@@ -4,8 +4,8 @@ use ofdbox_algo::AlgorithmRegistry;
 use zeroize::Zeroizing;
 
 use crate::error::OfdError;
-use crate::model::decrypt_seed::DecryptSeedView;
-use crate::model::encryption::EncryptInfoView;
+use crate::model::decrypt_seed::DecryptSeed;
+use crate::model::encryption::EncryptInfo;
 
 /// 把摘要方法写法归一化为标准名称。
 ///
@@ -82,8 +82,8 @@ pub trait CryptoBackend {
     /// 从密钥描述文件中恢复文件加密密钥和 IV。
     fn unwrap_file_key(
         &self,
-        operation: &EncryptInfoView,
-        seed: &DecryptSeedView,
+        operation: &EncryptInfo,
+        seed: &DecryptSeed,
     ) -> Result<FileKey, OfdError>;
 
     /// 解密包内文件或明密文映射表。
@@ -151,8 +151,8 @@ impl CryptoBackend for CryptoRegistry {
 
     fn unwrap_file_key(
         &self,
-        operation: &EncryptInfoView,
-        seed: &DecryptSeedView,
+        operation: &EncryptInfo,
+        seed: &DecryptSeed,
     ) -> Result<FileKey, OfdError> {
         let scheme = seed.encrypt_case_id().unwrap_or_default();
         for backend in &self.backends {
@@ -450,8 +450,8 @@ mod tests {
     impl CryptoBackend for EmptyBackend {
         fn unwrap_file_key(
             &self,
-            _operation: &crate::model::encryption::EncryptInfoView,
-            _seed: &crate::model::decrypt_seed::DecryptSeedView,
+            _operation: &crate::model::encryption::EncryptInfo,
+            _seed: &crate::model::decrypt_seed::DecryptSeed,
         ) -> Result<FileKey, OfdError> {
             Err(OfdError::Crypto("unused".to_owned()))
         }

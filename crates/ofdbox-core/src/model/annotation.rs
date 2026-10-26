@@ -4,7 +4,7 @@ use crate::error::{Diagnostic, DiagnosticCode, OfdError};
 use crate::model::ofd::{
     check_attributes, check_children_order, check_namespace, validate_text_element,
 };
-use crate::model::page::{GraphicObjectView, validate_graphic_object};
+use crate::model::page::{GraphicObject, validate_graphic_object};
 use crate::options::ReadOptions;
 use crate::xml::parser::parse_xml;
 use crate::xml::tree::{NodeId, XmlDocument};
@@ -13,12 +13,12 @@ const ANNOT_TYPES: &[&str] = &["Link", "Path", "Highlight", "Stamp", "Watermark"
 
 /// 注释索引文件的类型化视图。
 #[derive(Debug, Clone)]
-pub struct AnnotationsView {
+pub struct Annotations {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl AnnotationsView {
+impl Annotations {
     /// 从 XML 字节解析注释索引。
     pub fn from_xml(bytes: &[u8], options: ReadOptions) -> Result<Self, OfdError> {
         let doc = Arc::new(parse_xml(bytes, options)?);
@@ -41,10 +41,10 @@ impl AnnotationsView {
     }
 
     /// 遍历按页组织的注释索引。
-    pub fn pages(&self) -> impl Iterator<Item = AnnotationsPageView> {
+    pub fn pages(&self) -> impl Iterator<Item = AnnotationsPageEntry> {
         self.doc
             .children_named(self.node, "Page")
-            .map(|node| AnnotationsPageView {
+            .map(|node| AnnotationsPageEntry {
                 doc: Arc::clone(&self.doc),
                 node,
             })
@@ -88,12 +88,12 @@ impl AnnotationsView {
 
 /// 注释索引中单个页面的视图。
 #[derive(Debug, Clone)]
-pub struct AnnotationsPageView {
+pub struct AnnotationsPageEntry {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl AnnotationsPageView {
+impl AnnotationsPageEntry {
     /// 引用页面的标识。
     pub fn page_id(&self) -> Option<&str> {
         self.doc.attribute(self.node, "PageID")
@@ -109,12 +109,12 @@ impl AnnotationsPageView {
 
 /// 分页注释文件的类型化视图。
 #[derive(Debug, Clone)]
-pub struct PageAnnotView {
+pub struct PageAnnot {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl PageAnnotView {
+impl PageAnnot {
     /// 从 XML 字节解析分页注释文件。
     pub fn from_xml(bytes: &[u8], options: ReadOptions) -> Result<Self, OfdError> {
         let doc = Arc::new(parse_xml(bytes, options)?);
@@ -137,10 +137,10 @@ impl PageAnnotView {
     }
 
     /// 遍历注释。
-    pub fn annots(&self) -> impl Iterator<Item = AnnotView> {
+    pub fn annots(&self) -> impl Iterator<Item = Annot> {
         self.doc
             .children_named(self.node, "Annot")
-            .map(|node| AnnotView {
+            .map(|node| Annot {
                 doc: Arc::clone(&self.doc),
                 node,
             })
@@ -184,12 +184,12 @@ impl PageAnnotView {
 
 /// 单个注释的视图。
 #[derive(Debug, Clone)]
-pub struct AnnotView {
+pub struct Annot {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl AnnotView {
+impl Annot {
     /// 注释标识。
     pub fn id(&self) -> Option<&str> {
         self.doc.attribute(self.node, "ID")
@@ -248,11 +248,11 @@ impl AnnotView {
     }
 
     /// 注释参数。
-    pub fn parameters(&self) -> impl Iterator<Item = ParameterView> + '_ {
+    pub fn parameters(&self) -> impl Iterator<Item = Parameter> + '_ {
         let mut values = Vec::new();
         if let Some(parameters) = self.doc.find_child(self.node, "Parameters") {
             for node in self.doc.children_named(parameters, "Parameter") {
-                values.push(ParameterView {
+                values.push(Parameter {
                     doc: Arc::clone(&self.doc),
                     node,
                 });
@@ -262,10 +262,10 @@ impl AnnotView {
     }
 
     /// 注释外观。
-    pub fn appearance(&self) -> Option<AppearanceView> {
+    pub fn appearance(&self) -> Option<Appearance> {
         self.doc
             .find_child(self.node, "Appearance")
-            .map(|node| AppearanceView {
+            .map(|node| Appearance {
                 doc: Arc::clone(&self.doc),
                 node,
             })
@@ -278,12 +278,12 @@ impl AnnotView {
 
 /// 注释参数的视图。
 #[derive(Debug, Clone)]
-pub struct ParameterView {
+pub struct Parameter {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl ParameterView {
+impl Parameter {
     /// 参数名称。
     pub fn name(&self) -> Option<&str> {
         self.doc.attribute(self.node, "Name")
@@ -297,22 +297,22 @@ impl ParameterView {
 
 /// 注释外观的视图。
 #[derive(Debug, Clone)]
-pub struct AppearanceView {
+pub struct Appearance {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl AppearanceView {
+impl Appearance {
     /// 外观边界。
     pub fn boundary(&self) -> Option<&str> {
         self.doc.attribute(self.node, "Boundary")
     }
 
     /// 外观中的图元。
-    pub fn objects(&self) -> impl Iterator<Item = GraphicObjectView> {
+    pub fn objects(&self) -> impl Iterator<Item = GraphicObject> {
         self.doc
             .element_children(self.node)
-            .map(|node| GraphicObjectView::new(Arc::clone(&self.doc), node))
+            .map(|node| GraphicObject::new(Arc::clone(&self.doc), node))
             .collect::<Vec<_>>()
             .into_iter()
     }

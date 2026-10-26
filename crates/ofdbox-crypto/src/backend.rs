@@ -1,7 +1,9 @@
 use std::io::Write;
 
 use base64::Engine;
-use ofdbox_core::{CryptoBackend, DecryptSeedView, EncryptInfoView, FileKey, OfdError};
+use ofdbox_core::model::decrypt_seed::DecryptSeed;
+use ofdbox_core::model::encryption::EncryptInfo;
+use ofdbox_core::{CryptoBackend, FileKey, OfdError};
 use zeroize::Zeroizing;
 
 /// 口令方案标识。
@@ -40,8 +42,8 @@ impl CryptoBackend for PasswordBackend {
 
     fn unwrap_file_key(
         &self,
-        _operation: &EncryptInfoView,
-        seed: &DecryptSeedView,
+        _operation: &EncryptInfo,
+        seed: &DecryptSeed,
     ) -> Result<FileKey, OfdError> {
         check_case_id(seed, PASSWORD_CASE_ID)?;
         for user in seed.users() {
@@ -116,8 +118,8 @@ impl CryptoBackend for CertificateBackend {
 
     fn unwrap_file_key(
         &self,
-        _operation: &EncryptInfoView,
-        seed: &DecryptSeedView,
+        _operation: &EncryptInfo,
+        seed: &DecryptSeed,
     ) -> Result<FileKey, OfdError> {
         check_case_id(seed, CERTIFICATE_CASE_ID)?;
         for user in seed.users() {
@@ -179,7 +181,7 @@ fn digest(method: &str, data: &[u8]) -> Result<Vec<u8>, OfdError> {
     }
 }
 
-fn check_case_id(seed: &DecryptSeedView, expected: &str) -> Result<(), OfdError> {
+fn check_case_id(seed: &DecryptSeed, expected: &str) -> Result<(), OfdError> {
     if let Some(case_id) = seed.encrypt_case_id()
         && case_id != expected
     {

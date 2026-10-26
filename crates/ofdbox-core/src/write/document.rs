@@ -2,15 +2,13 @@ use quick_xml::Writer;
 use quick_xml::events::{BytesDecl, BytesEnd, Event};
 
 use crate::error::OfdError;
-use crate::model::document::{
-    DestView, DocumentView, PageAreaView, PermissionsView, VPreferencesView,
-};
+use crate::model::document::{Dest, Document, PageArea, Permissions, VPreferences};
 use crate::write::action::write_actions;
 use crate::write::ofd::{missing, write_start, write_text_element};
 use crate::write::outline::write_outlines;
 use crate::xml::namespace::OFD_NAMESPACE;
 
-pub(crate) fn write_document(document: &DocumentView) -> Result<String, OfdError> {
+pub(crate) fn write_document(document: &Document) -> Result<String, OfdError> {
     let mut writer = Writer::new(Vec::new());
     writer.write_event(Event::Decl(BytesDecl::new("1.0", Some("UTF-8"), None)))?;
     write_start(&mut writer, "ofd:Document", &[("xmlns:ofd", OFD_NAMESPACE)])?;
@@ -151,7 +149,7 @@ pub(crate) fn write_document(document: &DocumentView) -> Result<String, OfdError
 pub(crate) fn write_page_area(
     writer: &mut Writer<Vec<u8>>,
     name: &str,
-    area: &PageAreaView,
+    area: &PageArea,
 ) -> Result<(), OfdError> {
     write_start(writer, name, &[])?;
     let physical = area
@@ -173,7 +171,7 @@ pub(crate) fn write_page_area(
 
 fn write_permissions(
     writer: &mut Writer<Vec<u8>>,
-    permissions: &PermissionsView,
+    permissions: &Permissions,
 ) -> Result<(), OfdError> {
     write_start(writer, "ofd:Permissions", &[])?;
     for (name, value) in [
@@ -215,10 +213,7 @@ fn write_permissions(
     Ok(())
 }
 
-fn write_v_preferences(
-    writer: &mut Writer<Vec<u8>>,
-    prefs: &VPreferencesView,
-) -> Result<(), OfdError> {
+fn write_v_preferences(writer: &mut Writer<Vec<u8>>, prefs: &VPreferences) -> Result<(), OfdError> {
     write_start(writer, "ofd:VPreferences", &[])?;
     for (name, value) in [
         ("ofd:PageMode", prefs.page_mode()),
@@ -247,7 +242,7 @@ fn write_v_preferences(
     Ok(())
 }
 
-pub(crate) fn write_dest(writer: &mut Writer<Vec<u8>>, dest: &DestView) -> Result<(), OfdError> {
+pub(crate) fn write_dest(writer: &mut Writer<Vec<u8>>, dest: &Dest) -> Result<(), OfdError> {
     let dest_type = dest
         .dest_type()
         .ok_or_else(|| missing("/Document/Bookmarks/Bookmark/Dest/@Type", "缺少 Dest Type"))?;

@@ -1,4 +1,7 @@
-use ofdbox_core::{ColorKind, OfdError, PageContentView, ReadOptions, ResView};
+use ofdbox_core::model::color::ColorKind;
+use ofdbox_core::model::page::Page;
+use ofdbox_core::model::res::Res;
+use ofdbox_core::{OfdError, ReadOptions};
 
 const RES: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
 <ofd:Res xmlns:ofd="http://www.ofdspec.org/2016" BaseLoc="./">
@@ -65,8 +68,8 @@ const PAGE: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
   </ofd:Content>
 </ofd:Page>"#;
 
-fn parse_res(xml: &str, options: ReadOptions) -> Result<ResView, OfdError> {
-    ResView::from_xml(xml.as_bytes(), options)
+fn parse_res(xml: &str, options: ReadOptions) -> Result<Res, OfdError> {
+    Res::from_xml(xml.as_bytes(), options)
 }
 
 #[test]
@@ -136,7 +139,7 @@ fn color_writer_roundtrips_all_kinds() {
     assert!(xml.contains("<ofd:GouraudShd "));
     assert!(xml.contains("<ofd:LaGourandShd "));
 
-    let reparsed = ResView::from_xml(xml.as_bytes(), ReadOptions::STRICT).expect("strict reparse");
+    let reparsed = Res::from_xml(xml.as_bytes(), ReadOptions::STRICT).expect("strict reparse");
     let params: Vec<_> = reparsed.draw_params().collect();
     assert_eq!(params[0].fill_color().unwrap().kind(), ColorKind::Pattern);
     assert_eq!(
@@ -188,7 +191,7 @@ fn gradient_needs_two_segments_in_strict_mode() {
 #[test]
 fn page_graphic_exposes_colors_and_validates_them() {
     for options in [ReadOptions::LENIENT, ReadOptions::STRICT] {
-        let view = PageContentView::from_xml(PAGE.as_bytes(), options).expect("Page");
+        let view = Page::from_xml(PAGE.as_bytes(), options).expect("Page");
         let object = view
             .content()
             .unwrap()
@@ -203,9 +206,9 @@ fn page_graphic_exposes_colors_and_validates_them() {
     }
 
     let invalid = PAGE.replace(r#" Alpha="255""#, r#" Alpha="solid""#);
-    assert!(PageContentView::from_xml(invalid.as_bytes(), ReadOptions::LENIENT).is_ok());
+    assert!(Page::from_xml(invalid.as_bytes(), ReadOptions::LENIENT).is_ok());
     assert!(matches!(
-        PageContentView::from_xml(invalid.as_bytes(), ReadOptions::STRICT),
+        Page::from_xml(invalid.as_bytes(), ReadOptions::STRICT),
         Err(OfdError::Conformance(_))
     ));
 }

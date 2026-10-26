@@ -1,6 +1,7 @@
 mod fixtures;
 
-use ofdbox_core::{DocVersionView, OfdError, OfdPackage, ReadOptions};
+use ofdbox_core::model::version::Version;
+use ofdbox_core::{OfdError, OfdPackage, ReadOptions};
 
 const DOC_VERSION: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
 <ofd:DocVersion xmlns:ofd="http://www.ofdspec.org/2016" ID="v2" Version="2.0" Name="第二版" CreationDate="2024-01-02">
@@ -22,8 +23,8 @@ const ROOT: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
   </ofd:DocBody>
 </ofd:OFD>"#;
 
-fn parse(xml: &str, options: ReadOptions) -> Result<DocVersionView, OfdError> {
-    DocVersionView::from_xml(xml.as_bytes(), options)
+fn parse(xml: &str, options: ReadOptions) -> Result<Version, OfdError> {
+    Version::from_xml(xml.as_bytes(), options)
 }
 
 #[test]
@@ -54,8 +55,7 @@ fn writer_emits_canonical_doc_version() {
     assert!(file_list < doc_root);
     assert!(xml.contains(r#"<ofd:File ID="f1">Doc_0/Document.xml</ofd:File>"#));
 
-    let reparsed =
-        DocVersionView::from_xml(xml.as_bytes(), ReadOptions::STRICT).expect("strict reparse");
+    let reparsed = Version::from_xml(xml.as_bytes(), ReadOptions::STRICT).expect("strict reparse");
     assert_eq!(reparsed.files().count(), 2);
 }
 

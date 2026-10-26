@@ -3,8 +3,7 @@ use quick_xml::events::{BytesEnd, Event};
 
 use crate::error::OfdError;
 use crate::model::color::{
-    AxialShdView, ColorKind, ColorView, GouraudShdView, LaGouraudShdView, PatternView, PointView,
-    RadialShdView, SegmentView,
+    AxialShd, Color, ColorKind, GouraudShd, LaGouraudShd, Pattern, Point, RadialShd, Segment,
 };
 use crate::write::ofd::{missing, write_start};
 use crate::write::page::write_graphic_object;
@@ -13,7 +12,7 @@ use crate::write::page::write_graphic_object;
 pub(crate) fn write_color(
     writer: &mut Writer<Vec<u8>>,
     name: &str,
-    color: &ColorView,
+    color: &Color,
 ) -> Result<(), OfdError> {
     let index = color.index().map(|value| value.to_string());
     let alpha = color.alpha().map(|value| value.to_string());
@@ -65,7 +64,7 @@ pub(crate) fn write_color(
     Ok(())
 }
 
-fn write_pattern(writer: &mut Writer<Vec<u8>>, pattern: &PatternView) -> Result<(), OfdError> {
+fn write_pattern(writer: &mut Writer<Vec<u8>>, pattern: &Pattern) -> Result<(), OfdError> {
     let width = pattern
         .width()
         .ok_or_else(|| missing("/Pattern/@Width", "缺少 Pattern Width"))?
@@ -108,7 +107,7 @@ fn write_pattern(writer: &mut Writer<Vec<u8>>, pattern: &PatternView) -> Result<
     Ok(())
 }
 
-fn write_axial_shd(writer: &mut Writer<Vec<u8>>, shd: &AxialShdView) -> Result<(), OfdError> {
+fn write_axial_shd(writer: &mut Writer<Vec<u8>>, shd: &AxialShd) -> Result<(), OfdError> {
     let start = shd
         .start_point()
         .ok_or_else(|| missing("/AxialShd/@StartPoint", "缺少 StartPoint"))?;
@@ -135,7 +134,7 @@ fn write_axial_shd(writer: &mut Writer<Vec<u8>>, shd: &AxialShdView) -> Result<(
     Ok(())
 }
 
-fn write_radial_shd(writer: &mut Writer<Vec<u8>>, shd: &RadialShdView) -> Result<(), OfdError> {
+fn write_radial_shd(writer: &mut Writer<Vec<u8>>, shd: &RadialShd) -> Result<(), OfdError> {
     let start = shd
         .start_point()
         .ok_or_else(|| missing("/RadialShd/@StartPoint", "缺少 StartPoint"))?;
@@ -181,7 +180,7 @@ fn write_radial_shd(writer: &mut Writer<Vec<u8>>, shd: &RadialShdView) -> Result
 
 fn write_segments(
     writer: &mut Writer<Vec<u8>>,
-    segments: impl Iterator<Item = SegmentView>,
+    segments: impl Iterator<Item = Segment>,
 ) -> Result<(), OfdError> {
     for segment in segments {
         let position = segment.position().map(|value| value.to_string());
@@ -199,7 +198,7 @@ fn write_segments(
     Ok(())
 }
 
-fn write_gouraud_shd(writer: &mut Writer<Vec<u8>>, shd: &GouraudShdView) -> Result<(), OfdError> {
+fn write_gouraud_shd(writer: &mut Writer<Vec<u8>>, shd: &GouraudShd) -> Result<(), OfdError> {
     let extend = shd.extend().map(|value| value.to_string());
     let mut attributes = Vec::new();
     if let Some(extend) = extend.as_deref() {
@@ -216,10 +215,7 @@ fn write_gouraud_shd(writer: &mut Writer<Vec<u8>>, shd: &GouraudShdView) -> Resu
     Ok(())
 }
 
-fn write_la_gouraud_shd(
-    writer: &mut Writer<Vec<u8>>,
-    shd: &LaGouraudShdView,
-) -> Result<(), OfdError> {
+fn write_la_gouraud_shd(writer: &mut Writer<Vec<u8>>, shd: &LaGouraudShd) -> Result<(), OfdError> {
     let vertices = shd
         .vertices_per_row()
         .ok_or_else(|| missing("/LaGourandShd/@VerticesPerRow", "缺少 VerticesPerRow"))?;
@@ -240,7 +236,7 @@ fn write_la_gouraud_shd(
     Ok(())
 }
 
-fn write_point(writer: &mut Writer<Vec<u8>>, point: &PointView) -> Result<(), OfdError> {
+fn write_point(writer: &mut Writer<Vec<u8>>, point: &Point) -> Result<(), OfdError> {
     let x = point.x().map(|value| value.to_string());
     let y = point.y().map(|value| value.to_string());
     let edge_flag = point.edge_flag().map(|value| value.to_string());

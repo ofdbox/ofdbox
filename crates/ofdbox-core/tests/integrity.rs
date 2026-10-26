@@ -1,6 +1,7 @@
 mod fixtures;
 
-use ofdbox_core::{DocEntriesView, OfdError, OfdPackage, ReadOptions};
+use ofdbox_core::model::integrity::DocEntries;
+use ofdbox_core::{OfdError, OfdPackage, ReadOptions};
 
 const ENTRIES: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
 <ofd:DocEntries xmlns:ofd="http://www.ofdspec.org/2016" ID="1" CreatorName="OFDBox"
@@ -15,7 +16,7 @@ const ENTRIES: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
 #[test]
 fn canonical_doc_entries_parse_in_both_modes() {
     for options in [ReadOptions::LENIENT, ReadOptions::STRICT] {
-        let view = DocEntriesView::from_xml(ENTRIES.as_bytes(), options).expect("DocEntries");
+        let view = DocEntries::from_xml(ENTRIES.as_bytes(), options).expect("DocEntries");
         assert_eq!(view.id(), Some("1"));
         assert_eq!(view.creator_name(), Some("OFDBox"));
         assert_eq!(view.version(), Some("1.0"));
@@ -30,7 +31,7 @@ fn canonical_doc_entries_parse_in_both_modes() {
 
 #[test]
 fn writer_emits_canonical_doc_entries() {
-    let view = DocEntriesView::from_xml(ENTRIES.as_bytes(), ReadOptions::LENIENT).unwrap();
+    let view = DocEntries::from_xml(ENTRIES.as_bytes(), ReadOptions::LENIENT).unwrap();
     let xml = view.to_xml().expect("strict writer");
     assert!(xml.contains("<ofd:DocEntries"));
     assert!(xml.contains(r#"CreatorName="OFDBox""#));
@@ -38,16 +39,16 @@ fn writer_emits_canonical_doc_entries() {
     assert!(xml.contains(r#"FileLoc="/OFD.xml""#));
     assert!(xml.contains("<ofd:SignedValueLoc>/Integrity/SignedValue.dat</ofd:SignedValueLoc>"));
     let reparsed =
-        DocEntriesView::from_xml(xml.as_bytes(), ReadOptions::STRICT).expect("strict reparse");
+        DocEntries::from_xml(xml.as_bytes(), ReadOptions::STRICT).expect("strict reparse");
     assert_eq!(reparsed.files().count(), 2);
 }
 
 #[test]
 fn missing_id_is_strict_error() {
     let missing = ENTRIES.replace(r#" ID="1""#, "");
-    assert!(DocEntriesView::from_xml(missing.as_bytes(), ReadOptions::LENIENT).is_ok());
+    assert!(DocEntries::from_xml(missing.as_bytes(), ReadOptions::LENIENT).is_ok());
     assert!(matches!(
-        DocEntriesView::from_xml(missing.as_bytes(), ReadOptions::STRICT),
+        DocEntries::from_xml(missing.as_bytes(), ReadOptions::STRICT),
         Err(OfdError::Conformance(_))
     ));
 }
@@ -67,13 +68,13 @@ fn file_loc_must_be_attribute() {
         r#"<ofd:File ID="f1"><ofd:FileLoc>/OFD.xml</ofd:FileLoc></ofd:File>"#,
     );
     assert!(matches!(
-        DocEntriesView::from_xml(with_child.as_bytes(), ReadOptions::STRICT),
+        DocEntries::from_xml(with_child.as_bytes(), ReadOptions::STRICT),
         Err(OfdError::Conformance(_))
     ));
 
     let missing = ENTRIES.replace(r#" FileLoc="/OFD.xml""#, "");
     assert!(matches!(
-        DocEntriesView::from_xml(missing.as_bytes(), ReadOptions::STRICT),
+        DocEntries::from_xml(missing.as_bytes(), ReadOptions::STRICT),
         Err(OfdError::Conformance(_))
     ));
 }

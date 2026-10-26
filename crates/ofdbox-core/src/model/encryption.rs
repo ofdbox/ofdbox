@@ -11,12 +11,12 @@ use crate::xml::tree::{NodeId, XmlDocument};
 
 /// 解密入口文件 `Encryptions.xml` 的类型化视图。
 #[derive(Debug, Clone)]
-pub struct EncryptionsView {
+pub struct Encryptions {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl EncryptionsView {
+impl Encryptions {
     /// 从 XML 字节解析解密入口。
     pub fn from_xml(bytes: &[u8], options: ReadOptions) -> Result<Self, OfdError> {
         let doc = Arc::new(parse_xml(bytes, options)?);
@@ -39,10 +39,10 @@ impl EncryptionsView {
     }
 
     /// 遍历加密操作记录。
-    pub fn encrypt_infos(&self) -> impl Iterator<Item = EncryptInfoView> {
+    pub fn encrypt_infos(&self) -> impl Iterator<Item = EncryptInfo> {
         self.doc
             .children_named(self.node, "EncryptInfo")
-            .map(|node| EncryptInfoView {
+            .map(|node| EncryptInfo {
                 doc: Arc::clone(&self.doc),
                 node,
             })
@@ -96,12 +96,12 @@ impl EncryptionsView {
 
 /// 单次加密操作的视图。
 #[derive(Debug, Clone)]
-pub struct EncryptInfoView {
+pub struct EncryptInfo {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl EncryptInfoView {
+impl EncryptInfo {
     /// 加密操作标识。
     pub fn id(&self) -> Option<&str> {
         self.doc.attribute(self.node, "ID")
@@ -113,10 +113,10 @@ impl EncryptInfoView {
     }
 
     /// 加解密组件信息。
-    pub fn provider(&self) -> Option<EncryptionProviderView> {
+    pub fn provider(&self) -> Option<EncryptionProvider> {
         self.doc
             .find_child(self.node, "Provider")
-            .map(|node| EncryptionProviderView {
+            .map(|node| EncryptionProvider {
                 doc: Arc::clone(&self.doc),
                 node,
             })
@@ -133,11 +133,11 @@ impl EncryptInfoView {
     }
 
     /// 加密操作附加参数。
-    pub fn parameters(&self) -> impl Iterator<Item = EncryptionParameterView> {
+    pub fn parameters(&self) -> impl Iterator<Item = EncryptionParameter> {
         let mut values = Vec::new();
         if let Some(parameters) = self.doc.find_child(self.node, "Parameters") {
             for node in self.doc.children_named(parameters, "Parameter") {
-                values.push(EncryptionParameterView {
+                values.push(EncryptionParameter {
                     doc: Arc::clone(&self.doc),
                     node,
                 });
@@ -165,12 +165,12 @@ impl EncryptInfoView {
 
 /// 加解密组件的视图。
 #[derive(Debug, Clone)]
-pub struct EncryptionProviderView {
+pub struct EncryptionProvider {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl EncryptionProviderView {
+impl EncryptionProvider {
     /// 组件名称。
     pub fn name(&self) -> Option<&str> {
         self.doc.attribute(self.node, "Name")
@@ -201,12 +201,12 @@ impl EncryptionProviderView {
 
 /// 加密操作附加参数的视图。
 #[derive(Debug, Clone)]
-pub struct EncryptionParameterView {
+pub struct EncryptionParameter {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl EncryptionParameterView {
+impl EncryptionParameter {
     /// 参数名称。
     pub fn name(&self) -> Option<&str> {
         self.doc.attribute(self.node, "Name")

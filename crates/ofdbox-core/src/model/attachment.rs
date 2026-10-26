@@ -10,12 +10,12 @@ use crate::xml::tree::{NodeId, XmlDocument};
 
 /// 附件列表的类型化视图。
 #[derive(Debug, Clone)]
-pub struct AttachmentsView {
+pub struct Attachments {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl AttachmentsView {
+impl Attachments {
     /// 从 XML 字节解析附件列表。
     pub fn from_xml(bytes: &[u8], options: ReadOptions) -> Result<Self, OfdError> {
         let doc = Arc::new(parse_xml(bytes, options)?);
@@ -38,10 +38,10 @@ impl AttachmentsView {
     }
 
     /// 遍历附件。
-    pub fn attachments(&self) -> impl Iterator<Item = AttachmentView> {
+    pub fn attachments(&self) -> impl Iterator<Item = Attachment> {
         self.doc
             .children_named(self.node, "Attachment")
-            .map(|node| AttachmentView {
+            .map(|node| Attachment {
                 doc: Arc::clone(&self.doc),
                 node,
             })
@@ -85,12 +85,12 @@ impl AttachmentsView {
 
 /// 单个附件的视图。
 #[derive(Debug, Clone)]
-pub struct AttachmentView {
+pub struct Attachment {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl AttachmentView {
+impl Attachment {
     /// 附件标识。
     pub fn id(&self) -> Option<&str> {
         self.doc.attribute(self.node, "ID")

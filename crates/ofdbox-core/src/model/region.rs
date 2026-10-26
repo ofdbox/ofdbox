@@ -25,21 +25,21 @@ pub enum RegionCommandKind {
 
 /// 动作区域的视图。
 #[derive(Debug, Clone)]
-pub struct RegionView {
+pub struct Region {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl RegionView {
+impl Region {
     pub(crate) fn new(doc: Arc<XmlDocument>, node: NodeId) -> Self {
         Self { doc, node }
     }
 
     /// 区域中的子路径。
-    pub fn areas(&self) -> impl Iterator<Item = RegionAreaView> {
+    pub fn areas(&self) -> impl Iterator<Item = RegionArea> {
         self.doc
             .children_named(self.node, "Area")
-            .map(|node| RegionAreaView {
+            .map(|node| RegionArea {
                 doc: Arc::clone(&self.doc),
                 node,
             })
@@ -50,22 +50,22 @@ impl RegionView {
 
 /// 区域子路径的视图。
 #[derive(Debug, Clone)]
-pub struct RegionAreaView {
+pub struct RegionArea {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl RegionAreaView {
+impl RegionArea {
     /// 起始点。
     pub fn start(&self) -> Option<&str> {
         self.doc.attribute(self.node, "Start")
     }
 
     /// 子路径的绘制命令。
-    pub fn commands(&self) -> impl Iterator<Item = RegionCommandView> {
+    pub fn commands(&self) -> impl Iterator<Item = RegionCommand> {
         self.doc
             .element_children(self.node)
-            .map(|node| RegionCommandView {
+            .map(|node| RegionCommand {
                 doc: Arc::clone(&self.doc),
                 node,
             })
@@ -76,12 +76,12 @@ impl RegionAreaView {
 
 /// 单条区域绘制命令的视图。
 #[derive(Debug, Clone)]
-pub struct RegionCommandView {
+pub struct RegionCommand {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl RegionCommandView {
+impl RegionCommand {
     /// 命令类型。
     pub fn kind(&self) -> RegionCommandKind {
         match self.doc.name(self.node).local.as_str() {

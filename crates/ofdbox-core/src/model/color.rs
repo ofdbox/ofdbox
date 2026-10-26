@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::error::{Diagnostic, DiagnosticCode};
 use crate::model::ofd::{check_attributes, check_children_order, check_namespace};
-use crate::model::page::{GraphicObjectView, validate_graphic_object};
+use crate::model::page::{GraphicObject, validate_graphic_object};
 use crate::xml::tree::{NodeId, XmlDocument};
 
 /// 颜色或填充的形态。
@@ -26,12 +26,12 @@ pub enum ColorKind {
 
 /// `CT_Color` 的类型化视图。
 #[derive(Debug, Clone)]
-pub struct ColorView {
+pub struct Color {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl ColorView {
+impl Color {
     pub(crate) fn new(doc: Arc<XmlDocument>, node: NodeId) -> Self {
         Self { doc, node }
     }
@@ -72,28 +72,28 @@ impl ColorView {
     }
 
     /// 底纹。
-    pub fn pattern(&self) -> Option<PatternView> {
-        self.shape_view("Pattern", PatternView::new)
+    pub fn pattern(&self) -> Option<Pattern> {
+        self.shape_view("Pattern", Pattern::new)
     }
 
     /// 轴向渐变。
-    pub fn axial_shd(&self) -> Option<AxialShdView> {
-        self.shape_view("AxialShd", AxialShdView::new)
+    pub fn axial_shd(&self) -> Option<AxialShd> {
+        self.shape_view("AxialShd", AxialShd::new)
     }
 
     /// 径向渐变。
-    pub fn radial_shd(&self) -> Option<RadialShdView> {
-        self.shape_view("RadialShd", RadialShdView::new)
+    pub fn radial_shd(&self) -> Option<RadialShd> {
+        self.shape_view("RadialShd", RadialShd::new)
     }
 
     /// 高洛德渐变。
-    pub fn gouraud_shd(&self) -> Option<GouraudShdView> {
-        self.shape_view("GouraudShd", GouraudShdView::new)
+    pub fn gouraud_shd(&self) -> Option<GouraudShd> {
+        self.shape_view("GouraudShd", GouraudShd::new)
     }
 
     /// 格状高洛德渐变。
-    pub fn la_gouraud_shd(&self) -> Option<LaGouraudShdView> {
-        self.shape_view("LaGourandShd", LaGouraudShdView::new)
+    pub fn la_gouraud_shd(&self) -> Option<LaGouraudShd> {
+        self.shape_view("LaGourandShd", LaGouraudShd::new)
     }
 
     fn shape_child(&self) -> Option<NodeId> {
@@ -121,12 +121,12 @@ impl ColorView {
 
 /// 底纹的视图。
 #[derive(Debug, Clone)]
-pub struct PatternView {
+pub struct Pattern {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl PatternView {
+impl Pattern {
     fn new(doc: Arc<XmlDocument>, node: NodeId) -> Self {
         Self { doc, node }
     }
@@ -173,11 +173,11 @@ impl PatternView {
     }
 
     /// 单元内容中的图元。
-    pub fn objects(&self) -> impl Iterator<Item = GraphicObjectView> {
+    pub fn objects(&self) -> impl Iterator<Item = GraphicObject> {
         let mut values = Vec::new();
         if let Some(cell) = self.cell_content() {
             for node in self.doc.element_children(cell) {
-                values.push(GraphicObjectView::new(Arc::clone(&self.doc), node));
+                values.push(GraphicObject::new(Arc::clone(&self.doc), node));
             }
         }
         values.into_iter()
@@ -196,12 +196,12 @@ impl PatternView {
 
 /// 渐变段的视图。
 #[derive(Debug, Clone)]
-pub struct SegmentView {
+pub struct Segment {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl SegmentView {
+impl Segment {
     fn new(doc: Arc<XmlDocument>, node: NodeId) -> Self {
         Self { doc, node }
     }
@@ -214,21 +214,21 @@ impl SegmentView {
     }
 
     /// 段颜色。
-    pub fn color(&self) -> Option<ColorView> {
+    pub fn color(&self) -> Option<Color> {
         self.doc
             .find_child(self.node, "Color")
-            .map(|node| ColorView::new(Arc::clone(&self.doc), node))
+            .map(|node| Color::new(Arc::clone(&self.doc), node))
     }
 }
 
 /// 轴向渐变的视图。
 #[derive(Debug, Clone)]
-pub struct AxialShdView {
+pub struct AxialShd {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl AxialShdView {
+impl AxialShd {
     fn new(doc: Arc<XmlDocument>, node: NodeId) -> Self {
         Self { doc, node }
     }
@@ -259,7 +259,7 @@ impl AxialShdView {
     }
 
     /// 渐变段。
-    pub fn segments(&self) -> impl Iterator<Item = SegmentView> {
+    pub fn segments(&self) -> impl Iterator<Item = Segment> {
         segments(&self.doc, self.node)
     }
 
@@ -278,12 +278,12 @@ impl AxialShdView {
 
 /// 径向渐变的视图。
 #[derive(Debug, Clone)]
-pub struct RadialShdView {
+pub struct RadialShd {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl RadialShdView {
+impl RadialShd {
     fn new(doc: Arc<XmlDocument>, node: NodeId) -> Self {
         Self { doc, node }
     }
@@ -336,7 +336,7 @@ impl RadialShdView {
     }
 
     /// 渐变段。
-    pub fn segments(&self) -> impl Iterator<Item = SegmentView> {
+    pub fn segments(&self) -> impl Iterator<Item = Segment> {
         segments(&self.doc, self.node)
     }
 
@@ -349,12 +349,12 @@ impl RadialShdView {
 
 /// 高洛德渐变点的视图。
 #[derive(Debug, Clone)]
-pub struct PointView {
+pub struct Point {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl PointView {
+impl Point {
     fn new(doc: Arc<XmlDocument>, node: NodeId) -> Self {
         Self { doc, node }
     }
@@ -377,10 +377,10 @@ impl PointView {
     }
 
     /// 点颜色。
-    pub fn color(&self) -> Option<ColorView> {
+    pub fn color(&self) -> Option<Color> {
         self.doc
             .find_child(self.node, "Color")
-            .map(|node| ColorView::new(Arc::clone(&self.doc), node))
+            .map(|node| Color::new(Arc::clone(&self.doc), node))
     }
 
     fn float_attr(&self, name: &str) -> Option<f64> {
@@ -392,12 +392,12 @@ impl PointView {
 
 /// 高洛德渐变的视图。
 #[derive(Debug, Clone)]
-pub struct GouraudShdView {
+pub struct GouraudShd {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl GouraudShdView {
+impl GouraudShd {
     fn new(doc: Arc<XmlDocument>, node: NodeId) -> Self {
         Self { doc, node }
     }
@@ -410,26 +410,26 @@ impl GouraudShdView {
     }
 
     /// 渐变点。
-    pub fn points(&self) -> impl Iterator<Item = PointView> {
+    pub fn points(&self) -> impl Iterator<Item = Point> {
         points(&self.doc, self.node)
     }
 
     /// 背景色。
-    pub fn back_color(&self) -> Option<ColorView> {
+    pub fn back_color(&self) -> Option<Color> {
         self.doc
             .find_child(self.node, "BackColor")
-            .map(|node| ColorView::new(Arc::clone(&self.doc), node))
+            .map(|node| Color::new(Arc::clone(&self.doc), node))
     }
 }
 
 /// 格状高洛德渐变的视图。
 #[derive(Debug, Clone)]
-pub struct LaGouraudShdView {
+pub struct LaGouraudShd {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl LaGouraudShdView {
+impl LaGouraudShd {
     fn new(doc: Arc<XmlDocument>, node: NodeId) -> Self {
         Self { doc, node }
     }
@@ -449,15 +449,15 @@ impl LaGouraudShdView {
     }
 
     /// 渐变点。
-    pub fn points(&self) -> impl Iterator<Item = PointView> {
+    pub fn points(&self) -> impl Iterator<Item = Point> {
         points(&self.doc, self.node)
     }
 
     /// 背景色。
-    pub fn back_color(&self) -> Option<ColorView> {
+    pub fn back_color(&self) -> Option<Color> {
         self.doc
             .find_child(self.node, "BackColor")
-            .map(|node| ColorView::new(Arc::clone(&self.doc), node))
+            .map(|node| Color::new(Arc::clone(&self.doc), node))
     }
 }
 
@@ -468,16 +468,16 @@ fn shape_name(name: &str) -> bool {
     )
 }
 
-fn segments(doc: &Arc<XmlDocument>, node: NodeId) -> impl Iterator<Item = SegmentView> {
+fn segments(doc: &Arc<XmlDocument>, node: NodeId) -> impl Iterator<Item = Segment> {
     doc.children_named(node, "Segment")
-        .map(|node| SegmentView::new(Arc::clone(doc), node))
+        .map(|node| Segment::new(Arc::clone(doc), node))
         .collect::<Vec<_>>()
         .into_iter()
 }
 
-fn points(doc: &Arc<XmlDocument>, node: NodeId) -> impl Iterator<Item = PointView> {
+fn points(doc: &Arc<XmlDocument>, node: NodeId) -> impl Iterator<Item = Point> {
     doc.children_named(node, "Point")
-        .map(|node| PointView::new(Arc::clone(doc), node))
+        .map(|node| Point::new(Arc::clone(doc), node))
         .collect::<Vec<_>>()
         .into_iter()
 }

@@ -10,12 +10,12 @@ use crate::xml::tree::{NodeId, XmlDocument};
 
 /// 明密文映射表的类型化视图。
 #[derive(Debug, Clone)]
-pub struct EncryptedEntriesView {
+pub struct EncryptedEntries {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl EncryptedEntriesView {
+impl EncryptedEntries {
     /// 从 XML 字节解析明密文映射表。
     pub fn from_xml(bytes: &[u8], options: ReadOptions) -> Result<Self, OfdError> {
         let doc = Arc::new(parse_xml(bytes, options)?);
@@ -46,10 +46,10 @@ impl EncryptedEntriesView {
     }
 
     /// 遍历明密文对应关系。
-    pub fn entries(&self) -> impl Iterator<Item = EncryptEntryView> {
+    pub fn entries(&self) -> impl Iterator<Item = EncryptEntry> {
         self.doc
             .children_named(self.node, "EncryptEntry")
-            .map(|node| EncryptEntryView {
+            .map(|node| EncryptEntry {
                 doc: Arc::clone(&self.doc),
                 node,
             })
@@ -93,12 +93,12 @@ impl EncryptedEntriesView {
 
 /// 单条明密文对应关系的视图。
 #[derive(Debug, Clone)]
-pub struct EncryptEntryView {
+pub struct EncryptEntry {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl EncryptEntryView {
+impl EncryptEntry {
     /// 加密前包内文件路径。
     pub fn path(&self) -> Option<&str> {
         self.doc.attribute(self.node, "Path")

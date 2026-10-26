@@ -10,12 +10,12 @@ use crate::xml::tree::{NodeId, XmlDocument};
 
 /// 自定义标引列表的类型化视图。
 #[derive(Debug, Clone)]
-pub struct CustomTagsView {
+pub struct CustomTags {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl CustomTagsView {
+impl CustomTags {
     /// 从 XML 字节解析自定义标引列表。
     pub fn from_xml(bytes: &[u8], options: ReadOptions) -> Result<Self, OfdError> {
         let doc = Arc::new(parse_xml(bytes, options)?);
@@ -38,10 +38,10 @@ impl CustomTagsView {
     }
 
     /// 遍历自定义标引入口。
-    pub fn custom_tags(&self) -> impl Iterator<Item = CustomTagView> {
+    pub fn custom_tags(&self) -> impl Iterator<Item = CustomTag> {
         self.doc
             .children_named(self.node, "CustomTag")
-            .map(|node| CustomTagView {
+            .map(|node| CustomTag {
                 doc: Arc::clone(&self.doc),
                 node,
             })
@@ -85,12 +85,12 @@ impl CustomTagsView {
 
 /// 单个自定义标引入口的视图。
 #[derive(Debug, Clone)]
-pub struct CustomTagView {
+pub struct CustomTag {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl CustomTagView {
+impl CustomTag {
     /// 自定义标引的类型标识。
     ///
     /// 标准正文使用 `TypeID`，附录 XSD 写作 `NameSpace`，两种写法都接受。

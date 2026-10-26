@@ -1,4 +1,5 @@
-use ofdbox_core::{ClipAreaKind, OfdError, PageContentView, ReadOptions};
+use ofdbox_core::model::page::{ClipAreaKind, Page};
+use ofdbox_core::{OfdError, ReadOptions};
 
 const PAGE: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
 <ofd:Page xmlns:ofd="http://www.ofdspec.org/2016">
@@ -38,8 +39,8 @@ const PAGE: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
   </ofd:Content>
 </ofd:Page>"#;
 
-fn parse(xml: &str, options: ReadOptions) -> Result<PageContentView, OfdError> {
-    PageContentView::from_xml(xml.as_bytes(), options)
+fn parse(xml: &str, options: ReadOptions) -> Result<Page, OfdError> {
+    Page::from_xml(xml.as_bytes(), options)
 }
 
 #[test]
@@ -73,7 +74,10 @@ fn text_payload_exposes_codes_transforms_actions_and_clips() {
         assert_eq!(area.draw_param(), Some("2"));
         assert_eq!(area.ctm(), Some("1 0 0 1 0 0"));
         let content = area.content().expect("clip content");
-        assert_eq!(content.kind(), ofdbox_core::GraphicObjectKind::Path);
+        assert_eq!(
+            content.kind(),
+            ofdbox_core::model::page::GraphicObjectKind::Path
+        );
         assert_eq!(content.abbreviated_data(), Some("M 0 0 L 100 20"));
     }
 }
@@ -99,8 +103,7 @@ fn path_and_image_payloads_are_typed() {
 fn writer_roundtrips_payloads() {
     let view = parse(PAGE, ReadOptions::LENIENT).unwrap();
     let xml = view.to_xml().expect("strict writer");
-    let reparsed =
-        PageContentView::from_xml(xml.as_bytes(), ReadOptions::STRICT).expect("strict reparse");
+    let reparsed = Page::from_xml(xml.as_bytes(), ReadOptions::STRICT).expect("strict reparse");
     let layer = reparsed.content().unwrap().layers().next().unwrap();
     let objects: Vec<_> = layer.objects().collect();
     assert_eq!(objects[0].text_codes().count(), 2);

@@ -2,11 +2,11 @@ use quick_xml::Writer;
 use quick_xml::events::{BytesDecl, BytesEnd, Event};
 
 use crate::error::OfdError;
-use crate::model::integrity::DocEntriesView;
+use crate::model::integrity::DocEntries;
 use crate::write::ofd::{missing, write_start, write_text_element};
 use crate::xml::namespace::OFD_NAMESPACE;
 
-pub(crate) fn write_doc_entries(entries: &DocEntriesView) -> Result<String, OfdError> {
+pub(crate) fn write_doc_entries(entries: &DocEntries) -> Result<String, OfdError> {
     let mut writer = Writer::new(Vec::new());
     writer.write_event(Event::Decl(BytesDecl::new("1.0", Some("UTF-8"), None)))?;
     let id = entries

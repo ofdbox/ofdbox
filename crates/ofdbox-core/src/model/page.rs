@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
 use crate::error::{Diagnostic, DiagnosticCode, OfdError};
-use crate::model::action::{ActionsView, validate_actions};
-use crate::model::color::{ColorView, validate_color};
-use crate::model::document::{PageAreaView, validate_page_area};
+use crate::model::action::{Actions, validate_actions};
+use crate::model::color::{Color, validate_color};
+use crate::model::document::{PageArea, validate_page_area};
 use crate::model::ofd::{
     check_attributes, check_children_order, check_namespace, validate_text_element,
 };
@@ -47,12 +47,12 @@ pub enum GraphicObjectKind {
 
 /// `Content.xml` 根元素的类型化视图。
 #[derive(Debug, Clone)]
-pub struct PageContentView {
+pub struct Page {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl PageContentView {
+impl Page {
     /// 从 XML 字节解析页面内容。
     pub fn from_xml(bytes: &[u8], options: ReadOptions) -> Result<Self, OfdError> {
         let doc = Arc::new(parse_xml(bytes, options)?);
@@ -85,10 +85,10 @@ impl PageContentView {
     }
 
     /// 模板引用。
-    pub fn templates(&self) -> impl Iterator<Item = TemplateView> {
+    pub fn templates(&self) -> impl Iterator<Item = Template> {
         self.doc
             .children_named(self.node, "Template")
-            .map(|node| TemplateView {
+            .map(|node| Template {
                 doc: Arc::clone(&self.doc),
                 node,
             })
@@ -102,27 +102,27 @@ impl PageContentView {
     }
 
     /// 页面区域。
-    pub fn area(&self) -> Option<PageAreaView> {
+    pub fn area(&self) -> Option<PageArea> {
         self.doc
             .find_child(self.node, "Area")
-            .map(|node| PageAreaView::new(Arc::clone(&self.doc), node))
+            .map(|node| PageArea::new(Arc::clone(&self.doc), node))
     }
 
     /// 页面内容。
-    pub fn content(&self) -> Option<ContentView> {
+    pub fn content(&self) -> Option<PageContent> {
         self.doc
             .find_child(self.node, "Content")
-            .map(|node| ContentView {
+            .map(|node| PageContent {
                 doc: Arc::clone(&self.doc),
                 node,
             })
     }
 
     /// 页面级动作。
-    pub fn actions(&self) -> Option<ActionsView> {
+    pub fn actions(&self) -> Option<Actions> {
         self.doc
             .find_child(self.node, "Actions")
-            .map(|node| ActionsView::new(Arc::clone(&self.doc), node))
+            .map(|node| Actions::new(Arc::clone(&self.doc), node))
     }
 
     /// 严格序列化为 `Content.xml` 文本。
@@ -175,12 +175,12 @@ impl PageContentView {
 
 /// 页面模板引用的视图。
 #[derive(Debug, Clone)]
-pub struct TemplateView {
+pub struct Template {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl TemplateView {
+impl Template {
     /// 模板标识。
     pub fn template_id(&self) -> Option<&str> {
         self.doc.attribute(self.node, "TemplateID")
@@ -194,17 +194,17 @@ impl TemplateView {
 
 /// `Content` 的类型化视图。
 #[derive(Debug, Clone)]
-pub struct ContentView {
+pub struct PageContent {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl ContentView {
+impl PageContent {
     /// 遍历图层。
-    pub fn layers(&self) -> impl Iterator<Item = LayerView> {
+    pub fn layers(&self) -> impl Iterator<Item = Layer> {
         self.doc
             .children_named(self.node, "Layer")
-            .map(|node| LayerView {
+            .map(|node| Layer {
                 doc: Arc::clone(&self.doc),
                 node,
             })
@@ -215,12 +215,12 @@ impl ContentView {
 
 /// 图层的视图。
 #[derive(Debug, Clone)]
-pub struct LayerView {
+pub struct Layer {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl LayerView {
+impl Layer {
     /// 图层标识。
     pub fn id(&self) -> Option<&str> {
         self.doc.attribute(self.node, "ID")
@@ -237,10 +237,10 @@ impl LayerView {
     }
 
     /// 遍历图元对象。
-    pub fn objects(&self) -> impl Iterator<Item = GraphicObjectView> {
+    pub fn objects(&self) -> impl Iterator<Item = GraphicObject> {
         self.doc
             .element_children(self.node)
-            .map(|node| GraphicObjectView {
+            .map(|node| GraphicObject {
                 doc: Arc::clone(&self.doc),
                 node,
             })
@@ -251,12 +251,12 @@ impl LayerView {
 
 /// 图元对象的视图。
 #[derive(Debug, Clone)]
-pub struct GraphicObjectView {
+pub struct GraphicObject {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl GraphicObjectView {
+impl GraphicObject {
     pub(crate) fn new(doc: Arc<XmlDocument>, node: NodeId) -> Self {
         Self { doc, node }
     }
@@ -289,41 +289,41 @@ impl GraphicObjectView {
     }
 
     /// 填充颜色。
-    pub fn fill_color(&self) -> Option<ColorView> {
+    pub fn fill_color(&self) -> Option<Color> {
         self.color_child("FillColor")
     }
 
     /// 描边颜色。
-    pub fn stroke_color(&self) -> Option<ColorView> {
+    pub fn stroke_color(&self) -> Option<Color> {
         self.color_child("StrokeColor")
     }
 
-    fn color_child(&self, name: &str) -> Option<ColorView> {
+    fn color_child(&self, name: &str) -> Option<Color> {
         self.doc
             .find_child(self.node, name)
-            .map(|node| ColorView::new(Arc::clone(&self.doc), node))
+            .map(|node| Color::new(Arc::clone(&self.doc), node))
     }
 
     /// 图元的载荷视图。
-    pub fn payload(&self) -> GraphicPayloadView {
-        GraphicPayloadView::new(Arc::clone(&self.doc), self.node)
+    pub fn payload(&self) -> GraphicPayload {
+        GraphicPayload::new(Arc::clone(&self.doc), self.node)
     }
 
     /// 图元关联的动作。
-    pub fn actions(&self) -> Option<ActionsView> {
+    pub fn actions(&self) -> Option<Actions> {
         self.payload().actions()
     }
 
     /// 图元裁剪区域。
-    pub fn clips(&self) -> Option<ClipsView> {
+    pub fn clips(&self) -> Option<Clips> {
         self.payload().clips()
     }
 
     /// 文字编码段。
-    pub fn text_codes(&self) -> impl Iterator<Item = TextCodeView> {
+    pub fn text_codes(&self) -> impl Iterator<Item = TextCode> {
         self.doc
             .children_named(self.node, "TextCode")
-            .map(|node| TextCodeView {
+            .map(|node| TextCode {
                 doc: Arc::clone(&self.doc),
                 node,
             })
@@ -332,10 +332,10 @@ impl GraphicObjectView {
     }
 
     /// 字形变换。
-    pub fn cg_transforms(&self) -> impl Iterator<Item = CGTransformView> {
+    pub fn cg_transforms(&self) -> impl Iterator<Item = CgTransform> {
         self.doc
             .children_named(self.node, "CGTransform")
-            .map(|node| CGTransformView {
+            .map(|node| CgTransform {
                 doc: Arc::clone(&self.doc),
                 node,
             })
@@ -351,15 +351,15 @@ impl GraphicObjectView {
     }
 
     /// 图像边框。
-    pub fn border(&self) -> Option<BorderView> {
+    pub fn border(&self) -> Option<Border> {
         self.payload().border()
     }
 
     /// `PageBlock` 的子图元。
-    pub fn children(&self) -> impl Iterator<Item = GraphicObjectView> {
+    pub fn children(&self) -> impl Iterator<Item = GraphicObject> {
         self.doc
             .element_children(self.node)
-            .map(|node| GraphicObjectView {
+            .map(|node| GraphicObject {
                 doc: Arc::clone(&self.doc),
                 node,
             })
@@ -582,12 +582,12 @@ fn validate_border(doc: &XmlDocument, node: NodeId, diagnostics: &mut Vec<Diagno
 
 /// 图元载荷的视图，可用于页面图元或裁剪区域中的 Path/Text。
 #[derive(Debug, Clone)]
-pub struct GraphicPayloadView {
+pub struct GraphicPayload {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl GraphicPayloadView {
+impl GraphicPayload {
     pub(crate) fn new(doc: Arc<XmlDocument>, node: NodeId) -> Self {
         Self { doc, node }
     }
@@ -610,37 +610,35 @@ impl GraphicPayloadView {
     }
 
     /// 填充颜色。
-    pub fn fill_color(&self) -> Option<ColorView> {
+    pub fn fill_color(&self) -> Option<Color> {
         self.color_child("FillColor")
     }
 
     /// 描边颜色。
-    pub fn stroke_color(&self) -> Option<ColorView> {
+    pub fn stroke_color(&self) -> Option<Color> {
         self.color_child("StrokeColor")
     }
 
     /// 关联动作。
-    pub fn actions(&self) -> Option<ActionsView> {
+    pub fn actions(&self) -> Option<Actions> {
         self.doc
             .find_child(self.node, "Actions")
-            .map(|node| ActionsView::new(Arc::clone(&self.doc), node))
+            .map(|node| Actions::new(Arc::clone(&self.doc), node))
     }
 
     /// 裁剪区域。
-    pub fn clips(&self) -> Option<ClipsView> {
-        self.doc
-            .find_child(self.node, "Clips")
-            .map(|node| ClipsView {
-                doc: Arc::clone(&self.doc),
-                node,
-            })
+    pub fn clips(&self) -> Option<Clips> {
+        self.doc.find_child(self.node, "Clips").map(|node| Clips {
+            doc: Arc::clone(&self.doc),
+            node,
+        })
     }
 
     /// 文字编码段。
-    pub fn text_codes(&self) -> impl Iterator<Item = TextCodeView> {
+    pub fn text_codes(&self) -> impl Iterator<Item = TextCode> {
         self.doc
             .children_named(self.node, "TextCode")
-            .map(|node| TextCodeView {
+            .map(|node| TextCode {
                 doc: Arc::clone(&self.doc),
                 node,
             })
@@ -649,10 +647,10 @@ impl GraphicPayloadView {
     }
 
     /// 字形变换。
-    pub fn cg_transforms(&self) -> impl Iterator<Item = CGTransformView> {
+    pub fn cg_transforms(&self) -> impl Iterator<Item = CgTransform> {
         self.doc
             .children_named(self.node, "CGTransform")
-            .map(|node| CGTransformView {
+            .map(|node| CgTransform {
                 doc: Arc::clone(&self.doc),
                 node,
             })
@@ -668,30 +666,28 @@ impl GraphicPayloadView {
     }
 
     /// 图像边框。
-    pub fn border(&self) -> Option<BorderView> {
-        self.doc
-            .find_child(self.node, "Border")
-            .map(|node| BorderView {
-                doc: Arc::clone(&self.doc),
-                node,
-            })
+    pub fn border(&self) -> Option<Border> {
+        self.doc.find_child(self.node, "Border").map(|node| Border {
+            doc: Arc::clone(&self.doc),
+            node,
+        })
     }
 
-    fn color_child(&self, name: &str) -> Option<ColorView> {
+    fn color_child(&self, name: &str) -> Option<Color> {
         self.doc
             .find_child(self.node, name)
-            .map(|node| ColorView::new(Arc::clone(&self.doc), node))
+            .map(|node| Color::new(Arc::clone(&self.doc), node))
     }
 }
 
 /// 文字编码段的视图。
 #[derive(Debug, Clone)]
-pub struct TextCodeView {
+pub struct TextCode {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl TextCodeView {
+impl TextCode {
     /// 文字内容。
     pub fn text(&self) -> &str {
         self.doc.text(self.node).trim()
@@ -726,12 +722,12 @@ impl TextCodeView {
 
 /// 字形变换的视图。
 #[derive(Debug, Clone)]
-pub struct CGTransformView {
+pub struct CgTransform {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl CGTransformView {
+impl CgTransform {
     /// 编码起始位置。
     pub fn code_position(&self) -> Option<i32> {
         self.int_attr("CodePosition")
@@ -763,12 +759,12 @@ impl CGTransformView {
 
 /// 图像边框的视图。
 #[derive(Debug, Clone)]
-pub struct BorderView {
+pub struct Border {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl BorderView {
+impl Border {
     /// 线宽。
     pub fn line_width(&self) -> Option<f64> {
         self.float_attr("LineWidth")
@@ -795,10 +791,10 @@ impl BorderView {
     }
 
     /// 边框颜色。
-    pub fn border_color(&self) -> Option<ColorView> {
+    pub fn border_color(&self) -> Option<Color> {
         self.doc
             .find_child(self.node, "BorderColor")
-            .map(|node| ColorView::new(Arc::clone(&self.doc), node))
+            .map(|node| Color::new(Arc::clone(&self.doc), node))
     }
 
     fn float_attr(&self, name: &str) -> Option<f64> {
@@ -810,17 +806,17 @@ impl BorderView {
 
 /// 裁剪区域集合的视图。
 #[derive(Debug, Clone)]
-pub struct ClipsView {
+pub struct Clips {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl ClipsView {
+impl Clips {
     /// 遍历裁剪区域。
-    pub fn clips(&self) -> impl Iterator<Item = ClipView> {
+    pub fn clips(&self) -> impl Iterator<Item = Clip> {
         self.doc
             .children_named(self.node, "Clip")
-            .map(|node| ClipView {
+            .map(|node| Clip {
                 doc: Arc::clone(&self.doc),
                 node,
             })
@@ -831,17 +827,17 @@ impl ClipsView {
 
 /// 单个裁剪区域的视图。
 #[derive(Debug, Clone)]
-pub struct ClipView {
+pub struct Clip {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl ClipView {
+impl Clip {
     /// 遍历裁剪形状。
-    pub fn areas(&self) -> impl Iterator<Item = ClipAreaView> {
+    pub fn areas(&self) -> impl Iterator<Item = ClipArea> {
         self.doc
             .children_named(self.node, "Area")
-            .map(|node| ClipAreaView {
+            .map(|node| ClipArea {
                 doc: Arc::clone(&self.doc),
                 node,
             })
@@ -863,12 +859,12 @@ pub enum ClipAreaKind {
 
 /// 单个裁剪形状的视图。
 #[derive(Debug, Clone)]
-pub struct ClipAreaView {
+pub struct ClipArea {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl ClipAreaView {
+impl ClipArea {
     /// 裁剪形状类型。
     pub fn kind(&self) -> ClipAreaKind {
         match self
@@ -895,11 +891,11 @@ impl ClipAreaView {
     }
 
     /// 裁剪形状的载荷。
-    pub fn content(&self) -> Option<GraphicPayloadView> {
+    pub fn content(&self) -> Option<GraphicPayload> {
         self.doc
             .element_children(self.node)
             .next()
-            .map(|node| GraphicPayloadView::new(Arc::clone(&self.doc), node))
+            .map(|node| GraphicPayload::new(Arc::clone(&self.doc), node))
     }
 }
 
@@ -1106,3 +1102,5 @@ fn validate_clip_text(doc: &XmlDocument, node: NodeId, diagnostics: &mut Vec<Dia
     );
     validate_text_payload(doc, node, diagnostics);
 }
+
+// 新命名别名：逐步替代 `*View` 后缀。

@@ -1,8 +1,9 @@
 mod fixtures;
 
-use ofdbox_core::{
-    DecryptSeedView, EncryptedEntriesView, EncryptionsView, OfdError, OfdPackage, ReadOptions,
-};
+use ofdbox_core::model::decrypt_seed::DecryptSeed;
+use ofdbox_core::model::encryption::Encryptions;
+use ofdbox_core::model::entries_map::EncryptedEntries;
+use ofdbox_core::{OfdError, OfdPackage, ReadOptions};
 
 const ENCRYPTIONS: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
 <ofd:Encryptions xmlns:ofd="http://www.ofdspec.org/2016">
@@ -40,8 +41,8 @@ const ENTRIES_MAP: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
   </ofd:EncryptEntry>
 </ofd:EncryptedEntries>"#;
 
-fn parse_encryptions(xml: &str, options: ReadOptions) -> Result<EncryptionsView, OfdError> {
-    EncryptionsView::from_xml(xml.as_bytes(), options)
+fn parse_encryptions(xml: &str, options: ReadOptions) -> Result<Encryptions, OfdError> {
+    Encryptions::from_xml(xml.as_bytes(), options)
 }
 
 #[test]
@@ -75,7 +76,7 @@ fn encryptions_parse_and_roundtrip() {
     assert!(xml.contains(r#"ProtocolVer="2.0""#));
     assert!(xml.contains("<ofd:ExtendData>AAAA</ofd:ExtendData>"));
     let reparsed =
-        EncryptionsView::from_xml(xml.as_bytes(), ReadOptions::STRICT).expect("strict reparse");
+        Encryptions::from_xml(xml.as_bytes(), ReadOptions::STRICT).expect("strict reparse");
     assert_eq!(reparsed.encrypt_infos().next().unwrap().id(), Some("1"));
 }
 
@@ -84,7 +85,7 @@ fn encrypt_list_alias_is_accepted_and_normalized() {
     let alias = ENCRYPTIONS
         .replace("<ofd:Encryptions", "<ofd:EncryptList")
         .replace("</ofd:Encryptions>", "</ofd:EncryptList>");
-    let view = EncryptionsView::from_xml(alias.as_bytes(), ReadOptions::LENIENT).expect("alias");
+    let view = Encryptions::from_xml(alias.as_bytes(), ReadOptions::LENIENT).expect("alias");
     let xml = view.to_xml().expect("strict writer");
     assert!(xml.contains("<ofd:Encryptions"));
     assert!(!xml.contains("EncryptList"));
@@ -103,8 +104,7 @@ fn missing_provider_name_is_strict_error() {
 #[test]
 fn decrypt_seed_parses_and_roundtrips() {
     for options in [ReadOptions::LENIENT, ReadOptions::STRICT] {
-        let view =
-            DecryptSeedView::from_xml(DECRYPT_SEED.as_bytes(), options).expect("DecryptSeed");
+        let view = DecryptSeed::from_xml(DECRYPT_SEED.as_bytes(), options).expect("DecryptSeed");
         assert_eq!(view.id(), Some("1"));
         assert_eq!(view.encrypt_case_id(), Some("1.1.1"));
         let user = view.users().next().expect("UserInfo");
@@ -125,21 +125,21 @@ fn decrypt_seed_parses_and_roundtrips() {
         assert_eq!(parameter.value(), "text");
     }
 
-    let view = DecryptSeedView::from_xml(DECRYPT_SEED.as_bytes(), ReadOptions::LENIENT).unwrap();
+    let view = DecryptSeed::from_xml(DECRYPT_SEED.as_bytes(), ReadOptions::LENIENT).unwrap();
     let xml = view.to_xml().expect("strict writer");
     assert!(xml.contains("<ofd:DecryptSeed"));
     assert!(xml.contains(r#"EncryptCaseId="1.1.1""#));
     assert!(xml.contains("<ofd:ExtendParams>"));
     let reparsed =
-        DecryptSeedView::from_xml(xml.as_bytes(), ReadOptions::STRICT).expect("strict reparse");
+        DecryptSeed::from_xml(xml.as_bytes(), ReadOptions::STRICT).expect("strict reparse");
     assert_eq!(reparsed.users().count(), 1);
 }
 
 #[test]
 fn encrypted_entries_parse_and_roundtrip() {
     for options in [ReadOptions::LENIENT, ReadOptions::STRICT] {
-        let view = EncryptedEntriesView::from_xml(ENTRIES_MAP.as_bytes(), options)
-            .expect("EncryptedEntries");
+        let view =
+            EncryptedEntries::from_xml(ENTRIES_MAP.as_bytes(), options).expect("EncryptedEntries");
         assert_eq!(view.id(), Some("1"));
         let entries: Vec<_> = view.entries().collect();
         assert_eq!(entries.len(), 2);
@@ -148,15 +148,14 @@ fn encrypted_entries_parse_and_roundtrip() {
         assert_eq!(entries[1].decrypt_seed_loc(), Some("/decryptseed.xml"));
     }
 
-    let view =
-        EncryptedEntriesView::from_xml(ENTRIES_MAP.as_bytes(), ReadOptions::LENIENT).unwrap();
+    let view = EncryptedEntries::from_xml(ENTRIES_MAP.as_bytes(), ReadOptions::LENIENT).unwrap();
     let xml = view.to_xml().expect("strict writer");
     assert!(xml.contains(r#"Path="/Doc_0/Document.xml""#));
     // 0099 图 C.3 把它定义为 EncryptEntry 的属性。
     assert!(xml.contains(r#"DecryptSeedLoc="/decryptseed.xml""#));
     assert!(!xml.contains("<ofd:DecryptSeedLoc>"));
-    let reparsed = EncryptedEntriesView::from_xml(xml.as_bytes(), ReadOptions::STRICT)
-        .expect("strict reparse");
+    let reparsed =
+        EncryptedEntries::from_xml(xml.as_bytes(), ReadOptions::STRICT).expect("strict reparse");
     assert_eq!(reparsed.entries().count(), 2);
 }
 
@@ -188,8 +187,7 @@ fn encrypt_entries_alias_is_accepted_and_normalized() {
     let alias = ENTRIES_MAP
         .replace("<ofd:EncryptedEntries", "<ofd:EncryptEntries")
         .replace("</ofd:EncryptedEntries>", "</ofd:EncryptEntries>");
-    let view =
-        EncryptedEntriesView::from_xml(alias.as_bytes(), ReadOptions::STRICT).expect("alias");
+    let view = EncryptedEntries::from_xml(alias.as_bytes(), ReadOptions::STRICT).expect("alias");
     let xml = view.to_xml().expect("strict writer");
     assert!(xml.contains("<ofd:EncryptedEntries"));
     assert!(!xml.contains("EncryptEntries "));

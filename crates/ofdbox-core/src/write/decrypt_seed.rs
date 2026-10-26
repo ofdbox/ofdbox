@@ -2,11 +2,11 @@ use quick_xml::Writer;
 use quick_xml::events::{BytesDecl, BytesEnd, BytesText, Event};
 
 use crate::error::OfdError;
-use crate::model::decrypt_seed::{DecryptSeedView, DecryptUserView};
+use crate::model::decrypt_seed::{DecryptSeed, DecryptUser};
 use crate::write::ofd::{missing, write_start, write_text_element};
 use crate::xml::namespace::OFD_NAMESPACE;
 
-pub(crate) fn write_decrypt_seed(seed: &DecryptSeedView) -> Result<String, OfdError> {
+pub(crate) fn write_decrypt_seed(seed: &DecryptSeed) -> Result<String, OfdError> {
     let mut writer = Writer::new(Vec::new());
     writer.write_event(Event::Decl(BytesDecl::new("1.0", Some("UTF-8"), None)))?;
 
@@ -57,7 +57,7 @@ pub(crate) fn write_decrypt_seed(seed: &DecryptSeedView) -> Result<String, OfdEr
         .map_err(|error| OfdError::InvalidStructure(format!("序列化结果不是 UTF-8: {error}")))
 }
 
-fn write_user(writer: &mut Writer<Vec<u8>>, user: &DecryptUserView) -> Result<(), OfdError> {
+fn write_user(writer: &mut Writer<Vec<u8>>, user: &DecryptUser) -> Result<(), OfdError> {
     let name = user
         .user_name()
         .ok_or_else(|| missing("/DecryptSeed/UserInfo/@UserName", "缺少 UserName"))?;

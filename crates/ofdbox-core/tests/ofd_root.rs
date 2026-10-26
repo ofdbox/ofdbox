@@ -1,4 +1,5 @@
-use ofdbox_core::{DiagnosticCode, OfdError, OfdRootView, ReadOptions};
+use ofdbox_core::model::ofd::OfdRoot;
+use ofdbox_core::{DiagnosticCode, OfdError, ReadOptions};
 
 const CANONICAL: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
 <ofd:OFD xmlns:ofd="http://www.ofdspec.org/2016" Version="1.0" DocType="OFD">
@@ -74,8 +75,8 @@ const MISSING_DOCID: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
   </ofd:DocBody>
 </ofd:OFD>"#;
 
-fn parse(xml: &str, options: ReadOptions) -> Result<OfdRootView, OfdError> {
-    OfdRootView::from_xml(xml.as_bytes(), options)
+fn parse(xml: &str, options: ReadOptions) -> Result<OfdRoot, OfdError> {
+    OfdRoot::from_xml(xml.as_bytes(), options)
 }
 
 #[test]
@@ -220,7 +221,7 @@ fn writer_emits_canonical_order_and_roundtrips() {
     assert!(doc_root < versions);
     assert!(versions < signatures);
 
-    let reparsed = OfdRootView::from_xml(xml.as_bytes(), ReadOptions::STRICT)
+    let reparsed = OfdRoot::from_xml(xml.as_bytes(), ReadOptions::STRICT)
         .expect("canonical output should pass strict parsing");
     assert_eq!(reparsed.version(), Some("1.0"));
 }
@@ -244,6 +245,6 @@ fn writer_rejects_missing_required_fields() {
 fn bom_is_accepted() {
     let mut bytes = vec![0xEF, 0xBB, 0xBF];
     bytes.extend_from_slice(CANONICAL.as_bytes());
-    assert!(OfdRootView::from_xml(&bytes, ReadOptions::LENIENT).is_ok());
-    assert!(OfdRootView::from_xml(&bytes, ReadOptions::STRICT).is_ok());
+    assert!(OfdRoot::from_xml(&bytes, ReadOptions::LENIENT).is_ok());
+    assert!(OfdRoot::from_xml(&bytes, ReadOptions::STRICT).is_ok());
 }

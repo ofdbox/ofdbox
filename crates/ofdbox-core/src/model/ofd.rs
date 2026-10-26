@@ -26,12 +26,12 @@ const DOCINFO_ORDER: &[&str] = &[
 
 /// `OFD.xml` 根元素的类型化视图。
 #[derive(Debug, Clone)]
-pub struct OfdRootView {
+pub struct OfdRoot {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl OfdRootView {
+impl OfdRoot {
     /// 从 XML 字节解析根视图。
     pub fn from_xml(bytes: &[u8], options: ReadOptions) -> Result<Self, OfdError> {
         let doc = Arc::new(parse_xml(bytes, options)?);
@@ -74,10 +74,10 @@ impl OfdRootView {
     }
 
     /// 遍历所有 `DocBody`。
-    pub fn doc_bodies(&self) -> impl Iterator<Item = DocBodyView> {
+    pub fn doc_bodies(&self) -> impl Iterator<Item = DocBody> {
         self.doc
             .children_named(self.node, "DocBody")
-            .map(|node| DocBodyView {
+            .map(|node| DocBody {
                 doc: Arc::clone(&self.doc),
                 node,
             })
@@ -156,17 +156,17 @@ impl OfdRootView {
 
 /// 一个 `DocBody` 的类型化视图。
 #[derive(Debug, Clone)]
-pub struct DocBodyView {
+pub struct DocBody {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl DocBodyView {
+impl DocBody {
     /// 文档元数据。
-    pub fn doc_info(&self) -> Option<DocInfoView> {
+    pub fn doc_info(&self) -> Option<DocInfo> {
         self.doc
             .find_child(self.node, "DocInfo")
-            .map(|node| DocInfoView {
+            .map(|node| DocInfo {
                 doc: Arc::clone(&self.doc),
                 node,
             })
@@ -180,10 +180,10 @@ impl DocBodyView {
     }
 
     /// 版本列表。
-    pub fn versions(&self) -> Option<VersionsView> {
+    pub fn versions(&self) -> Option<Versions> {
         self.doc
             .find_child(self.node, "Versions")
-            .map(|node| VersionsView {
+            .map(|node| Versions {
                 doc: Arc::clone(&self.doc),
                 node,
             })
@@ -199,12 +199,12 @@ impl DocBodyView {
 
 /// `DocInfo` 的类型化视图。
 #[derive(Debug, Clone)]
-pub struct DocInfoView {
+pub struct DocInfo {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl DocInfoView {
+impl DocInfo {
     fn value(&self, local: &str) -> Option<&str> {
         self.doc
             .find_child(self.node, local)
@@ -278,11 +278,11 @@ impl DocInfoView {
     }
 
     /// 自定义元数据。
-    pub fn custom_datas(&self) -> impl Iterator<Item = CustomDataView> + '_ {
+    pub fn custom_datas(&self) -> impl Iterator<Item = CustomData> + '_ {
         let mut values = Vec::new();
         if let Some(parent) = self.doc.find_child(self.node, "CustomDatas") {
             for node in self.doc.children_named(parent, "CustomData") {
-                values.push(CustomDataView {
+                values.push(CustomData {
                     doc: Arc::clone(&self.doc),
                     node,
                 });
@@ -294,17 +294,17 @@ impl DocInfoView {
 
 /// `Versions` 的类型化视图。
 #[derive(Debug, Clone)]
-pub struct VersionsView {
+pub struct Versions {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl VersionsView {
+impl Versions {
     /// 遍历版本条目。
-    pub fn versions(&self) -> impl Iterator<Item = VersionView> {
+    pub fn versions(&self) -> impl Iterator<Item = VersionRef> {
         self.doc
             .children_named(self.node, "Version")
-            .map(|node| VersionView {
+            .map(|node| VersionRef {
                 doc: Arc::clone(&self.doc),
                 node,
             })
@@ -315,12 +315,12 @@ impl VersionsView {
 
 /// 单个 `Version` 的视图。
 #[derive(Debug, Clone)]
-pub struct VersionView {
+pub struct VersionRef {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl VersionView {
+impl VersionRef {
     /// 版本标识。
     pub fn id(&self) -> Option<&str> {
         self.doc.attribute(self.node, "ID")
@@ -349,12 +349,12 @@ impl VersionView {
 
 /// 单个 `CustomData` 的视图。
 #[derive(Debug, Clone)]
-pub struct CustomDataView {
+pub struct CustomData {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl CustomDataView {
+impl CustomData {
     /// 自定义元数据名称。
     pub fn name(&self) -> Option<&str> {
         self.doc.attribute(self.node, "Name")

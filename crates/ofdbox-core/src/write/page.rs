@@ -2,13 +2,13 @@ use quick_xml::Writer;
 use quick_xml::events::{BytesDecl, BytesEnd, BytesText, Event};
 
 use crate::error::OfdError;
-use crate::model::page::{GraphicObjectKind, GraphicObjectView, PageContentView};
+use crate::model::page::{GraphicObject, GraphicObjectKind, Page};
 use crate::write::action::write_actions;
 use crate::write::document::write_page_area;
 use crate::write::ofd::{missing, write_start, write_text_element};
 use crate::xml::namespace::OFD_NAMESPACE;
 
-pub(crate) fn write_page(page: &PageContentView) -> Result<String, OfdError> {
+pub(crate) fn write_page(page: &Page) -> Result<String, OfdError> {
     let mut writer = Writer::new(Vec::new());
     writer.write_event(Event::Decl(BytesDecl::new("1.0", Some("UTF-8"), None)))?;
     write_start(&mut writer, "ofd:Page", &[("xmlns:ofd", OFD_NAMESPACE)])?;
@@ -63,7 +63,7 @@ pub(crate) fn write_page(page: &PageContentView) -> Result<String, OfdError> {
 
 pub(crate) fn write_graphic_object(
     writer: &mut Writer<Vec<u8>>,
-    object: &GraphicObjectView,
+    object: &GraphicObject,
 ) -> Result<(), OfdError> {
     let name = match object.kind() {
         GraphicObjectKind::Text => "ofd:TextObject",

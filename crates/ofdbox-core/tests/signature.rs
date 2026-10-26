@@ -1,8 +1,7 @@
 mod fixtures;
 
-use ofdbox_core::{
-    DiagnosticCode, OfdError, OfdPackage, ReadOptions, SignatureView, SignaturesView,
-};
+use ofdbox_core::model::signature::{Signature, Signatures};
+use ofdbox_core::{DiagnosticCode, OfdError, OfdPackage, ReadOptions};
 
 const SIGNATURES: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
 <ofd:Signatures xmlns:ofd="http://www.ofdspec.org/2016">
@@ -35,12 +34,12 @@ const ROOT: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
   </ofd:DocBody>
 </ofd:OFD>"#;
 
-fn parse_signatures(xml: &str, options: ReadOptions) -> Result<SignaturesView, OfdError> {
-    SignaturesView::from_xml(xml.as_bytes(), options)
+fn parse_signatures(xml: &str, options: ReadOptions) -> Result<Signatures, OfdError> {
+    Signatures::from_xml(xml.as_bytes(), options)
 }
 
-fn parse_signature(xml: &str, options: ReadOptions) -> Result<SignatureView, OfdError> {
-    SignatureView::from_xml(xml.as_bytes(), options)
+fn parse_signature(xml: &str, options: ReadOptions) -> Result<Signature, OfdError> {
+    Signature::from_xml(xml.as_bytes(), options)
 }
 
 #[test]
@@ -64,7 +63,7 @@ fn signatures_writer_emits_canonical_index() {
     let signature = xml.find("<ofd:Signature ").unwrap();
     assert!(max_id < signature);
     let reparsed =
-        SignaturesView::from_xml(xml.as_bytes(), ReadOptions::STRICT).expect("strict reparse");
+        Signatures::from_xml(xml.as_bytes(), ReadOptions::STRICT).expect("strict reparse");
     assert_eq!(reparsed.signatures().next().unwrap().id(), Some("s1"));
 }
 
@@ -172,7 +171,7 @@ fn signature_writer_roundtrips() {
     assert!(seal < signed_value);
 
     let reparsed =
-        SignatureView::from_xml(xml.as_bytes(), ReadOptions::STRICT).expect("strict reparse");
+        Signature::from_xml(xml.as_bytes(), ReadOptions::STRICT).expect("strict reparse");
     assert_eq!(
         reparsed
             .signed_info()
@@ -318,7 +317,7 @@ fn signature_0099_extensions_parse_and_roundtrip() {
     assert!(xml.contains("<ofd:ImageLoc>Signs/Seal.png</ofd:ImageLoc>"));
     assert!(xml.contains(r#"CheckMethod="SM3""#));
     let reparsed =
-        SignatureView::from_xml(xml.as_bytes(), ReadOptions::STRICT).expect("strict reparse");
+        Signature::from_xml(xml.as_bytes(), ReadOptions::STRICT).expect("strict reparse");
     assert_eq!(
         reparsed
             .signed_info()

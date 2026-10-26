@@ -1,27 +1,27 @@
 use std::sync::Arc;
 
 use crate::error::{Diagnostic, DiagnosticCode};
-use crate::model::action::{ActionsView, validate_actions};
+use crate::model::action::{Actions, validate_actions};
 use crate::model::ofd::{check_attributes, check_children_order, check_namespace};
 use crate::xml::tree::{NodeId, XmlDocument};
 
 /// 大纲的类型化视图。
 #[derive(Debug, Clone)]
-pub struct OutlinesView {
+pub struct Outlines {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl OutlinesView {
+impl Outlines {
     pub(crate) fn new(doc: Arc<XmlDocument>, node: NodeId) -> Self {
         Self { doc, node }
     }
 
     /// 遍历顶层大纲节点。
-    pub fn outline_elems(&self) -> impl Iterator<Item = OutlineElemView> {
+    pub fn outline_elems(&self) -> impl Iterator<Item = OutlineElem> {
         self.doc
             .children_named(self.node, "OutlineElem")
-            .map(|node| OutlineElemView {
+            .map(|node| OutlineElem {
                 doc: Arc::clone(&self.doc),
                 node,
             })
@@ -32,12 +32,12 @@ impl OutlinesView {
 
 /// 单个大纲节点的视图。
 #[derive(Debug, Clone)]
-pub struct OutlineElemView {
+pub struct OutlineElem {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl OutlineElemView {
+impl OutlineElem {
     /// 大纲标题。
     pub fn title(&self) -> Option<&str> {
         self.doc.attribute(self.node, "Title")
@@ -58,17 +58,17 @@ impl OutlineElemView {
     }
 
     /// 该节点关联的动作。
-    pub fn actions(&self) -> Option<ActionsView> {
+    pub fn actions(&self) -> Option<Actions> {
         self.doc
             .find_child(self.node, "Actions")
-            .map(|node| ActionsView::new(Arc::clone(&self.doc), node))
+            .map(|node| Actions::new(Arc::clone(&self.doc), node))
     }
 
     /// 子大纲节点。
-    pub fn children(&self) -> impl Iterator<Item = OutlineElemView> {
+    pub fn children(&self) -> impl Iterator<Item = OutlineElem> {
         self.doc
             .children_named(self.node, "OutlineElem")
-            .map(|node| OutlineElemView {
+            .map(|node| OutlineElem {
                 doc: Arc::clone(&self.doc),
                 node,
             })

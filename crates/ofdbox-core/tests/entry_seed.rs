@@ -1,9 +1,9 @@
 use std::io::{Cursor, Write};
 
-use ofdbox_core::{
-    CryptoBackend, DecryptSeedView, EncryptInfoView, EncryptedEntriesView, FileKey, OfdError,
-    OfdPackage, ReadOptions,
-};
+use ofdbox_core::model::decrypt_seed::DecryptSeed;
+use ofdbox_core::model::encryption::EncryptInfo;
+use ofdbox_core::model::entries_map::EncryptedEntries;
+use ofdbox_core::{CryptoBackend, FileKey, OfdError, OfdPackage, ReadOptions};
 use zip::ZipWriter;
 use zip::write::SimpleFileOptions;
 
@@ -67,8 +67,8 @@ impl CryptoBackend for EntryBackend {
 
     fn unwrap_file_key(
         &self,
-        _operation: &EncryptInfoView,
-        seed: &DecryptSeedView,
+        _operation: &EncryptInfo,
+        seed: &DecryptSeed,
     ) -> Result<FileKey, OfdError> {
         let scheme = seed.encrypt_case_id().unwrap_or_default().to_owned();
         let byte = if scheme == "1.1.401" { 0x22 } else { 0x11 };
@@ -144,17 +144,17 @@ fn missing_entry_seed_fails_only_that_entry() {
 
 #[test]
 fn strict_mode_accepts_seed_attribute() {
-    EncryptedEntriesView::from_xml(MAP.as_bytes(), ReadOptions::STRICT).expect("strict attribute");
+    EncryptedEntries::from_xml(MAP.as_bytes(), ReadOptions::STRICT).expect("strict attribute");
 }
 
 #[test]
 fn writer_emits_seed_as_attribute() {
-    let view = EncryptedEntriesView::from_xml(MAP.as_bytes(), ReadOptions::LENIENT).expect("parse");
+    let view = EncryptedEntries::from_xml(MAP.as_bytes(), ReadOptions::LENIENT).expect("parse");
     let xml = view.to_xml().expect("write");
     assert!(
         xml.contains(r#"DecryptSeedLoc="/seed2.xml""#),
         "expected attribute form, got: {xml}"
     );
     assert!(!xml.contains("<ofd:DecryptSeedLoc>"));
-    EncryptedEntriesView::from_xml(xml.as_bytes(), ReadOptions::STRICT).expect("strict reparse");
+    EncryptedEntries::from_xml(xml.as_bytes(), ReadOptions::STRICT).expect("strict reparse");
 }

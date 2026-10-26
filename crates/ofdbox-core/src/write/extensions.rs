@@ -2,12 +2,12 @@ use quick_xml::Writer;
 use quick_xml::events::{BytesDecl, BytesEnd, BytesText, Event};
 
 use crate::error::OfdError;
-use crate::model::extensions::{ExtensionView, ExtensionsView};
+use crate::model::extensions::{Extension, Extensions};
 use crate::write::ofd::{missing, write_start, write_text_element};
 use crate::write::page::write_subtree;
 use crate::xml::namespace::OFD_NAMESPACE;
 
-pub(crate) fn write_extensions(extensions: &ExtensionsView) -> Result<String, OfdError> {
+pub(crate) fn write_extensions(extensions: &Extensions) -> Result<String, OfdError> {
     let mut writer = Writer::new(Vec::new());
     writer.write_event(Event::Decl(BytesDecl::new("1.0", Some("UTF-8"), None)))?;
     write_start(
@@ -25,10 +25,7 @@ pub(crate) fn write_extensions(extensions: &ExtensionsView) -> Result<String, Of
         .map_err(|error| OfdError::InvalidStructure(format!("序列化结果不是 UTF-8: {error}")))
 }
 
-fn write_extension(
-    writer: &mut Writer<Vec<u8>>,
-    extension: &ExtensionView,
-) -> Result<(), OfdError> {
+fn write_extension(writer: &mut Writer<Vec<u8>>, extension: &Extension) -> Result<(), OfdError> {
     let app_name = extension
         .app_name()
         .ok_or_else(|| missing("/Extensions/Extension/@AppName", "缺少 AppName"))?;

@@ -2,13 +2,13 @@ use quick_xml::Writer;
 use quick_xml::events::{BytesEnd, Event};
 
 use crate::error::OfdError;
-use crate::model::outline::{OutlineElemView, OutlinesView};
+use crate::model::outline::{OutlineElem, Outlines};
 use crate::write::action::write_actions;
 use crate::write::ofd::{missing, write_start};
 
 pub(crate) fn write_outlines(
     writer: &mut Writer<Vec<u8>>,
-    outlines: &OutlinesView,
+    outlines: &Outlines,
 ) -> Result<(), OfdError> {
     write_start(writer, "ofd:Outlines", &[])?;
     for outline in outlines.outline_elems() {
@@ -18,10 +18,7 @@ pub(crate) fn write_outlines(
     Ok(())
 }
 
-fn write_outline_elem(
-    writer: &mut Writer<Vec<u8>>,
-    outline: &OutlineElemView,
-) -> Result<(), OfdError> {
+fn write_outline_elem(writer: &mut Writer<Vec<u8>>, outline: &OutlineElem) -> Result<(), OfdError> {
     let title = outline
         .title()
         .ok_or_else(|| missing("/Outlines/OutlineElem/@Title", "缺少 OutlineElem Title"))?;

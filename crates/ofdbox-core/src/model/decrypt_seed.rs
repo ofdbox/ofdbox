@@ -10,12 +10,12 @@ use crate::xml::tree::{NodeId, XmlDocument};
 
 /// 密钥描述文件 `DecryptSeed` 的类型化视图。
 #[derive(Debug, Clone)]
-pub struct DecryptSeedView {
+pub struct DecryptSeed {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl DecryptSeedView {
+impl DecryptSeed {
     /// 从 XML 字节解析密钥描述文件。
     pub fn from_xml(bytes: &[u8], options: ReadOptions) -> Result<Self, OfdError> {
         let doc = Arc::new(parse_xml(bytes, options)?);
@@ -48,10 +48,10 @@ impl DecryptSeedView {
     }
 
     /// 可解密用户列表。
-    pub fn users(&self) -> impl Iterator<Item = DecryptUserView> {
+    pub fn users(&self) -> impl Iterator<Item = DecryptUser> {
         self.doc
             .children_named(self.node, "UserInfo")
-            .map(|node| DecryptUserView {
+            .map(|node| DecryptUser {
                 doc: Arc::clone(&self.doc),
                 node,
             })
@@ -60,10 +60,10 @@ impl DecryptSeedView {
     }
 
     /// 扩展参数。
-    pub fn extend_params(&self) -> Option<ExtendParamsView> {
+    pub fn extend_params(&self) -> Option<ExtendParams> {
         self.doc
             .find_child(self.node, "ExtendParams")
-            .map(|node| ExtendParamsView {
+            .map(|node| ExtendParams {
                 doc: Arc::clone(&self.doc),
                 node,
             })
@@ -114,12 +114,12 @@ impl DecryptSeedView {
 
 /// 可解密用户的视图。
 #[derive(Debug, Clone)]
-pub struct DecryptUserView {
+pub struct DecryptUser {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl DecryptUserView {
+impl DecryptUser {
     /// 用户名称。
     pub fn user_name(&self) -> Option<&str> {
         self.doc.attribute(self.node, "UserName")
@@ -155,17 +155,17 @@ impl DecryptUserView {
 
 /// 扩展参数的视图。
 #[derive(Debug, Clone)]
-pub struct ExtendParamsView {
+pub struct ExtendParams {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl ExtendParamsView {
+impl ExtendParams {
     /// 遍历扩展参数。
-    pub fn parameters(&self) -> impl Iterator<Item = ExtendParameterView> {
+    pub fn parameters(&self) -> impl Iterator<Item = ExtendParameter> {
         self.doc
             .children_named(self.node, "Parameter")
-            .map(|node| ExtendParameterView {
+            .map(|node| ExtendParameter {
                 doc: Arc::clone(&self.doc),
                 node,
             })
@@ -176,12 +176,12 @@ impl ExtendParamsView {
 
 /// `ExtendParams/Parameter` 的视图。
 #[derive(Debug, Clone)]
-pub struct ExtendParameterView {
+pub struct ExtendParameter {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl ExtendParameterView {
+impl ExtendParameter {
     /// 参数名称。
     pub fn name(&self) -> Option<&str> {
         self.doc.attribute(self.node, "Name")

@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
 use crate::error::{Diagnostic, DiagnosticCode, OfdError};
-use crate::model::action::{ActionsView, validate_actions};
+use crate::model::action::{Actions, validate_actions};
 use crate::model::ofd::{
     check_attributes, check_children_order, check_namespace, validate_text_element,
 };
-use crate::model::outline::{OutlinesView, validate_outlines};
+use crate::model::outline::{Outlines, validate_outlines};
 use crate::options::ReadOptions;
 use crate::xml::parser::parse_xml;
 use crate::xml::tree::{NodeId, XmlDocument};
@@ -55,12 +55,12 @@ const VPREFERENCES_ORDER: &[&str] = &[
 
 /// `Document.xml` 根元素的类型化视图。
 #[derive(Debug, Clone)]
-pub struct DocumentView {
+pub struct Document {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl DocumentView {
+impl Document {
     /// 从 XML 字节解析文档根视图。
     pub fn from_xml(bytes: &[u8], options: ReadOptions) -> Result<Self, OfdError> {
         let doc = Arc::new(parse_xml(bytes, options)?);
@@ -93,28 +93,28 @@ impl DocumentView {
     }
 
     /// 公共数据。
-    pub fn common_data(&self) -> Option<CommonDataView> {
-        self.view_child("CommonData", |doc, node| CommonDataView { doc, node })
+    pub fn common_data(&self) -> Option<CommonData> {
+        self.view_child("CommonData", |doc, node| CommonData { doc, node })
     }
 
     /// 页树。
-    pub fn pages(&self) -> Option<PagesView> {
-        self.view_child("Pages", |doc, node| PagesView { doc, node })
+    pub fn pages(&self) -> Option<Pages> {
+        self.view_child("Pages", |doc, node| Pages { doc, node })
     }
 
     /// 文档权限。
-    pub fn permissions(&self) -> Option<PermissionsView> {
-        self.view_child("Permissions", |doc, node| PermissionsView { doc, node })
+    pub fn permissions(&self) -> Option<Permissions> {
+        self.view_child("Permissions", |doc, node| Permissions { doc, node })
     }
 
     /// 视图首选项。
-    pub fn v_preferences(&self) -> Option<VPreferencesView> {
-        self.view_child("VPreferences", |doc, node| VPreferencesView { doc, node })
+    pub fn v_preferences(&self) -> Option<VPreferences> {
+        self.view_child("VPreferences", |doc, node| VPreferences { doc, node })
     }
 
     /// 书签集。
-    pub fn bookmarks(&self) -> Option<BookmarksView> {
-        self.view_child("Bookmarks", |doc, node| BookmarksView { doc, node })
+    pub fn bookmarks(&self) -> Option<Bookmarks> {
+        self.view_child("Bookmarks", |doc, node| Bookmarks { doc, node })
     }
 
     /// 注释列表路径。
@@ -138,13 +138,13 @@ impl DocumentView {
     }
 
     /// 大纲。
-    pub fn outlines(&self) -> Option<OutlinesView> {
-        self.view_child("Outlines", OutlinesView::new)
+    pub fn outlines(&self) -> Option<Outlines> {
+        self.view_child("Outlines", Outlines::new)
     }
 
     /// 文档级动作。
-    pub fn actions(&self) -> Option<ActionsView> {
-        self.view_child("Actions", ActionsView::new)
+    pub fn actions(&self) -> Option<Actions> {
+        self.view_child("Actions", Actions::new)
     }
 
     /// 是否存在大纲。
@@ -234,22 +234,22 @@ impl DocumentView {
 
 /// `CommonData` 的类型化视图。
 #[derive(Debug, Clone)]
-pub struct CommonDataView {
+pub struct CommonData {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl CommonDataView {
+impl CommonData {
     /// 当前文档最大对象标识。
     pub fn max_unit_id(&self) -> Option<&str> {
         child_text(&self.doc, self.node, "MaxUnitID")
     }
 
     /// 页面区域。
-    pub fn page_area(&self) -> Option<PageAreaView> {
+    pub fn page_area(&self) -> Option<PageArea> {
         self.doc
             .find_child(self.node, "PageArea")
-            .map(|node| PageAreaView {
+            .map(|node| PageArea {
                 doc: Arc::clone(&self.doc),
                 node,
             })
@@ -266,10 +266,10 @@ impl CommonDataView {
     }
 
     /// 模板页列表。
-    pub fn template_pages(&self) -> impl Iterator<Item = TemplatePageView> {
+    pub fn template_pages(&self) -> impl Iterator<Item = TemplatePageEntry> {
         self.doc
             .children_named(self.node, "TemplatePage")
-            .map(|node| TemplatePageView {
+            .map(|node| TemplatePageEntry {
                 doc: Arc::clone(&self.doc),
                 node,
             })
@@ -285,12 +285,12 @@ impl CommonDataView {
 
 /// `PageArea` 的类型化视图。
 #[derive(Debug, Clone)]
-pub struct PageAreaView {
+pub struct PageArea {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl PageAreaView {
+impl PageArea {
     pub(crate) fn new(doc: Arc<XmlDocument>, node: NodeId) -> Self {
         Self { doc, node }
     }
@@ -318,12 +318,12 @@ impl PageAreaView {
 
 /// 模板页的类型化视图。
 #[derive(Debug, Clone)]
-pub struct TemplatePageView {
+pub struct TemplatePageEntry {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl TemplatePageView {
+impl TemplatePageEntry {
     /// 模板页标识。
     pub fn id(&self) -> Option<&str> {
         self.doc.attribute(self.node, "ID")
@@ -347,17 +347,17 @@ impl TemplatePageView {
 
 /// `Pages` 的类型化视图。
 #[derive(Debug, Clone)]
-pub struct PagesView {
+pub struct Pages {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl PagesView {
+impl Pages {
     /// 遍历页面。
-    pub fn pages(&self) -> impl Iterator<Item = PageView> {
+    pub fn pages(&self) -> impl Iterator<Item = PageEntry> {
         self.doc
             .children_named(self.node, "Page")
-            .map(|node| PageView {
+            .map(|node| PageEntry {
                 doc: Arc::clone(&self.doc),
                 node,
             })
@@ -368,12 +368,12 @@ impl PagesView {
 
 /// 单个页面的视图。
 #[derive(Debug, Clone)]
-pub struct PageView {
+pub struct PageEntry {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl PageView {
+impl PageEntry {
     /// 页面标识。
     pub fn id(&self) -> Option<&str> {
         self.doc.attribute(self.node, "ID")
@@ -387,12 +387,12 @@ impl PageView {
 
 /// 文档权限的视图。
 #[derive(Debug, Clone)]
-pub struct PermissionsView {
+pub struct Permissions {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl PermissionsView {
+impl Permissions {
     fn bool_value(&self, name: &str) -> Option<bool> {
         child_text(&self.doc, self.node, name).and_then(parse_bool)
     }
@@ -428,20 +428,18 @@ impl PermissionsView {
     }
 
     /// 打印权限。
-    pub fn print(&self) -> Option<PrintView> {
-        self.doc
-            .find_child(self.node, "Print")
-            .map(|node| PrintView {
-                doc: Arc::clone(&self.doc),
-                node,
-            })
+    pub fn print(&self) -> Option<Print> {
+        self.doc.find_child(self.node, "Print").map(|node| Print {
+            doc: Arc::clone(&self.doc),
+            node,
+        })
     }
 
     /// 有效期。
-    pub fn valid_period(&self) -> Option<ValidPeriodView> {
+    pub fn valid_period(&self) -> Option<ValidPeriod> {
         self.doc
             .find_child(self.node, "ValidPeriod")
-            .map(|node| ValidPeriodView {
+            .map(|node| ValidPeriod {
                 doc: Arc::clone(&self.doc),
                 node,
             })
@@ -450,12 +448,12 @@ impl PermissionsView {
 
 /// 打印权限的视图。
 #[derive(Debug, Clone)]
-pub struct PrintView {
+pub struct Print {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl PrintView {
+impl Print {
     /// 是否允许打印。
     pub fn printable(&self) -> Option<bool> {
         self.doc
@@ -473,12 +471,12 @@ impl PrintView {
 
 /// 有效期的视图。
 #[derive(Debug, Clone)]
-pub struct ValidPeriodView {
+pub struct ValidPeriod {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl ValidPeriodView {
+impl ValidPeriod {
     /// 开始日期。
     pub fn start_date(&self) -> Option<&str> {
         self.doc.attribute(self.node, "StartDate")
@@ -492,12 +490,12 @@ impl ValidPeriodView {
 
 /// 视图首选项的视图。
 #[derive(Debug, Clone)]
-pub struct VPreferencesView {
+pub struct VPreferences {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl VPreferencesView {
+impl VPreferences {
     fn text_value(&self, name: &str) -> Option<&str> {
         child_text(&self.doc, self.node, name)
     }
@@ -549,17 +547,17 @@ impl VPreferencesView {
 
 /// 书签集的视图。
 #[derive(Debug, Clone)]
-pub struct BookmarksView {
+pub struct Bookmarks {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl BookmarksView {
+impl Bookmarks {
     /// 遍历书签。
-    pub fn bookmarks(&self) -> impl Iterator<Item = BookmarkView> {
+    pub fn bookmarks(&self) -> impl Iterator<Item = Bookmark> {
         self.doc
             .children_named(self.node, "Bookmark")
-            .map(|node| BookmarkView {
+            .map(|node| Bookmark {
                 doc: Arc::clone(&self.doc),
                 node,
             })
@@ -570,20 +568,20 @@ impl BookmarksView {
 
 /// 单个书签的视图。
 #[derive(Debug, Clone)]
-pub struct BookmarkView {
+pub struct Bookmark {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl BookmarkView {
+impl Bookmark {
     /// 书签名称。
     pub fn name(&self) -> Option<&str> {
         self.doc.attribute(self.node, "Name")
     }
 
     /// 跳转目标。
-    pub fn dest(&self) -> Option<DestView> {
-        self.doc.find_child(self.node, "Dest").map(|node| DestView {
+    pub fn dest(&self) -> Option<Dest> {
+        self.doc.find_child(self.node, "Dest").map(|node| Dest {
             doc: Arc::clone(&self.doc),
             node,
         })
@@ -592,12 +590,12 @@ impl BookmarkView {
 
 /// 跳转目标的视图。
 #[derive(Debug, Clone)]
-pub struct DestView {
+pub struct Dest {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl DestView {
+impl Dest {
     pub(crate) fn new(doc: Arc<XmlDocument>, node: NodeId) -> Self {
         Self { doc, node }
     }

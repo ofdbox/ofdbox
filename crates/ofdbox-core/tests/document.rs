@@ -1,6 +1,7 @@
 mod fixtures;
 
-use ofdbox_core::{DiagnosticCode, DocumentView, OfdError, OfdPackage, ReadOptions};
+use ofdbox_core::model::document::Document;
+use ofdbox_core::{DiagnosticCode, OfdError, OfdPackage, ReadOptions};
 
 const DOCUMENT: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
 <ofd:Document xmlns:ofd="http://www.ofdspec.org/2016">
@@ -51,8 +52,8 @@ const ROOT: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
   </ofd:DocBody>
 </ofd:OFD>"#;
 
-fn parse(xml: &str, options: ReadOptions) -> Result<DocumentView, OfdError> {
-    DocumentView::from_xml(xml.as_bytes(), options)
+fn parse(xml: &str, options: ReadOptions) -> Result<Document, OfdError> {
+    Document::from_xml(xml.as_bytes(), options)
 }
 
 #[test]
@@ -218,7 +219,7 @@ fn outlines_and_actions_parse_and_write() {
 
     let strict = parse(&with_actions, ReadOptions::STRICT).expect("strict should accept");
     let xml = strict.to_xml().expect("strict writer");
-    let reparsed = DocumentView::from_xml(xml.as_bytes(), ReadOptions::STRICT)
+    let reparsed = Document::from_xml(xml.as_bytes(), ReadOptions::STRICT)
         .expect("strict output should roundtrip");
     assert!(reparsed.outlines().is_some());
     assert!(reparsed.actions().is_some());
@@ -323,7 +324,7 @@ fn writer_emits_canonical_document_order() {
     assert!(custom_tags < attachments);
     assert!(attachments < extensions);
 
-    let reparsed = DocumentView::from_xml(xml.as_bytes(), ReadOptions::STRICT)
+    let reparsed = Document::from_xml(xml.as_bytes(), ReadOptions::STRICT)
         .expect("canonical output should pass strict parsing");
     assert_eq!(
         reparsed.pages().unwrap().pages().next().unwrap().id(),

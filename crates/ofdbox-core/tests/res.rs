@@ -1,6 +1,7 @@
 mod fixtures;
 
-use ofdbox_core::{DiagnosticCode, OfdError, OfdPackage, ReadOptions, ResView};
+use ofdbox_core::model::res::Res;
+use ofdbox_core::{DiagnosticCode, OfdError, OfdPackage, ReadOptions};
 
 const RES: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
 <ofd:Res xmlns:ofd="http://www.ofdspec.org/2016" BaseLoc="./">
@@ -58,8 +59,8 @@ const DOCUMENT: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
   <ofd:Pages><ofd:Page ID="1" BaseLoc="Pages/Page_0/Content.xml"/></ofd:Pages>
 </ofd:Document>"#;
 
-fn parse(xml: &str, options: ReadOptions) -> Result<ResView, OfdError> {
-    ResView::from_xml(xml.as_bytes(), options)
+fn parse(xml: &str, options: ReadOptions) -> Result<Res, OfdError> {
+    Res::from_xml(xml.as_bytes(), options)
 }
 
 #[test]
@@ -141,7 +142,7 @@ fn writer_emits_canonical_res_and_roundtrips() {
     assert!(fonts < media);
     assert!(media < composite);
 
-    let reparsed = ResView::from_xml(xml.as_bytes(), ReadOptions::STRICT)
+    let reparsed = Res::from_xml(xml.as_bytes(), ReadOptions::STRICT)
         .expect("canonical output should pass strict parsing");
     assert_eq!(reparsed.fonts().next().unwrap().id(), Some("3"));
 }

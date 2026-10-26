@@ -1,4 +1,6 @@
-use ofdbox_core::{DocumentView, OfdError, ReadOptions, RegionCommandKind};
+use ofdbox_core::model::document::Document;
+use ofdbox_core::model::region::RegionCommandKind;
+use ofdbox_core::{OfdError, ReadOptions};
 
 const DOCUMENT: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
 <ofd:Document xmlns:ofd="http://www.ofdspec.org/2016">
@@ -24,11 +26,11 @@ const DOCUMENT: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
   </ofd:Actions>
 </ofd:Document>"#;
 
-fn parse(xml: &str, options: ReadOptions) -> Result<DocumentView, OfdError> {
-    DocumentView::from_xml(xml.as_bytes(), options)
+fn parse(xml: &str, options: ReadOptions) -> Result<Document, OfdError> {
+    Document::from_xml(xml.as_bytes(), options)
 }
 
-fn region_commands(view: &DocumentView) -> Vec<ofdbox_core::RegionCommandView> {
+fn region_commands(view: &Document) -> Vec<ofdbox_core::model::region::RegionCommand> {
     view.actions()
         .unwrap()
         .actions()
@@ -75,8 +77,7 @@ fn region_writer_roundtrips() {
     assert!(xml.contains("<ofd:QuadraticBezier"));
     assert!(xml.contains("<ofd:Close"));
 
-    let reparsed =
-        DocumentView::from_xml(xml.as_bytes(), ReadOptions::STRICT).expect("strict reparse");
+    let reparsed = Document::from_xml(xml.as_bytes(), ReadOptions::STRICT).expect("strict reparse");
     assert_eq!(region_commands(&reparsed).len(), 6);
 }
 

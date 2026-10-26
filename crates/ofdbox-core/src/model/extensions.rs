@@ -8,12 +8,12 @@ use crate::xml::tree::{NodeId, XmlDocument};
 
 /// 扩展信息列表的类型化视图。
 #[derive(Debug, Clone)]
-pub struct ExtensionsView {
+pub struct Extensions {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl ExtensionsView {
+impl Extensions {
     /// 从 XML 字节解析扩展信息列表。
     pub fn from_xml(bytes: &[u8], options: ReadOptions) -> Result<Self, OfdError> {
         let doc = Arc::new(parse_xml(bytes, options)?);
@@ -36,10 +36,10 @@ impl ExtensionsView {
     }
 
     /// 遍历扩展信息节点。
-    pub fn extensions(&self) -> impl Iterator<Item = ExtensionView> {
+    pub fn extensions(&self) -> impl Iterator<Item = Extension> {
         self.doc
             .children_named(self.node, "Extension")
-            .map(|node| ExtensionView {
+            .map(|node| Extension {
                 doc: Arc::clone(&self.doc),
                 node,
             })
@@ -84,12 +84,12 @@ impl ExtensionsView {
 
 /// 单个扩展信息节点的视图。
 #[derive(Debug, Clone)]
-pub struct ExtensionView {
+pub struct Extension {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl ExtensionView {
+impl Extension {
     /// 扩展应用程序名称。
     pub fn app_name(&self) -> Option<&str> {
         self.doc.attribute(self.node, "AppName")
@@ -116,10 +116,10 @@ impl ExtensionView {
     }
 
     /// 简单扩展属性。
-    pub fn properties(&self) -> impl Iterator<Item = PropertyView> {
+    pub fn properties(&self) -> impl Iterator<Item = Property> {
         self.doc
             .children_named(self.node, "Property")
-            .map(|node| PropertyView {
+            .map(|node| Property {
                 doc: Arc::clone(&self.doc),
                 node,
             })
@@ -128,10 +128,10 @@ impl ExtensionView {
     }
 
     /// 复杂扩展数据节点。
-    pub fn data(&self) -> impl Iterator<Item = DataView> {
+    pub fn data(&self) -> impl Iterator<Item = Data> {
         self.doc
             .children_named(self.node, "Data")
-            .map(|node| DataView {
+            .map(|node| Data {
                 doc: Arc::clone(&self.doc),
                 node,
             })
@@ -159,12 +159,12 @@ impl ExtensionView {
 
 /// 简单扩展属性的视图。
 #[derive(Debug, Clone)]
-pub struct PropertyView {
+pub struct Property {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl PropertyView {
+impl Property {
     /// 属性名称。
     pub fn name(&self) -> Option<&str> {
         self.doc.attribute(self.node, "Name")
@@ -185,12 +185,12 @@ impl PropertyView {
 ///
 /// `Data` 的内容为 `xs:anyType`，这里保留原始语法树节点供调用方自行解释。
 #[derive(Debug, Clone)]
-pub struct DataView {
+pub struct Data {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl DataView {
+impl Data {
     /// 所属语法树。
     pub fn document(&self) -> &XmlDocument {
         &self.doc

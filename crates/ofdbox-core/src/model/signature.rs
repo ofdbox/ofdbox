@@ -13,12 +13,12 @@ const SIGNATURE_TYPES: &[&str] = &["Seal", "Sign"];
 
 /// 签名列表文件的类型化视图。
 #[derive(Debug, Clone)]
-pub struct SignaturesView {
+pub struct Signatures {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl SignaturesView {
+impl Signatures {
     /// 从 XML 字节解析签名列表。
     pub fn from_xml(bytes: &[u8], options: ReadOptions) -> Result<Self, OfdError> {
         let doc = Arc::new(parse_xml(bytes, options)?);
@@ -48,10 +48,10 @@ impl SignaturesView {
     }
 
     /// 遍历签名注册信息。
-    pub fn signatures(&self) -> impl Iterator<Item = SignatureEntryView> {
+    pub fn signatures(&self) -> impl Iterator<Item = SignatureEntry> {
         self.doc
             .children_named(self.node, "Signature")
-            .map(|node| SignatureEntryView {
+            .map(|node| SignatureEntry {
                 doc: Arc::clone(&self.doc),
                 node,
             })
@@ -98,12 +98,12 @@ impl SignaturesView {
 
 /// 签名列表中单条注册信息的视图。
 #[derive(Debug, Clone)]
-pub struct SignatureEntryView {
+pub struct SignatureEntry {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl SignatureEntryView {
+impl SignatureEntry {
     /// 签名标识。
     pub fn id(&self) -> Option<&str> {
         self.doc.attribute(self.node, "ID")
@@ -127,12 +127,12 @@ impl SignatureEntryView {
 
 /// 签名描述文件的类型化视图。
 #[derive(Debug, Clone)]
-pub struct SignatureView {
+pub struct Signature {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl SignatureView {
+impl Signature {
     /// 从 XML 字节解析签名描述文件。
     pub fn from_xml(bytes: &[u8], options: ReadOptions) -> Result<Self, OfdError> {
         let doc = Arc::new(parse_xml(bytes, options)?);
@@ -155,10 +155,10 @@ impl SignatureView {
     }
 
     /// 签名保护信息。
-    pub fn signed_info(&self) -> Option<SignedInfoView> {
+    pub fn signed_info(&self) -> Option<SignedInfo> {
         self.doc
             .find_child(self.node, "SignedInfo")
-            .map(|node| SignedInfoView {
+            .map(|node| SignedInfo {
                 doc: Arc::clone(&self.doc),
                 node,
             })
@@ -210,17 +210,17 @@ impl SignatureView {
 
 /// `SignedInfo` 的类型化视图。
 #[derive(Debug, Clone)]
-pub struct SignedInfoView {
+pub struct SignedInfo {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl SignedInfoView {
+impl SignedInfo {
     /// 签章组件提供者信息。
-    pub fn provider(&self) -> Option<ProviderView> {
+    pub fn provider(&self) -> Option<Provider> {
         self.doc
             .find_child(self.node, "Provider")
-            .map(|node| ProviderView {
+            .map(|node| Provider {
                 doc: Arc::clone(&self.doc),
                 node,
             })
@@ -237,20 +237,20 @@ impl SignedInfoView {
     }
 
     /// 受保护文件的摘要列表。
-    pub fn references(&self) -> Option<ReferencesView> {
+    pub fn references(&self) -> Option<References> {
         self.doc
             .find_child(self.node, "References")
-            .map(|node| ReferencesView {
+            .map(|node| References {
                 doc: Arc::clone(&self.doc),
                 node,
             })
     }
 
     /// 签名外观。
-    pub fn stamp_annots(&self) -> impl Iterator<Item = StampAnnotView> {
+    pub fn stamp_annots(&self) -> impl Iterator<Item = StampAnnot> {
         self.doc
             .children_named(self.node, "StampAnnot")
-            .map(|node| StampAnnotView {
+            .map(|node| StampAnnot {
                 doc: Arc::clone(&self.doc),
                 node,
             })
@@ -259,11 +259,11 @@ impl SignedInfoView {
     }
 
     /// 签名扩展属性（0099 新增）。
-    pub fn parameters(&self) -> impl Iterator<Item = SignatureParameterView> {
+    pub fn parameters(&self) -> impl Iterator<Item = SignatureParameter> {
         let mut values = Vec::new();
         if let Some(parameters) = self.doc.find_child(self.node, "Parameters") {
             for node in self.doc.children_named(parameters, "Parameter") {
-                values.push(SignatureParameterView {
+                values.push(SignatureParameter {
                     doc: Arc::clone(&self.doc),
                     node,
                 });
@@ -273,8 +273,8 @@ impl SignedInfoView {
     }
 
     /// 电子印章信息。
-    pub fn seal(&self) -> Option<SealView> {
-        self.doc.find_child(self.node, "Seal").map(|node| SealView {
+    pub fn seal(&self) -> Option<Seal> {
+        self.doc.find_child(self.node, "Seal").map(|node| Seal {
             doc: Arc::clone(&self.doc),
             node,
         })
@@ -289,12 +289,12 @@ impl SignedInfoView {
 
 /// 签章组件提供者的视图。
 #[derive(Debug, Clone)]
-pub struct ProviderView {
+pub struct Provider {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl ProviderView {
+impl Provider {
     /// 提供者名称。
     ///
     /// 标准写法是 `Provider@ProviderName`；真实样本也有写成同名子元素的，
@@ -337,12 +337,12 @@ impl ProviderView {
 
 /// 签名扩展属性的视图。
 #[derive(Debug, Clone)]
-pub struct SignatureParameterView {
+pub struct SignatureParameter {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl SignatureParameterView {
+impl SignatureParameter {
     /// 属性名称。
     pub fn name(&self) -> Option<&str> {
         self.doc.attribute(self.node, "Name")
@@ -361,22 +361,22 @@ impl SignatureParameterView {
 
 /// 摘要列表的视图。
 #[derive(Debug, Clone)]
-pub struct ReferencesView {
+pub struct References {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl ReferencesView {
+impl References {
     /// 摘要方法。
     pub fn check_method(&self) -> Option<&str> {
         self.doc.attribute(self.node, "CheckMethod")
     }
 
     /// 遍历文件摘要。
-    pub fn references(&self) -> impl Iterator<Item = ReferenceView> {
+    pub fn references(&self) -> impl Iterator<Item = Reference> {
         self.doc
             .children_named(self.node, "Reference")
-            .map(|node| ReferenceView {
+            .map(|node| Reference {
                 doc: Arc::clone(&self.doc),
                 node,
             })
@@ -387,12 +387,12 @@ impl ReferencesView {
 
 /// 单个文件摘要的视图。
 #[derive(Debug, Clone)]
-pub struct ReferenceView {
+pub struct Reference {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl ReferenceView {
+impl Reference {
     /// 被保护文件路径。
     pub fn file_ref(&self) -> Option<&str> {
         self.doc.attribute(self.node, "FileRef")
@@ -409,12 +409,12 @@ impl ReferenceView {
 
 /// 签名外观的视图。
 #[derive(Debug, Clone)]
-pub struct StampAnnotView {
+pub struct StampAnnot {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl StampAnnotView {
+impl StampAnnot {
     /// 外观注释标识。
     pub fn id(&self) -> Option<&str> {
         self.doc.attribute(self.node, "ID")
@@ -438,12 +438,12 @@ impl StampAnnotView {
 
 /// 电子印章信息的视图。
 #[derive(Debug, Clone)]
-pub struct SealView {
+pub struct Seal {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl SealView {
+impl Seal {
     /// 电子印章文件路径。
     pub fn base_loc(&self) -> Option<&str> {
         self.doc

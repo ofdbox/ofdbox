@@ -10,12 +10,12 @@ use crate::xml::tree::{NodeId, XmlDocument};
 
 /// 版本描述文件的类型化视图。
 #[derive(Debug, Clone)]
-pub struct DocVersionView {
+pub struct Version {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl DocVersionView {
+impl Version {
     /// 从 XML 字节解析版本描述文件。
     pub fn from_xml(bytes: &[u8], options: ReadOptions) -> Result<Self, OfdError> {
         let doc = Arc::new(parse_xml(bytes, options)?);
@@ -58,11 +58,11 @@ impl DocVersionView {
     }
 
     /// 版本包含的文件。
-    pub fn files(&self) -> impl Iterator<Item = VersionFileView> {
+    pub fn files(&self) -> impl Iterator<Item = VersionFile> {
         let mut values = Vec::new();
         if let Some(file_list) = self.doc.find_child(self.node, "FileList") {
             for node in self.doc.children_named(file_list, "File") {
-                values.push(VersionFileView {
+                values.push(VersionFile {
                     doc: Arc::clone(&self.doc),
                     node,
                 });
@@ -123,12 +123,12 @@ impl DocVersionView {
 
 /// 版本中单个文件的视图。
 #[derive(Debug, Clone)]
-pub struct VersionFileView {
+pub struct VersionFile {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl VersionFileView {
+impl VersionFile {
     /// 文件标识。
     pub fn id(&self) -> Option<&str> {
         self.doc.attribute(self.node, "ID")

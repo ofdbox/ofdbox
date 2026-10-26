@@ -14,12 +14,12 @@ use crate::xml::tree::{NodeId, XmlDocument};
 /// 按附录 D 表 D.1：`CreatorName`/`Version`/`CreationDate` 是根元素属性，
 /// `File/@FileLoc` 也是属性（不是子元素）。
 #[derive(Debug, Clone)]
-pub struct DocEntriesView {
+pub struct DocEntries {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl DocEntriesView {
+impl DocEntries {
     /// 从 XML 字节解析完整性保护描述。
     pub fn from_xml(bytes: &[u8], options: ReadOptions) -> Result<Self, OfdError> {
         let doc = Arc::new(parse_xml(bytes, options)?);
@@ -62,11 +62,11 @@ impl DocEntriesView {
     }
 
     /// 防夹带文件列表。
-    pub fn files(&self) -> impl Iterator<Item = DocEntryFileView> {
+    pub fn files(&self) -> impl Iterator<Item = DocEntryFile> {
         let mut values = Vec::new();
         if let Some(list) = self.doc.find_child(self.node, "FileList") {
             for node in self.doc.children_named(list, "File") {
-                values.push(DocEntryFileView {
+                values.push(DocEntryFile {
                     doc: Arc::clone(&self.doc),
                     node,
                 });
@@ -127,12 +127,12 @@ impl DocEntriesView {
 
 /// 防夹带文件列表中的单个文件。
 #[derive(Debug, Clone)]
-pub struct DocEntryFileView {
+pub struct DocEntryFile {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl DocEntryFileView {
+impl DocEntryFile {
     /// 文件标识。
     pub fn id(&self) -> Option<&str> {
         self.doc.attribute(self.node, "ID")

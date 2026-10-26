@@ -2,9 +2,8 @@ mod fixtures;
 
 use std::io::Cursor;
 
-use ofdbox_core::{
-    AnnotationEditor, AnnotationPatch, AnnotationSpec, OfdPackage, PageAnnotView, ReadOptions,
-};
+use ofdbox_core::model::annotation::PageAnnot;
+use ofdbox_core::{AnnotationEditor, AnnotationPatch, AnnotationSpec, OfdPackage, ReadOptions};
 
 const OFD_XML: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
 <ofd:OFD xmlns:ofd="http://www.ofdspec.org/2016" Version="1.0" DocType="OFD">
@@ -234,7 +233,7 @@ fn adds_text_and_path_appearances() {
         "{text}"
     );
 
-    PageAnnotView::from_xml(&raw, ReadOptions::STRICT).expect("strict page annot");
+    PageAnnot::from_xml(&raw, ReadOptions::STRICT).expect("strict page annot");
 }
 
 #[test]
@@ -272,7 +271,7 @@ fn adds_cg_transform_and_composite_appearance() {
         text.contains("<ofd:CompositeObject ID=\"") && text.contains("ResourceID=\"1\""),
         "{text}"
     );
-    PageAnnotView::from_xml(&raw, ReadOptions::STRICT).expect("strict page annot");
+    PageAnnot::from_xml(&raw, ReadOptions::STRICT).expect("strict page annot");
 }
 
 #[test]

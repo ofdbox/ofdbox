@@ -2,13 +2,11 @@ use quick_xml::Writer;
 use quick_xml::events::{BytesDecl, BytesEnd, Event};
 
 use crate::error::OfdError;
-use crate::model::signature::{
-    ReferenceView, SignatureView, SignaturesView, SignedInfoView, StampAnnotView,
-};
+use crate::model::signature::{Reference, Signature, Signatures, SignedInfo, StampAnnot};
 use crate::write::ofd::{missing, write_start, write_text_element};
 use crate::xml::namespace::OFD_NAMESPACE;
 
-pub(crate) fn write_signatures(signatures: &SignaturesView) -> Result<String, OfdError> {
+pub(crate) fn write_signatures(signatures: &Signatures) -> Result<String, OfdError> {
     let mut writer = Writer::new(Vec::new());
     writer.write_event(Event::Decl(BytesDecl::new("1.0", Some("UTF-8"), None)))?;
     write_start(
@@ -44,7 +42,7 @@ pub(crate) fn write_signatures(signatures: &SignaturesView) -> Result<String, Of
         .map_err(|error| OfdError::InvalidStructure(format!("序列化结果不是 UTF-8: {error}")))
 }
 
-pub(crate) fn write_signature(signature: &SignatureView) -> Result<String, OfdError> {
+pub(crate) fn write_signature(signature: &Signature) -> Result<String, OfdError> {
     let mut writer = Writer::new(Vec::new());
     writer.write_event(Event::Decl(BytesDecl::new("1.0", Some("UTF-8"), None)))?;
     write_start(
@@ -67,7 +65,7 @@ pub(crate) fn write_signature(signature: &SignatureView) -> Result<String, OfdEr
         .map_err(|error| OfdError::InvalidStructure(format!("序列化结果不是 UTF-8: {error}")))
 }
 
-fn write_signed_info(writer: &mut Writer<Vec<u8>>, info: &SignedInfoView) -> Result<(), OfdError> {
+fn write_signed_info(writer: &mut Writer<Vec<u8>>, info: &SignedInfo) -> Result<(), OfdError> {
     write_start(writer, "ofd:SignedInfo", &[])?;
 
     let provider = info
@@ -151,10 +149,7 @@ fn write_signed_info(writer: &mut Writer<Vec<u8>>, info: &SignedInfoView) -> Res
     Ok(())
 }
 
-fn write_reference(
-    writer: &mut Writer<Vec<u8>>,
-    reference: &ReferenceView,
-) -> Result<(), OfdError> {
+fn write_reference(writer: &mut Writer<Vec<u8>>, reference: &Reference) -> Result<(), OfdError> {
     let file_ref = reference
         .file_ref()
         .ok_or_else(|| missing("/References/Reference/@FileRef", "缺少 FileRef"))?;
@@ -166,7 +161,7 @@ fn write_reference(
 
 fn write_stamp_annot(
     writer: &mut Writer<Vec<u8>>,
-    stamp_annot: &StampAnnotView,
+    stamp_annot: &StampAnnot,
 ) -> Result<(), OfdError> {
     let id = stamp_annot
         .id()

@@ -1,4 +1,5 @@
-use ofdbox_core::{DocEntriesView, OfdError, ReadOptions};
+use ofdbox_core::model::integrity::DocEntries;
+use ofdbox_core::{OfdError, ReadOptions};
 
 const ENTRIES: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
 <ofd:DocEntries xmlns:ofd="http://www.ofdspec.org/2016" ID="1" CreatorName="OFDBox"
@@ -11,9 +12,9 @@ const ENTRIES: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
 </ofd:DocEntries>"#;
 
 fn assert_strict_rejects(input: &str) {
-    assert!(DocEntriesView::from_xml(input.as_bytes(), ReadOptions::LENIENT).is_ok());
+    assert!(DocEntries::from_xml(input.as_bytes(), ReadOptions::LENIENT).is_ok());
     assert!(matches!(
-        DocEntriesView::from_xml(input.as_bytes(), ReadOptions::STRICT),
+        DocEntries::from_xml(input.as_bytes(), ReadOptions::STRICT),
         Err(OfdError::Conformance(_))
     ));
 }

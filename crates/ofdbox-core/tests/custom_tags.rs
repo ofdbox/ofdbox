@@ -1,6 +1,7 @@
 mod fixtures;
 
-use ofdbox_core::{CustomTagsView, DiagnosticCode, OfdError, OfdPackage, ReadOptions};
+use ofdbox_core::model::custom_tags::CustomTags;
+use ofdbox_core::{DiagnosticCode, OfdError, OfdPackage, ReadOptions};
 
 const CUSTOM_TAGS: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
 <ofd:CustomTags xmlns:ofd="http://www.ofdspec.org/2016">
@@ -31,8 +32,8 @@ const DOCUMENT: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
   <ofd:CustomTags>Tags/CustomTags.xml</ofd:CustomTags>
 </ofd:Document>"#;
 
-fn parse(xml: &str, options: ReadOptions) -> Result<CustomTagsView, OfdError> {
-    CustomTagsView::from_xml(xml.as_bytes(), options)
+fn parse(xml: &str, options: ReadOptions) -> Result<CustomTags, OfdError> {
+    CustomTags::from_xml(xml.as_bytes(), options)
 }
 
 #[test]
@@ -85,7 +86,7 @@ fn writer_emits_canonical_custom_tags() {
     assert!(xml.contains(r#"<ofd:CustomTag TypeID="ofdls">"#));
     assert!(xml.contains("<ofd:SchemaLoc>Tags/ofdls.xsd</ofd:SchemaLoc>"));
     let reparsed =
-        CustomTagsView::from_xml(xml.as_bytes(), ReadOptions::STRICT).expect("strict reparse");
+        CustomTags::from_xml(xml.as_bytes(), ReadOptions::STRICT).expect("strict reparse");
     assert_eq!(reparsed.custom_tags().count(), 2);
 }
 

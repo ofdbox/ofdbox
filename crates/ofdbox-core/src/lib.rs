@@ -15,7 +15,8 @@ mod annotation_edit;
 mod cache;
 mod crypto;
 mod error;
-mod model;
+#[allow(missing_docs)]
+pub mod model;
 mod options;
 mod package;
 mod package_write;
@@ -35,50 +36,6 @@ pub use crypto::{
     SignedValueFormat, detect_signed_value_format,
 };
 pub use error::{Diagnostic, DiagnosticCode, OfdError};
-pub use model::action::{
-    ActionView, ActionsView, GotoAView, GotoView, MovieView, SoundView, UriView,
-};
-pub use model::annotation::{
-    AnnotView, AnnotationsPageView, AnnotationsView, AppearanceView, PageAnnotView, ParameterView,
-};
-pub use model::attachment::{AttachmentView, AttachmentsView};
-pub use model::color::{
-    AxialShdView, ColorKind, ColorView, GouraudShdView, LaGouraudShdView, PatternView, PointView,
-    RadialShdView, SegmentView,
-};
-pub use model::custom_tags::{CustomTagView, CustomTagsView};
-pub use model::decrypt_seed::{
-    DecryptSeedView, DecryptUserView, ExtendParameterView, ExtendParamsView,
-};
-pub use model::document::{
-    BookmarkView, BookmarksView, CommonDataView, DestView, DocumentView, PageAreaView, PageView,
-    PagesView, PermissionsView, PrintView, TemplatePageView, VPreferencesView, ValidPeriodView,
-};
-pub use model::encryption::{
-    EncryptInfoView, EncryptionParameterView, EncryptionProviderView, EncryptionsView,
-};
-pub use model::entries_map::{EncryptEntryView, EncryptedEntriesView};
-pub use model::extensions::{DataView, ExtensionView, ExtensionsView, PropertyView};
-pub use model::integrity::{DocEntriesView, DocEntryFileView};
-pub use model::ofd::{
-    CustomDataView, DocBodyView, DocInfoView, OfdRootView, VersionView, VersionsView,
-};
-pub use model::outline::{OutlineElemView, OutlinesView};
-pub use model::page::{
-    BorderView, CGTransformView, ClipAreaKind, ClipAreaView, ClipView, ClipsView, ContentView,
-    GraphicObjectKind, GraphicObjectView, GraphicPayloadView, LayerView, PageContentView,
-    TemplateView, TextCodeView,
-};
-pub use model::region::{RegionAreaView, RegionCommandKind, RegionCommandView, RegionView};
-pub use model::res::{
-    ColorSpaceView, CompositeContentView, CompositeGraphicUnitView, DrawParamView, FontView,
-    MultiMediaView, ResView,
-};
-pub use model::signature::{
-    ProviderView, ReferenceDigest, ReferenceView, ReferencesView, SealView, SignatureEntryView,
-    SignatureParameterView, SignatureView, SignaturesView, SignedInfoView, StampAnnotView,
-};
-pub use model::version::{DocVersionView, VersionFileView};
 pub use options::{CacheOptions, ReadOptions};
 pub use package::{
     CacheStats, EntriesVerification, EntriesWriteOptions, EntriesWriteReport, OfdPackage,

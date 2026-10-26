@@ -1,6 +1,7 @@
 mod fixtures;
 
-use ofdbox_core::{ExtensionsView, OfdError, OfdPackage, ReadOptions};
+use ofdbox_core::model::extensions::Extensions;
+use ofdbox_core::{OfdError, OfdPackage, ReadOptions};
 
 const EXTENSIONS: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
 <ofd:Extensions xmlns:ofd="http://www.ofdspec.org/2016">
@@ -32,8 +33,8 @@ const DOCUMENT: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
   <ofd:Extensions>Extensions.xml</ofd:Extensions>
 </ofd:Document>"#;
 
-fn parse(xml: &str, options: ReadOptions) -> Result<ExtensionsView, OfdError> {
-    ExtensionsView::from_xml(xml.as_bytes(), options)
+fn parse(xml: &str, options: ReadOptions) -> Result<Extensions, OfdError> {
+    Extensions::from_xml(xml.as_bytes(), options)
 }
 
 #[test]
@@ -72,7 +73,7 @@ fn writer_preserves_data_subtree_and_roundtrips() {
     assert!(xml.contains("<ofd:ExtendData>Extensions/data.xml</ofd:ExtendData>"));
 
     let reparsed =
-        ExtensionsView::from_xml(xml.as_bytes(), ReadOptions::STRICT).expect("strict reparse");
+        Extensions::from_xml(xml.as_bytes(), ReadOptions::STRICT).expect("strict reparse");
     let extension = reparsed.extensions().next().unwrap();
     assert_eq!(extension.data().count(), 1);
     assert_eq!(extension.properties().count(), 1);

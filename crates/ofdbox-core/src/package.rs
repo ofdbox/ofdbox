@@ -9,20 +9,20 @@ use zip::ZipArchive;
 use crate::cache::ByteLruCache;
 use crate::crypto::{CryptoBackend, FileKey, SignatureVerifiers, detect_signed_value_format};
 use crate::error::OfdError;
-use crate::model::annotation::{AnnotationsView, PageAnnotView};
-use crate::model::attachment::AttachmentsView;
-use crate::model::custom_tags::CustomTagsView;
-use crate::model::decrypt_seed::DecryptSeedView;
-use crate::model::document::{DocumentView, PageView};
-use crate::model::encryption::EncryptionsView;
-use crate::model::entries_map::EncryptedEntriesView;
-use crate::model::extensions::ExtensionsView;
-use crate::model::integrity::DocEntriesView;
-use crate::model::ofd::OfdRootView;
-use crate::model::page::PageContentView;
-use crate::model::res::ResView;
-use crate::model::signature::{ReferenceDigest, SignatureView, SignaturesView};
-use crate::model::version::DocVersionView;
+use crate::model::annotation::{Annotations, PageAnnot};
+use crate::model::attachment::Attachments;
+use crate::model::custom_tags::CustomTags;
+use crate::model::decrypt_seed::DecryptSeed;
+use crate::model::document::{Document, PageEntry};
+use crate::model::encryption::Encryptions;
+use crate::model::entries_map::EncryptedEntries;
+use crate::model::extensions::Extensions;
+use crate::model::integrity::DocEntries;
+use crate::model::ofd::OfdRoot;
+use crate::model::page::Page;
+use crate::model::res::Res;
+use crate::model::signature::{ReferenceDigest, Signature, Signatures};
+use crate::model::version::Version;
 use crate::options::{CacheOptions, ReadOptions};
 use crate::package_write::{
     DecryptedWriteReport, ExistingEntry, PackageEdits, PackageWriteOptions, PlanItem, copy_raw,
@@ -52,7 +52,7 @@ struct DecryptionEntry {
 
 struct DecryptionOperation {
     /// 所属加密操作，用于按条目解包包装密钥。
-    info: crate::model::encryption::EncryptInfoView,
+    info: crate::model::encryption::EncryptInfo,
     /// 该次加密操作的通用文件密钥。
     default_key: FileKey,
     /// 逻辑路径 -> 解密信息。
@@ -518,22 +518,22 @@ impl OfdPackage {
     }
 
     /// 读取并解析 `OFD.xml`。
-    pub fn parse_root(&mut self) -> Result<OfdRootView, OfdError> {
+    pub fn parse_root(&mut self) -> Result<OfdRoot, OfdError> {
         let entry = self.root_entry_name()?;
         let key = (entry.clone(), self.options.strict);
         if let Some(doc) = self.xml_cache.get(&key) {
-            return OfdRootView::from_document(doc, self.options);
+            return OfdRoot::from_document(doc, self.options);
         }
 
         let bytes = self.read_entry(&entry)?;
         let doc = Arc::new(parse_xml(&bytes, self.options)?);
         self.xml_cache
             .insert(key, Arc::clone(&doc), doc.estimated_size());
-        OfdRootView::from_document(doc, self.options)
+        OfdRoot::from_document(doc, self.options)
     }
 
     /// 读取并解析 `OFD.xml` 中 `DocRoot` 指向的 `Document.xml`。
-    pub fn parse_document(&mut self) -> Result<DocumentView, OfdError> {
+    pub fn parse_document(&mut self) -> Result<Document, OfdError> {
         let doc_root = {
             let root = self.parse_root()?;
             root.doc_bodies()
@@ -545,18 +545,18 @@ impl OfdPackage {
         self.document_entry = Some(entry.clone());
         let key = (entry.clone(), self.options.strict);
         if let Some(doc) = self.xml_cache.get(&key) {
-            return DocumentView::from_document(doc, self.options);
+            return Document::from_document(doc, self.options);
         }
 
         let bytes = self.read_entry(&entry)?;
         let doc = Arc::new(parse_xml(&bytes, self.options)?);
         self.xml_cache
             .insert(key, Arc::clone(&doc), doc.estimated_size());
-        DocumentView::from_document(doc, self.options)
+        Document::from_document(doc, self.options)
     }
 
     /// 读取并解析页面内容文件，路径相对于包根。
-    pub fn parse_page(&mut self, loc: &str) -> Result<PageContentView, OfdError> {
+    pub fn parse_page(&mut self, loc: &str) -> Result<Page, OfdError> {
         let entry = resolve_loc("", loc)?;
         self.parse_page_entry(entry)
     }
@@ -564,7 +564,7 @@ impl OfdPackage {
     /// 解析 `Document.xml` 中某个页面指向的内容文件。
     ///
     /// `Page.BaseLoc` 相对于 `Document.xml` 所在目录解析。
-    pub fn parse_page_for(&mut self, page: &PageView) -> Result<PageContentView, OfdError> {
+    pub fn parse_page_for(&mut self, page: &PageEntry) -> Result<Page, OfdError> {
         if self.document_entry.is_none() {
             self.parse_document()?;
         }
@@ -580,21 +580,21 @@ impl OfdPackage {
         self.parse_page_entry(entry)
     }
 
-    fn parse_page_entry(&mut self, entry: String) -> Result<PageContentView, OfdError> {
+    fn parse_page_entry(&mut self, entry: String) -> Result<Page, OfdError> {
         let key = (entry.clone(), self.options.strict);
         if let Some(doc) = self.xml_cache.get(&key) {
-            return PageContentView::from_document(doc, self.options);
+            return Page::from_document(doc, self.options);
         }
 
         let bytes = self.read_entry(&entry)?;
         let doc = Arc::new(parse_xml(&bytes, self.options)?);
         self.xml_cache
             .insert(key, Arc::clone(&doc), doc.estimated_size());
-        PageContentView::from_document(doc, self.options)
+        Page::from_document(doc, self.options)
     }
 
     /// 读取并解析资源文件，路径相对于包根。
-    pub fn parse_res(&mut self, loc: &str) -> Result<ResView, OfdError> {
+    pub fn parse_res(&mut self, loc: &str) -> Result<Res, OfdError> {
         let entry = resolve_loc("", loc)?;
         self.parse_res_entry(entry)
     }
@@ -602,7 +602,7 @@ impl OfdPackage {
     /// 解析 `Document.xml` 中引用的资源文件。
     ///
     /// `PublicRes` / `DocumentRes` 相对于 `Document.xml` 所在目录解析。
-    pub fn parse_res_from_document(&mut self, loc: &str) -> Result<ResView, OfdError> {
+    pub fn parse_res_from_document(&mut self, loc: &str) -> Result<Res, OfdError> {
         if self.document_entry.is_none() {
             self.parse_document()?;
         }
@@ -615,23 +615,23 @@ impl OfdPackage {
         self.parse_res_entry(entry)
     }
 
-    fn parse_res_entry(&mut self, entry: String) -> Result<ResView, OfdError> {
+    fn parse_res_entry(&mut self, entry: String) -> Result<Res, OfdError> {
         let key = (entry.clone(), self.options.strict);
         if let Some(doc) = self.xml_cache.get(&key) {
-            return ResView::from_document(doc, self.options);
+            return Res::from_document(doc, self.options);
         }
 
         let bytes = self.read_entry(&entry)?;
         let doc = Arc::new(parse_xml(&bytes, self.options)?);
         self.xml_cache
             .insert(key, Arc::clone(&doc), doc.estimated_size());
-        ResView::from_document(doc, self.options)
+        Res::from_document(doc, self.options)
     }
 
     /// 解析 `Document.xml` 中声明的注释索引文件。
     ///
     /// `Annotations` 相对于 `Document.xml` 所在目录解析。
-    pub fn parse_annotations(&mut self) -> Result<AnnotationsView, OfdError> {
+    pub fn parse_annotations(&mut self) -> Result<Annotations, OfdError> {
         let document = self.parse_document()?;
         let loc = document.annotations().map(str::to_owned).ok_or_else(|| {
             OfdError::InvalidStructure("Document.xml 未声明 Annotations".to_owned())
@@ -650,7 +650,7 @@ impl OfdPackage {
     /// 解析 `Document.xml` 中声明的附件列表文件。
     ///
     /// `Attachments` 相对于 `Document.xml` 所在目录解析。
-    pub fn parse_attachments(&mut self) -> Result<AttachmentsView, OfdError> {
+    pub fn parse_attachments(&mut self) -> Result<Attachments, OfdError> {
         let document = self.parse_document()?;
         let loc = document.attachments().map(str::to_owned).ok_or_else(|| {
             OfdError::InvalidStructure("Document.xml 未声明 Attachments".to_owned())
@@ -663,20 +663,20 @@ impl OfdPackage {
         let entry = resolve_loc(base, &loc)?;
         let key = (entry.clone(), self.options.strict);
         if let Some(doc) = self.xml_cache.get(&key) {
-            return AttachmentsView::from_document(doc, self.options);
+            return Attachments::from_document(doc, self.options);
         }
 
         let bytes = self.read_entry(&entry)?;
         let doc = Arc::new(parse_xml(&bytes, self.options)?);
         self.xml_cache
             .insert(key, Arc::clone(&doc), doc.estimated_size());
-        AttachmentsView::from_document(doc, self.options)
+        Attachments::from_document(doc, self.options)
     }
 
     /// 解析 `Document.xml` 中声明的自定义标引列表文件。
     ///
     /// `CustomTags` 相对于 `Document.xml` 所在目录解析。
-    pub fn parse_custom_tags(&mut self) -> Result<CustomTagsView, OfdError> {
+    pub fn parse_custom_tags(&mut self) -> Result<CustomTags, OfdError> {
         let document = self.parse_document()?;
         let loc = document.custom_tags().map(str::to_owned).ok_or_else(|| {
             OfdError::InvalidStructure("Document.xml 未声明 CustomTags".to_owned())
@@ -689,20 +689,20 @@ impl OfdPackage {
         let entry = resolve_loc(base, &loc)?;
         let key = (entry.clone(), self.options.strict);
         if let Some(doc) = self.xml_cache.get(&key) {
-            return CustomTagsView::from_document(doc, self.options);
+            return CustomTags::from_document(doc, self.options);
         }
 
         let bytes = self.read_entry(&entry)?;
         let doc = Arc::new(parse_xml(&bytes, self.options)?);
         self.xml_cache
             .insert(key, Arc::clone(&doc), doc.estimated_size());
-        CustomTagsView::from_document(doc, self.options)
+        CustomTags::from_document(doc, self.options)
     }
 
     /// 解析 `Document.xml` 中声明的扩展信息列表文件。
     ///
     /// `Extensions` 相对于 `Document.xml` 所在目录解析。
-    pub fn parse_extensions(&mut self) -> Result<ExtensionsView, OfdError> {
+    pub fn parse_extensions(&mut self) -> Result<Extensions, OfdError> {
         let document = self.parse_document()?;
         let loc = document.extensions().map(str::to_owned).ok_or_else(|| {
             OfdError::InvalidStructure("Document.xml 未声明 Extensions".to_owned())
@@ -715,20 +715,20 @@ impl OfdPackage {
         let entry = resolve_loc(base, &loc)?;
         let key = (entry.clone(), self.options.strict);
         if let Some(doc) = self.xml_cache.get(&key) {
-            return ExtensionsView::from_document(doc, self.options);
+            return Extensions::from_document(doc, self.options);
         }
 
         let bytes = self.read_entry(&entry)?;
         let doc = Arc::new(parse_xml(&bytes, self.options)?);
         self.xml_cache
             .insert(key, Arc::clone(&doc), doc.estimated_size());
-        ExtensionsView::from_document(doc, self.options)
+        Extensions::from_document(doc, self.options)
     }
 
     /// 解析注释索引中 `FileLoc` 指向的分页注释文件。
     ///
     /// 路径相对于注释索引文件所在目录解析；索引尚未解析时会先读取 `Document.xml`。
-    pub fn parse_page_annot(&mut self, file_loc: &str) -> Result<PageAnnotView, OfdError> {
+    pub fn parse_page_annot(&mut self, file_loc: &str) -> Result<PageAnnot, OfdError> {
         if self.annotations_entry.is_none() {
             self.parse_annotations()?;
         }
@@ -741,36 +741,36 @@ impl OfdPackage {
         self.parse_page_annot_entry(entry)
     }
 
-    fn parse_annotations_entry(&mut self, entry: String) -> Result<AnnotationsView, OfdError> {
+    fn parse_annotations_entry(&mut self, entry: String) -> Result<Annotations, OfdError> {
         let key = (entry.clone(), self.options.strict);
         if let Some(doc) = self.xml_cache.get(&key) {
-            return AnnotationsView::from_document(doc, self.options);
+            return Annotations::from_document(doc, self.options);
         }
 
         let bytes = self.read_entry(&entry)?;
         let doc = Arc::new(parse_xml(&bytes, self.options)?);
         self.xml_cache
             .insert(key, Arc::clone(&doc), doc.estimated_size());
-        AnnotationsView::from_document(doc, self.options)
+        Annotations::from_document(doc, self.options)
     }
 
-    fn parse_page_annot_entry(&mut self, entry: String) -> Result<PageAnnotView, OfdError> {
+    fn parse_page_annot_entry(&mut self, entry: String) -> Result<PageAnnot, OfdError> {
         let key = (entry.clone(), self.options.strict);
         if let Some(doc) = self.xml_cache.get(&key) {
-            return PageAnnotView::from_document(doc, self.options);
+            return PageAnnot::from_document(doc, self.options);
         }
 
         let bytes = self.read_entry(&entry)?;
         let doc = Arc::new(parse_xml(&bytes, self.options)?);
         self.xml_cache
             .insert(key, Arc::clone(&doc), doc.estimated_size());
-        PageAnnotView::from_document(doc, self.options)
+        PageAnnot::from_document(doc, self.options)
     }
 
     /// 解析 `OFD.xml` 中第一个 `DocBody` 声明的签名列表文件。
     ///
     /// `Signatures` 相对于 `OFD.xml` 所在目录解析。
-    pub fn parse_signatures(&mut self) -> Result<SignaturesView, OfdError> {
+    pub fn parse_signatures(&mut self) -> Result<Signatures, OfdError> {
         let loc = {
             let root = self.parse_root()?;
             root.doc_bodies()
@@ -790,7 +790,7 @@ impl OfdPackage {
     }
 
     /// 返回页面 `BaseLoc` 对应的包内 entry。
-    pub fn page_entry_name(&mut self, page: &PageView) -> Result<String, OfdError> {
+    pub fn page_entry_name(&mut self, page: &PageEntry) -> Result<String, OfdError> {
         if self.document_entry.is_none() {
             self.parse_document()?;
         }
@@ -825,7 +825,7 @@ impl OfdPackage {
     }
 
     /// 按包根路径直接解析签名描述文件。
-    pub fn parse_signature_file(&mut self, loc: &str) -> Result<SignatureView, OfdError> {
+    pub fn parse_signature_file(&mut self, loc: &str) -> Result<Signature, OfdError> {
         let entry = resolve_loc("", loc)?;
         self.parse_signature_entry(entry)
     }
@@ -833,7 +833,7 @@ impl OfdPackage {
     /// 解析签名列表中 `BaseLoc` 指向的签名描述文件。
     ///
     /// 路径相对于签名列表文件所在目录解析；列表尚未解析时会先读取 `OFD.xml`。
-    pub fn parse_signature(&mut self, base_loc: &str) -> Result<SignatureView, OfdError> {
+    pub fn parse_signature(&mut self, base_loc: &str) -> Result<Signature, OfdError> {
         if self.signatures_entry.is_none() {
             self.parse_signatures()?;
         }
@@ -862,7 +862,7 @@ impl OfdPackage {
     ///
     /// 只有需要显示或验证印章时才应调用；普通内容解析不会读取该文件。
     /// `Seal/BaseLoc` 相对于签名描述文件所在目录解析。
-    pub fn read_seal_bytes(&mut self, signature: &SignatureView) -> Result<Arc<[u8]>, OfdError> {
+    pub fn read_seal_bytes(&mut self, signature: &Signature) -> Result<Arc<[u8]>, OfdError> {
         let base_loc = signature
             .signed_info()
             .and_then(|info| info.seal())
@@ -877,79 +877,79 @@ impl OfdPackage {
         self.read_entry(&resolve_loc(base, &base_loc)?)
     }
 
-    fn parse_signatures_entry(&mut self, entry: String) -> Result<SignaturesView, OfdError> {
+    fn parse_signatures_entry(&mut self, entry: String) -> Result<Signatures, OfdError> {
         let key = (entry.clone(), self.options.strict);
         if let Some(doc) = self.xml_cache.get(&key) {
-            return SignaturesView::from_document(doc, self.options);
+            return Signatures::from_document(doc, self.options);
         }
 
         let bytes = self.read_entry(&entry)?;
         let doc = Arc::new(parse_xml(&bytes, self.options)?);
         self.xml_cache
             .insert(key, Arc::clone(&doc), doc.estimated_size());
-        SignaturesView::from_document(doc, self.options)
+        Signatures::from_document(doc, self.options)
     }
 
     /// 解析版本列表 `BaseLoc` 指向的版本描述文件，路径相对于包根。
-    pub fn parse_doc_version(&mut self, base_loc: &str) -> Result<DocVersionView, OfdError> {
+    pub fn parse_doc_version(&mut self, base_loc: &str) -> Result<Version, OfdError> {
         let entry = resolve_loc("", base_loc)?;
         let key = (entry.clone(), self.options.strict);
         if let Some(doc) = self.xml_cache.get(&key) {
-            return DocVersionView::from_document(doc, self.options);
+            return Version::from_document(doc, self.options);
         }
 
         let bytes = self.read_entry(&entry)?;
         let doc = Arc::new(parse_xml(&bytes, self.options)?);
         self.xml_cache
             .insert(key, Arc::clone(&doc), doc.estimated_size());
-        DocVersionView::from_document(doc, self.options)
+        Version::from_document(doc, self.options)
     }
 
     /// 解析包根目录下的解密入口 `Encryptions.xml`。
-    pub fn parse_encryptions(&mut self) -> Result<EncryptionsView, OfdError> {
+    pub fn parse_encryptions(&mut self) -> Result<Encryptions, OfdError> {
         let entry = resolve_loc("", "Encryptions.xml")?;
         let key = (entry.clone(), self.options.strict);
         if let Some(doc) = self.xml_cache.get(&key) {
-            return EncryptionsView::from_document(doc, self.options);
+            return Encryptions::from_document(doc, self.options);
         }
 
         let bytes = self.read_entry(&entry)?;
         let doc = Arc::new(parse_xml(&bytes, self.options)?);
         self.xml_cache
             .insert(key, Arc::clone(&doc), doc.estimated_size());
-        EncryptionsView::from_document(doc, self.options)
+        Encryptions::from_document(doc, self.options)
     }
 
     /// 解析密钥描述文件，路径相对于包根。
-    pub fn parse_decrypt_seed(&mut self, loc: &str) -> Result<DecryptSeedView, OfdError> {
+    pub fn parse_decrypt_seed(&mut self, loc: &str) -> Result<DecryptSeed, OfdError> {
         let entry = resolve_loc("", loc)?;
         let key = (entry.clone(), self.options.strict);
         if let Some(doc) = self.xml_cache.get(&key) {
-            return DecryptSeedView::from_document(doc, self.options);
+            return DecryptSeed::from_document(doc, self.options);
         }
 
         let bytes = self.read_entry(&entry)?;
         let doc = Arc::new(parse_xml(&bytes, self.options)?);
         self.xml_cache
             .insert(key, Arc::clone(&doc), doc.estimated_size());
-        DecryptSeedView::from_document(doc, self.options)
+        DecryptSeed::from_document(doc, self.options)
     }
 
     /// 解析未加密的明密文映射表，路径相对于包根。
     ///
     /// `entriesmap.dat` 可能是加密二进制，需先解密后再调用本方法。
-    pub fn parse_entries_map(&mut self, loc: &str) -> Result<EncryptedEntriesView, OfdError> {
+    pub fn parse_entries_map(&mut self, loc: &str) -> Result<EncryptedEntries, OfdError> {
         let entry = resolve_loc("", loc)?;
         let key = (entry.clone(), self.options.strict);
         if let Some(doc) = self.xml_cache.get(&key) {
-            return EncryptedEntriesView::from_document(doc, self.options);
+            return EncryptedEntries::from_document(doc, self.options);
         }
 
         let bytes = self.read_entry(&entry)?;
         let doc = Arc::new(parse_xml(&bytes, self.options)?);
         self.xml_cache
             .insert(key, Arc::clone(&doc), doc.estimated_size());
-        EncryptedEntriesView::from_document(doc, self.options)
+        EncryptedEntries::from_document(doc, self.options)
     }
 
     /// 启用文档解密。
@@ -1009,7 +1009,7 @@ impl OfdPackage {
                     .decrypt(&file_key, &map_raw)
                     .map_err(|_| OfdError::Crypto("明密文映射表解密失败".to_owned()))?
             };
-            let map = EncryptedEntriesView::from_xml(&map_bytes, self.options)?;
+            let map = EncryptedEntries::from_xml(&map_bytes, self.options)?;
             let mut entries = HashMap::new();
             for entry in map.entries() {
                 let path = entry.path().ok_or_else(|| {
@@ -1051,7 +1051,7 @@ impl OfdPackage {
     /// [`OfdError::UnsupportedSignature`]。`Type` 缺失或与内容不一致时以内容为准。
     pub fn verify_signature(
         &mut self,
-        signature: &SignatureView,
+        signature: &Signature,
         verifiers: &SignatureVerifiers,
     ) -> Result<(), OfdError> {
         let entry = self
@@ -1087,7 +1087,7 @@ impl OfdPackage {
     /// `SignedValue` 相对于签名描述文件所在目录解析。
     pub fn read_signature_signed_value(
         &mut self,
-        signature: &SignatureView,
+        signature: &Signature,
     ) -> Result<std::sync::Arc<[u8]>, OfdError> {
         let entry = self
             .signature_entry
@@ -1107,7 +1107,7 @@ impl OfdPackage {
     /// 只校验文件摘要，不验证 `SignedValue` 的密码学签名。
     pub fn verify_references(
         &mut self,
-        signature: &SignatureView,
+        signature: &Signature,
         backend: &dyn CryptoBackend,
     ) -> Result<Vec<ReferenceDigest>, OfdError> {
         use base64::Engine;
@@ -1147,18 +1147,18 @@ impl OfdPackage {
     }
 
     /// 解析包根目录下的完整性保护描述 `OFDEntries.xml`。
-    pub fn parse_ofd_entries(&mut self) -> Result<DocEntriesView, OfdError> {
+    pub fn parse_ofd_entries(&mut self) -> Result<DocEntries, OfdError> {
         let entry = resolve_loc("", "OFDEntries.xml")?;
         let key = (entry.clone(), self.options.strict);
         if let Some(doc) = self.xml_cache.get(&key) {
-            return DocEntriesView::from_document(doc, self.options);
+            return DocEntries::from_document(doc, self.options);
         }
 
         let bytes = self.read_entry(&entry)?;
         let doc = Arc::new(parse_xml(&bytes, self.options)?);
         self.xml_cache
             .insert(key, Arc::clone(&doc), doc.estimated_size());
-        DocEntriesView::from_document(doc, self.options)
+        DocEntries::from_document(doc, self.options)
     }
 
     /// 校验 `OFDEntries.xml`：列出文件必须存在、不得重复；`SignedValueLoc`
@@ -1350,18 +1350,18 @@ impl OfdPackage {
         })
     }
 
-    fn parse_signature_entry(&mut self, entry: String) -> Result<SignatureView, OfdError> {
+    fn parse_signature_entry(&mut self, entry: String) -> Result<Signature, OfdError> {
         self.signature_entry = Some(entry.clone());
         let key = (entry.clone(), self.options.strict);
         if let Some(doc) = self.xml_cache.get(&key) {
-            return SignatureView::from_document(doc, self.options);
+            return Signature::from_document(doc, self.options);
         }
 
         let bytes = self.read_entry(&entry)?;
         let doc = Arc::new(parse_xml(&bytes, self.options)?);
         self.xml_cache
             .insert(key, Arc::clone(&doc), doc.estimated_size());
-        SignatureView::from_document(doc, self.options)
+        Signature::from_document(doc, self.options)
     }
 
     /// 清空缓存；已经取出的 `Arc` 视图仍然有效。
@@ -1865,7 +1865,7 @@ impl OfdPackage {
                     let Ok(doc) = parse_xml(&bytes, self.options) else {
                         continue;
                     };
-                    let Ok(signature) = SignatureView::from_document(Arc::new(doc), self.options)
+                    let Ok(signature) = Signature::from_document(Arc::new(doc), self.options)
                     else {
                         continue;
                     };

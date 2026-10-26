@@ -1,21 +1,21 @@
 use std::sync::Arc;
 
 use crate::error::{Diagnostic, DiagnosticCode, OfdError};
-use crate::model::color::{ColorView, validate_color};
+use crate::model::color::{Color, validate_color};
 use crate::model::ofd::{
     check_attributes, check_children_order, check_namespace, validate_text_element,
 };
-use crate::model::page::{GraphicObjectView, validate_graphic_object};
+use crate::model::page::{GraphicObject, validate_graphic_object};
 use crate::xml::tree::{NodeId, XmlDocument};
 
 /// 资源文件的类型化视图。
 #[derive(Debug, Clone)]
-pub struct ResView {
+pub struct Res {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl ResView {
+impl Res {
     /// 从 XML 字节解析资源文件。
     pub fn from_xml(bytes: &[u8], options: crate::options::ReadOptions) -> Result<Self, OfdError> {
         let doc = Arc::new(crate::xml::parser::parse_xml(bytes, options)?);
@@ -46,31 +46,31 @@ impl ResView {
     }
 
     /// 颜色空间资源。
-    pub fn color_spaces(&self) -> impl Iterator<Item = ColorSpaceView> {
-        self.entries("ColorSpaces", "ColorSpace", ColorSpaceView::new)
+    pub fn color_spaces(&self) -> impl Iterator<Item = ColorSpace> {
+        self.entries("ColorSpaces", "ColorSpace", ColorSpace::new)
     }
 
     /// 绘制参数资源。
-    pub fn draw_params(&self) -> impl Iterator<Item = DrawParamView> {
-        self.entries("DrawParams", "DrawParam", DrawParamView::new)
+    pub fn draw_params(&self) -> impl Iterator<Item = DrawParam> {
+        self.entries("DrawParams", "DrawParam", DrawParam::new)
     }
 
     /// 字型资源。
-    pub fn fonts(&self) -> impl Iterator<Item = FontView> {
-        self.entries("Fonts", "Font", FontView::new)
+    pub fn fonts(&self) -> impl Iterator<Item = Font> {
+        self.entries("Fonts", "Font", Font::new)
     }
 
     /// 多媒体资源。
-    pub fn multi_medias(&self) -> impl Iterator<Item = MultiMediaView> {
-        self.entries("MultiMedias", "MultiMedia", MultiMediaView::new)
+    pub fn multi_medias(&self) -> impl Iterator<Item = MultiMedia> {
+        self.entries("MultiMedias", "MultiMedia", MultiMedia::new)
     }
 
     /// 矢量图像资源。
-    pub fn composite_graphic_units(&self) -> impl Iterator<Item = CompositeGraphicUnitView> {
+    pub fn composite_graphic_units(&self) -> impl Iterator<Item = CompositeGraphicUnit> {
         self.entries(
             "CompositeGraphicUnits",
             "CompositeGraphicUnit",
-            CompositeGraphicUnitView::new,
+            CompositeGraphicUnit::new,
         )
     }
 
@@ -160,12 +160,12 @@ impl ResView {
 
 /// 颜色空间资源。
 #[derive(Debug, Clone)]
-pub struct ColorSpaceView {
+pub struct ColorSpace {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl ColorSpaceView {
+impl ColorSpace {
     fn new(doc: Arc<XmlDocument>, node: NodeId) -> Self {
         Self { doc, node }
     }
@@ -206,12 +206,12 @@ impl ColorSpaceView {
 
 /// 绘制参数资源。
 #[derive(Debug, Clone)]
-pub struct DrawParamView {
+pub struct DrawParam {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl DrawParamView {
+impl DrawParam {
     fn new(doc: Arc<XmlDocument>, node: NodeId) -> Self {
         Self { doc, node }
     }
@@ -257,19 +257,19 @@ impl DrawParamView {
     }
 
     /// 填充颜色。
-    pub fn fill_color(&self) -> Option<ColorView> {
+    pub fn fill_color(&self) -> Option<Color> {
         self.color_child("FillColor")
     }
 
     /// 描边颜色。
-    pub fn stroke_color(&self) -> Option<ColorView> {
+    pub fn stroke_color(&self) -> Option<Color> {
         self.color_child("StrokeColor")
     }
 
-    fn color_child(&self, name: &str) -> Option<ColorView> {
+    fn color_child(&self, name: &str) -> Option<Color> {
         self.doc
             .find_child(self.node, name)
-            .map(|node| ColorView::new(Arc::clone(&self.doc), node))
+            .map(|node| Color::new(Arc::clone(&self.doc), node))
     }
 
     fn float_attr(&self, name: &str) -> Option<f64> {
@@ -281,12 +281,12 @@ impl DrawParamView {
 
 /// 字型资源。
 #[derive(Debug, Clone)]
-pub struct FontView {
+pub struct Font {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl FontView {
+impl Font {
     fn new(doc: Arc<XmlDocument>, node: NodeId) -> Self {
         Self { doc, node }
     }
@@ -350,12 +350,12 @@ impl FontView {
 
 /// 多媒体资源。
 #[derive(Debug, Clone)]
-pub struct MultiMediaView {
+pub struct MultiMedia {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl MultiMediaView {
+impl MultiMedia {
     fn new(doc: Arc<XmlDocument>, node: NodeId) -> Self {
         Self { doc, node }
     }
@@ -385,12 +385,12 @@ impl MultiMediaView {
 
 /// 矢量图像资源。
 #[derive(Debug, Clone)]
-pub struct CompositeGraphicUnitView {
+pub struct CompositeGraphicUnit {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl CompositeGraphicUnitView {
+impl CompositeGraphicUnit {
     fn new(doc: Arc<XmlDocument>, node: NodeId) -> Self {
         Self { doc, node }
     }
@@ -425,10 +425,10 @@ impl CompositeGraphicUnitView {
     }
 
     /// 矢量图像内容。
-    pub fn content(&self) -> Option<CompositeContentView> {
+    pub fn content(&self) -> Option<CompositePageContent> {
         self.doc
             .find_child(self.node, "Content")
-            .map(|node| CompositeContentView {
+            .map(|node| CompositePageContent {
                 doc: Arc::clone(&self.doc),
                 node,
             })
@@ -443,17 +443,17 @@ impl CompositeGraphicUnitView {
 
 /// 矢量图像内容的视图。
 #[derive(Debug, Clone)]
-pub struct CompositeContentView {
+pub struct CompositePageContent {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl CompositeContentView {
+impl CompositePageContent {
     /// 内容中的图元。
-    pub fn objects(&self) -> impl Iterator<Item = GraphicObjectView> {
+    pub fn objects(&self) -> impl Iterator<Item = GraphicObject> {
         self.doc
             .element_children(self.node)
-            .map(|node| GraphicObjectView::new(Arc::clone(&self.doc), node))
+            .map(|node| GraphicObject::new(Arc::clone(&self.doc), node))
             .collect::<Vec<_>>()
             .into_iter()
     }

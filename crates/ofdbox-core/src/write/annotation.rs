@@ -2,12 +2,12 @@ use quick_xml::Writer;
 use quick_xml::events::{BytesDecl, BytesEnd, BytesText, Event};
 
 use crate::error::OfdError;
-use crate::model::annotation::{AnnotView, AnnotationsView, PageAnnotView, ParameterView};
+use crate::model::annotation::{Annot, Annotations, PageAnnot, Parameter};
 use crate::write::ofd::{missing, write_start, write_text_element};
 use crate::write::page::write_graphic_object;
 use crate::xml::namespace::OFD_NAMESPACE;
 
-pub(crate) fn write_annotations(annotations: &AnnotationsView) -> Result<String, OfdError> {
+pub(crate) fn write_annotations(annotations: &Annotations) -> Result<String, OfdError> {
     let mut writer = Writer::new(Vec::new());
     writer.write_event(Event::Decl(BytesDecl::new("1.0", Some("UTF-8"), None)))?;
     write_start(
@@ -33,7 +33,7 @@ pub(crate) fn write_annotations(annotations: &AnnotationsView) -> Result<String,
         .map_err(|error| OfdError::InvalidStructure(format!("序列化结果不是 UTF-8: {error}")))
 }
 
-pub(crate) fn write_page_annot(page_annot: &PageAnnotView) -> Result<String, OfdError> {
+pub(crate) fn write_page_annot(page_annot: &PageAnnot) -> Result<String, OfdError> {
     let mut writer = Writer::new(Vec::new());
     writer.write_event(Event::Decl(BytesDecl::new("1.0", Some("UTF-8"), None)))?;
     write_start(
@@ -51,7 +51,7 @@ pub(crate) fn write_page_annot(page_annot: &PageAnnotView) -> Result<String, Ofd
         .map_err(|error| OfdError::InvalidStructure(format!("序列化结果不是 UTF-8: {error}")))
 }
 
-fn write_annot(writer: &mut Writer<Vec<u8>>, annot: &AnnotView) -> Result<(), OfdError> {
+fn write_annot(writer: &mut Writer<Vec<u8>>, annot: &Annot) -> Result<(), OfdError> {
     let id = annot
         .id()
         .ok_or_else(|| missing("/PageAnnot/Annot/@ID", "缺少 Annot ID"))?;
@@ -117,10 +117,7 @@ fn write_annot(writer: &mut Writer<Vec<u8>>, annot: &AnnotView) -> Result<(), Of
     Ok(())
 }
 
-fn write_parameter(
-    writer: &mut Writer<Vec<u8>>,
-    parameter: &ParameterView,
-) -> Result<(), OfdError> {
+fn write_parameter(writer: &mut Writer<Vec<u8>>, parameter: &Parameter) -> Result<(), OfdError> {
     let name = parameter
         .name()
         .ok_or_else(|| missing("/PageAnnot/Annot/Parameters/Parameter/@Name", "缺少 Name"))?;

@@ -2,10 +2,10 @@ use quick_xml::Writer;
 use quick_xml::events::{BytesDecl, BytesEnd, BytesStart, BytesText, Event};
 
 use crate::error::{Diagnostic, DiagnosticCode, OfdError};
-use crate::model::ofd::{DocInfoView, OfdRootView};
+use crate::model::ofd::{DocInfo, OfdRoot};
 use crate::xml::namespace::OFD_NAMESPACE;
 
-pub(crate) fn write_root(root: &OfdRootView) -> Result<String, OfdError> {
+pub(crate) fn write_root(root: &OfdRoot) -> Result<String, OfdError> {
     let version = root
         .version()
         .ok_or_else(|| missing("/OFD/@Version", "缺少 Version 属性"))?;
@@ -82,7 +82,7 @@ pub(crate) fn write_root(root: &OfdRootView) -> Result<String, OfdError> {
 
 fn write_doc_info(
     writer: &mut Writer<Vec<u8>>,
-    info: &DocInfoView,
+    info: &DocInfo,
     path: &str,
 ) -> Result<(), OfdError> {
     write_start(writer, "ofd:DocInfo", &[])?;

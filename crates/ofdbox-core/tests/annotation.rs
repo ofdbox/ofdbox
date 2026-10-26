@@ -1,8 +1,7 @@
 mod fixtures;
 
-use ofdbox_core::{
-    AnnotationsView, DiagnosticCode, OfdError, OfdPackage, PageAnnotView, ReadOptions,
-};
+use ofdbox_core::model::annotation::{Annotations, PageAnnot};
+use ofdbox_core::{DiagnosticCode, OfdError, OfdPackage, ReadOptions};
 
 const ANNOTATIONS: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
 <ofd:Annotations xmlns:ofd="http://www.ofdspec.org/2016">
@@ -46,12 +45,12 @@ const DOCUMENT: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
   <ofd:Annotations>Document/Annotations.xml</ofd:Annotations>
 </ofd:Document>"#;
 
-fn parse_annotations(xml: &str, options: ReadOptions) -> Result<AnnotationsView, OfdError> {
-    AnnotationsView::from_xml(xml.as_bytes(), options)
+fn parse_annotations(xml: &str, options: ReadOptions) -> Result<Annotations, OfdError> {
+    Annotations::from_xml(xml.as_bytes(), options)
 }
 
-fn parse_page_annot(xml: &str, options: ReadOptions) -> Result<PageAnnotView, OfdError> {
-    PageAnnotView::from_xml(xml.as_bytes(), options)
+fn parse_page_annot(xml: &str, options: ReadOptions) -> Result<PageAnnot, OfdError> {
+    PageAnnot::from_xml(xml.as_bytes(), options)
 }
 
 #[test]
@@ -72,7 +71,7 @@ fn annotations_writer_emits_canonical_index() {
     assert!(xml.contains(r#"xmlns:ofd="http://www.ofdspec.org/2016""#));
     assert!(xml.contains(r#"<ofd:Page PageID="10">"#));
     let reparsed =
-        AnnotationsView::from_xml(xml.as_bytes(), ReadOptions::STRICT).expect("strict reparse");
+        Annotations::from_xml(xml.as_bytes(), ReadOptions::STRICT).expect("strict reparse");
     assert_eq!(
         reparsed.pages().next().unwrap().file_loc(),
         Some("Pages/Page_0/Annots/Page_0.xml")
@@ -134,7 +133,7 @@ fn page_annot_writer_roundtrips() {
     assert!(xml.contains(r#"<ofd:PathObject ID="21""#));
 
     let reparsed =
-        PageAnnotView::from_xml(xml.as_bytes(), ReadOptions::STRICT).expect("strict reparse");
+        PageAnnot::from_xml(xml.as_bytes(), ReadOptions::STRICT).expect("strict reparse");
     let annot = reparsed.annots().next().unwrap();
     assert_eq!(annot.annot_type(), Some("Stamp"));
     assert_eq!(

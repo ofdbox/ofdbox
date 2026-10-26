@@ -2,14 +2,12 @@ use quick_xml::Writer;
 use quick_xml::events::{BytesDecl, BytesEnd, Event};
 
 use crate::error::OfdError;
-use crate::model::res::{
-    ColorSpaceView, CompositeGraphicUnitView, DrawParamView, FontView, MultiMediaView, ResView,
-};
+use crate::model::res::{ColorSpace, CompositeGraphicUnit, DrawParam, Font, MultiMedia, Res};
 use crate::write::color::write_color;
 use crate::write::ofd::{missing, write_start, write_text_element};
 use crate::xml::namespace::OFD_NAMESPACE;
 
-pub(crate) fn write_res(res: &ResView) -> Result<String, OfdError> {
+pub(crate) fn write_res(res: &Res) -> Result<String, OfdError> {
     let mut writer = Writer::new(Vec::new());
     writer.write_event(Event::Decl(BytesDecl::new("1.0", Some("UTF-8"), None)))?;
     let base_loc = res
@@ -74,7 +72,7 @@ pub(crate) fn write_res(res: &ResView) -> Result<String, OfdError> {
 
 fn write_color_space(
     writer: &mut Writer<Vec<u8>>,
-    color_space: &ColorSpaceView,
+    color_space: &ColorSpace,
 ) -> Result<(), OfdError> {
     let id = color_space
         .id()
@@ -105,10 +103,7 @@ fn write_color_space(
     Ok(())
 }
 
-fn write_draw_param(
-    writer: &mut Writer<Vec<u8>>,
-    draw_param: &DrawParamView,
-) -> Result<(), OfdError> {
+fn write_draw_param(writer: &mut Writer<Vec<u8>>, draw_param: &DrawParam) -> Result<(), OfdError> {
     let id = draw_param
         .id()
         .ok_or_else(|| missing("/Res/DrawParams/DrawParam/@ID", "缺少 ID"))?;
@@ -148,7 +143,7 @@ fn write_draw_param(
     Ok(())
 }
 
-fn write_font(writer: &mut Writer<Vec<u8>>, font: &FontView) -> Result<(), OfdError> {
+fn write_font(writer: &mut Writer<Vec<u8>>, font: &Font) -> Result<(), OfdError> {
     let id = font
         .id()
         .ok_or_else(|| missing("/Res/Fonts/Font/@ID", "缺少 ID"))?;
@@ -180,7 +175,7 @@ fn write_font(writer: &mut Writer<Vec<u8>>, font: &FontView) -> Result<(), OfdEr
     Ok(())
 }
 
-fn write_multi_media(writer: &mut Writer<Vec<u8>>, media: &MultiMediaView) -> Result<(), OfdError> {
+fn write_multi_media(writer: &mut Writer<Vec<u8>>, media: &MultiMedia) -> Result<(), OfdError> {
     let id = media
         .id()
         .ok_or_else(|| missing("/Res/MultiMedias/MultiMedia/@ID", "缺少 ID"))?;
@@ -202,7 +197,7 @@ fn write_multi_media(writer: &mut Writer<Vec<u8>>, media: &MultiMediaView) -> Re
 
 fn write_composite_graphic_unit(
     writer: &mut Writer<Vec<u8>>,
-    unit: &CompositeGraphicUnitView,
+    unit: &CompositeGraphicUnit,
 ) -> Result<(), OfdError> {
     let id = unit.id().ok_or_else(|| {
         missing(

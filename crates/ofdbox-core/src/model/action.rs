@@ -1,28 +1,28 @@
 use std::sync::Arc;
 
 use crate::error::{Diagnostic, DiagnosticCode};
-use crate::model::document::{DestView, validate_dest};
+use crate::model::document::{Dest, validate_dest};
 use crate::model::ofd::{check_attributes, check_children_order, check_namespace};
-use crate::model::region::{RegionView, validate_region};
+use crate::model::region::{Region, validate_region};
 use crate::xml::tree::{NodeId, XmlDocument};
 
 /// 动作集的类型化视图。
 #[derive(Debug, Clone)]
-pub struct ActionsView {
+pub struct Actions {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl ActionsView {
+impl Actions {
     pub(crate) fn new(doc: Arc<XmlDocument>, node: NodeId) -> Self {
         Self { doc, node }
     }
 
     /// 遍历动作。
-    pub fn actions(&self) -> impl Iterator<Item = ActionView> {
+    pub fn actions(&self) -> impl Iterator<Item = Action> {
         self.doc
             .children_named(self.node, "Action")
-            .map(|node| ActionView {
+            .map(|node| Action {
                 doc: Arc::clone(&self.doc),
                 node,
             })
@@ -33,22 +33,22 @@ impl ActionsView {
 
 /// 单个动作的视图。
 #[derive(Debug, Clone)]
-pub struct ActionView {
+pub struct Action {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl ActionView {
+impl Action {
     /// 触发事件。
     pub fn event(&self) -> Option<&str> {
         self.doc.attribute(self.node, "Event")
     }
 
     /// 区域限定。
-    pub fn region(&self) -> Option<RegionView> {
+    pub fn region(&self) -> Option<Region> {
         self.doc
             .find_child(self.node, "Region")
-            .map(|node| RegionView::new(Arc::clone(&self.doc), node))
+            .map(|node| Region::new(Arc::clone(&self.doc), node))
     }
 
     /// 是否存在区域限定。
@@ -57,28 +57,28 @@ impl ActionView {
     }
 
     /// 跳转动作。
-    pub fn goto(&self) -> Option<GotoView> {
-        self.child("Goto", |doc, node| GotoView { doc, node })
+    pub fn goto(&self) -> Option<Goto> {
+        self.child("Goto", |doc, node| Goto { doc, node })
     }
 
     /// URI 动作。
-    pub fn uri(&self) -> Option<UriView> {
-        self.child("URI", |doc, node| UriView { doc, node })
+    pub fn uri(&self) -> Option<Uri> {
+        self.child("URI", |doc, node| Uri { doc, node })
     }
 
     /// 附件动作。
-    pub fn goto_a(&self) -> Option<GotoAView> {
-        self.child("GotoA", |doc, node| GotoAView { doc, node })
+    pub fn goto_a(&self) -> Option<GotoA> {
+        self.child("GotoA", |doc, node| GotoA { doc, node })
     }
 
     /// 音频动作。
-    pub fn sound(&self) -> Option<SoundView> {
-        self.child("Sound", |doc, node| SoundView { doc, node })
+    pub fn sound(&self) -> Option<Sound> {
+        self.child("Sound", |doc, node| Sound { doc, node })
     }
 
     /// 视频动作。
-    pub fn movie(&self) -> Option<MovieView> {
-        self.child("Movie", |doc, node| MovieView { doc, node })
+    pub fn movie(&self) -> Option<Movie> {
+        self.child("Movie", |doc, node| Movie { doc, node })
     }
 
     fn child<T>(&self, name: &str, make: impl FnOnce(Arc<XmlDocument>, NodeId) -> T) -> Option<T> {
@@ -90,17 +90,17 @@ impl ActionView {
 
 /// 跳转动作的视图。
 #[derive(Debug, Clone)]
-pub struct GotoView {
+pub struct Goto {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl GotoView {
+impl Goto {
     /// 跳转目标区域。
-    pub fn dest(&self) -> Option<DestView> {
+    pub fn dest(&self) -> Option<Dest> {
         self.doc
             .find_child(self.node, "Dest")
-            .map(|node| DestView::new(Arc::clone(&self.doc), node))
+            .map(|node| Dest::new(Arc::clone(&self.doc), node))
     }
 
     /// 跳转目标书签名称。
@@ -113,12 +113,12 @@ impl GotoView {
 
 /// URI 动作的视图。
 #[derive(Debug, Clone)]
-pub struct UriView {
+pub struct Uri {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl UriView {
+impl Uri {
     /// URI 地址。
     pub fn uri(&self) -> Option<&str> {
         self.doc.attribute(self.node, "URI")
@@ -137,12 +137,12 @@ impl UriView {
 
 /// 附件动作的视图。
 #[derive(Debug, Clone)]
-pub struct GotoAView {
+pub struct GotoA {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl GotoAView {
+impl GotoA {
     /// 附件标识。
     pub fn attach_id(&self) -> Option<&str> {
         self.doc.attribute(self.node, "AttachID")
@@ -158,12 +158,12 @@ impl GotoAView {
 
 /// 音频动作的视图。
 #[derive(Debug, Clone)]
-pub struct SoundView {
+pub struct Sound {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl SoundView {
+impl Sound {
     /// 音频资源标识。
     pub fn resource_id(&self) -> Option<&str> {
         self.doc.attribute(self.node, "ResourceID")
@@ -191,12 +191,12 @@ impl SoundView {
 
 /// 视频动作的视图。
 #[derive(Debug, Clone)]
-pub struct MovieView {
+pub struct Movie {
     doc: Arc<XmlDocument>,
     node: NodeId,
 }
 
-impl MovieView {
+impl Movie {
     /// 视频资源标识。
     pub fn resource_id(&self) -> Option<&str> {
         self.doc.attribute(self.node, "ResourceID")

@@ -1,6 +1,7 @@
 mod fixtures;
 
-use ofdbox_core::{AttachmentsView, OfdError, OfdPackage, ReadOptions};
+use ofdbox_core::model::attachment::Attachments;
+use ofdbox_core::{OfdError, OfdPackage, ReadOptions};
 
 const ATTACHMENTS: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
 <ofd:Attachments xmlns:ofd="http://www.ofdspec.org/2016">
@@ -31,8 +32,8 @@ const DOCUMENT: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
   <ofd:Attachments>Attachments.xml</ofd:Attachments>
 </ofd:Document>"#;
 
-fn parse(xml: &str, options: ReadOptions) -> Result<AttachmentsView, OfdError> {
-    AttachmentsView::from_xml(xml.as_bytes(), options)
+fn parse(xml: &str, options: ReadOptions) -> Result<Attachments, OfdError> {
+    Attachments::from_xml(xml.as_bytes(), options)
 }
 
 #[test]
@@ -64,7 +65,7 @@ fn writer_emits_canonical_attachments() {
     assert!(xml.contains("<ofd:Attachments"));
     assert!(xml.contains(r#"<ofd:Attachment ID="a1" Name="说明.txt""#));
     let reparsed =
-        AttachmentsView::from_xml(xml.as_bytes(), ReadOptions::STRICT).expect("strict reparse");
+        Attachments::from_xml(xml.as_bytes(), ReadOptions::STRICT).expect("strict reparse");
     assert_eq!(reparsed.attachments().count(), 2);
 }
 

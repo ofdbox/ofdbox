@@ -2,14 +2,14 @@ use quick_xml::Writer;
 use quick_xml::events::{BytesEnd, Event};
 
 use crate::error::OfdError;
-use crate::model::action::{ActionView, ActionsView};
+use crate::model::action::{Action, Actions};
 use crate::write::document::write_dest;
 use crate::write::ofd::{missing, write_start};
 use crate::write::region::write_region;
 
 pub(crate) fn write_actions(
     writer: &mut Writer<Vec<u8>>,
-    actions: &ActionsView,
+    actions: &Actions,
 ) -> Result<(), OfdError> {
     write_start(writer, "ofd:Actions", &[])?;
     for action in actions.actions() {
@@ -19,7 +19,7 @@ pub(crate) fn write_actions(
     Ok(())
 }
 
-fn write_action(writer: &mut Writer<Vec<u8>>, action: &ActionView) -> Result<(), OfdError> {
+fn write_action(writer: &mut Writer<Vec<u8>>, action: &Action) -> Result<(), OfdError> {
     let event = action
         .event()
         .ok_or_else(|| missing("/Action/@Event", "缺少 Action Event"))?;

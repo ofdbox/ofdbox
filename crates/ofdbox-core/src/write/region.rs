@@ -2,13 +2,10 @@ use quick_xml::Writer;
 use quick_xml::events::{BytesEnd, Event};
 
 use crate::error::OfdError;
-use crate::model::region::{RegionAreaView, RegionCommandKind, RegionCommandView, RegionView};
+use crate::model::region::{Region, RegionArea, RegionCommand, RegionCommandKind};
 use crate::write::ofd::{missing, write_start};
 
-pub(crate) fn write_region(
-    writer: &mut Writer<Vec<u8>>,
-    region: &RegionView,
-) -> Result<(), OfdError> {
+pub(crate) fn write_region(writer: &mut Writer<Vec<u8>>, region: &Region) -> Result<(), OfdError> {
     write_start(writer, "ofd:Region", &[])?;
     for area in region.areas() {
         write_area(writer, &area)?;
@@ -17,7 +14,7 @@ pub(crate) fn write_region(
     Ok(())
 }
 
-fn write_area(writer: &mut Writer<Vec<u8>>, area: &RegionAreaView) -> Result<(), OfdError> {
+fn write_area(writer: &mut Writer<Vec<u8>>, area: &RegionArea) -> Result<(), OfdError> {
     let start = area
         .start()
         .ok_or_else(|| missing("/Region/Area/@Start", "缺少 Area Start"))?;
@@ -29,10 +26,7 @@ fn write_area(writer: &mut Writer<Vec<u8>>, area: &RegionAreaView) -> Result<(),
     Ok(())
 }
 
-fn write_command(
-    writer: &mut Writer<Vec<u8>>,
-    command: &RegionCommandView,
-) -> Result<(), OfdError> {
+fn write_command(writer: &mut Writer<Vec<u8>>, command: &RegionCommand) -> Result<(), OfdError> {
     match command.kind() {
         RegionCommandKind::Move => {
             write_points(writer, "ofd:Move", &[("Point1", command.point1())])
