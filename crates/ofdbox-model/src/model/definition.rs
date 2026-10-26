@@ -513,10 +513,7 @@ impl YaSerialize for RegionArea {
 impl YaDeserialize for RegionArea {
     fn deserialize<R: Read>(reader: &mut Deserializer<R>) -> yaserde::Result<Self> {
         let event = reader.next_event()?;
-        let yaserde::__xml::reader::XmlEvent::StartElement {
-            attributes, ..
-        } = event
-        else {
+        let yaserde::__xml::reader::XmlEvent::StartElement { attributes, .. } = event else {
             return Err(yaserde::Error::custom("Region Area 缺少起始元素"));
         };
         let start = attributes
@@ -595,7 +592,6 @@ pub enum RegionCommand {
     /// 闭合路径。
     Close,
 }
-
 
 impl YaSerialize for RegionCommand {
     fn serialize<W: Write>(&self, writer: &mut Serializer<W>) -> yaserde::Result<()> {

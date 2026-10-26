@@ -1,33 +1,48 @@
 //! `Page.xsd`：页面内容、图层、图元、颜色、裁剪和底纹。
 
+use std::io::{Read, Write};
+
+use yaserde::de::Deserializer;
+use yaserde::ser::Serializer;
+use yaserde::{YaDeserialize, YaSerialize};
+
 use super::definition::{Action, Actions, PageArea, StArray, StBox, StId, StLoc, StPos, StRefId};
 
 /// `Content.xml` 根对象。
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[yaserde(rename = "Page")]
 pub struct Page {
     /// 模板引用。
+    #[yaserde(rename = "Template")]
     pub templates: Vec<Template>,
     /// 页面资源路径。
+    #[yaserde(rename = "PageRes")]
     pub page_res: Vec<StLoc>,
     /// 页面区域。
+    #[yaserde(rename = "Area")]
     pub area: Option<PageArea>,
     /// 页面内容。
+    #[yaserde(rename = "Content")]
     pub content: Option<PageContent>,
     /// 页面动作。
+    #[yaserde(rename = "Actions")]
     pub actions: Option<Actions>,
 }
 
 /// 模板引用。
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[yaserde(rename = "Template")]
 pub struct Template {
     /// 模板 ID。
+    #[yaserde(attribute = true, rename = "TemplateID")]
     pub template_id: StRefId,
     /// 显示层级。
+    #[yaserde(attribute = true, rename = "ZOrder")]
     pub z_order: TemplateZOrder,
 }
 
 /// 模板显示层级。
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, yaserde::DefaultYaSerde)]
 pub enum TemplateZOrder {
     /// 背景。
     #[default]
@@ -38,10 +53,17 @@ pub enum TemplateZOrder {
     Other(String),
 }
 
+crate::impl_xml_enum_codec!(TemplateZOrder, Other, {
+    Background => "Background",
+    Foreground => "Foreground",
+});
+
 /// 页面内容。
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[yaserde(rename = "Content")]
 pub struct PageContent {
     /// 图层列表。
+    #[yaserde(rename = "Layer")]
     pub layers: Vec<Layer>,
 }
 
@@ -58,8 +80,75 @@ pub struct Layer {
     pub objects: Vec<GraphicObject>,
 }
 
+impl YaSerialize for Layer {
+    fn serialize<W: Write>(&self, writer: &mut Serializer<W>) -> yaserde::Result<()> {
+        let id = self.id.to_string();
+        let layer_type = self.layer_type.to_string();
+        let draw_param = self.draw_param.map(|value| value.to_string());
+        let mut event = yaserde::__xml::writer::XmlEvent::start_element("Layer")
+            .attr("ID", id.as_str())
+            .attr("Type", layer_type.as_str());
+        if let Some(draw_param) = &draw_param {
+            event = event.attr("DrawParam", draw_param.as_str());
+        }
+        writer.write(event).map_err(yaserde::Error::custom)?;
+        for object in &self.objects {
+            writer.set_start_event_name(None);
+            object.serialize(writer)?;
+        }
+        writer
+            .write(yaserde::__xml::writer::XmlEvent::end_element())
+            .map_err(yaserde::Error::custom)?;
+        Ok(())
+    }
+
+    fn serialize_attributes(
+        &self,
+        attributes: Vec<yaserde::__xml::attribute::OwnedAttribute>,
+        namespace: yaserde::__xml::namespace::Namespace,
+    ) -> yaserde::Result<(
+        Vec<yaserde::__xml::attribute::OwnedAttribute>,
+        yaserde::__xml::namespace::Namespace,
+    )> {
+        Ok((attributes, namespace))
+    }
+}
+
+impl YaDeserialize for Layer {
+    fn deserialize<R: Read>(reader: &mut Deserializer<R>) -> yaserde::Result<Self> {
+        let event = reader.next_event()?;
+        let yaserde::__xml::reader::XmlEvent::StartElement { attributes, .. } = event else {
+            return Err(yaserde::Error::custom("Layer 缺少起始元素"));
+        };
+        let value = |key: &str| {
+            attributes
+                .iter()
+                .find(|attribute| attribute.name.local_name == key)
+                .map(|attribute| attribute.value.clone())
+        };
+        let id = value("ID")
+            .map(|value| value.parse().map_err(yaserde::Error::custom))
+            .transpose()?
+            .unwrap_or_default();
+        let layer_type = value("Type")
+            .map(|value| value.parse().map_err(yaserde::Error::custom))
+            .transpose()?
+            .unwrap_or_default();
+        let draw_param = value("DrawParam")
+            .map(|value| value.parse().map_err(yaserde::Error::custom))
+            .transpose()?;
+        let objects = deserialize_objects(reader, "Layer")?;
+        Ok(Self {
+            id,
+            layer_type,
+            draw_param,
+            objects,
+        })
+    }
+}
+
 /// 图层类型。
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, yaserde::DefaultYaSerde)]
 pub enum LayerType {
     /// 正文层。
     #[default]
@@ -73,6 +162,13 @@ pub enum LayerType {
     /// 未知值。
     Other(String),
 }
+
+crate::impl_xml_enum_codec!(LayerType, Other, {
+    Body => "Body",
+    Background => "Background",
+    Foreground => "Foreground",
+    Custom => "Custom",
+});
 
 /// 图元对象。
 #[derive(Clone, Debug, PartialEq)]
@@ -89,43 +185,102 @@ pub enum GraphicObject {
     PageBlock(PageBlockObject),
 }
 
+impl YaSerialize for GraphicObject {
+    fn serialize<W: Write>(&self, writer: &mut Serializer<W>) -> yaserde::Result<()> {
+        match self {
+            Self::Text(value) => value.serialize(writer),
+            Self::Path(value) => value.serialize(writer),
+            Self::Image(value) => value.serialize(writer),
+            Self::Composite(value) => value.serialize(writer),
+            Self::PageBlock(value) => value.serialize(writer),
+        }
+    }
+
+    fn serialize_attributes(
+        &self,
+        attributes: Vec<yaserde::__xml::attribute::OwnedAttribute>,
+        namespace: yaserde::__xml::namespace::Namespace,
+    ) -> yaserde::Result<(
+        Vec<yaserde::__xml::attribute::OwnedAttribute>,
+        yaserde::__xml::namespace::Namespace,
+    )> {
+        Ok((attributes, namespace))
+    }
+}
+
+impl YaDeserialize for GraphicObject {
+    fn deserialize<R: Read>(reader: &mut Deserializer<R>) -> yaserde::Result<Self> {
+        let event = reader.peek()?.to_owned();
+        let yaserde::__xml::reader::XmlEvent::StartElement { name, .. } = event else {
+            return Err(yaserde::Error::custom("GraphicObject 缺少起始元素"));
+        };
+        match name.local_name.as_str() {
+            "TextObject" => Ok(Self::Text(TextObject::deserialize(reader)?)),
+            "PathObject" => Ok(Self::Path(PathObject::deserialize(reader)?)),
+            "ImageObject" => Ok(Self::Image(ImageObject::deserialize(reader)?)),
+            "CompositeObject" => Ok(Self::Composite(CompositeObject::deserialize(reader)?)),
+            "PageBlock" => Ok(Self::PageBlock(PageBlockObject::deserialize(reader)?)),
+            other => Err(yaserde::Error::custom(format!("未知图元类型: {other}"))),
+        }
+    }
+}
+
 /// 图元公共属性。
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
 pub struct GraphicUnit {
     /// 图元 ID。
+    #[yaserde(attribute = true, rename = "ID")]
     pub id: StId,
     /// 边界区域。
+    #[yaserde(attribute = true, rename = "Boundary")]
     pub boundary: StBox,
     /// 名称。
+    #[yaserde(attribute = true, rename = "Name")]
     pub name: Option<String>,
     /// 是否可见。
+    #[yaserde(attribute = true, rename = "Visible", default = "default_true")]
     pub visible: bool,
     /// 变换矩阵。
+    #[yaserde(attribute = true, rename = "CTM")]
     pub ctm: Option<StArray>,
     /// 绘制参数引用。
+    #[yaserde(attribute = true, rename = "DrawParam")]
     pub draw_param: Option<StRefId>,
     /// 线宽。
+    #[yaserde(attribute = true, rename = "LineWidth", default = "default_line_width")]
     pub line_width: f64,
     /// 线端样式。
+    #[yaserde(attribute = true, rename = "Cap", default = "default_cap")]
     pub cap: Cap,
     /// 线连接样式。
+    #[yaserde(attribute = true, rename = "Join", default = "default_join")]
     pub join: Join,
     /// 斜接限制。
+    #[yaserde(
+        attribute = true,
+        rename = "MiterLimit",
+        default = "default_miter_limit"
+    )]
     pub miter_limit: f64,
     /// 虚线偏移。
+    #[yaserde(attribute = true, rename = "DashOffset", default = "default_zero_f64")]
     pub dash_offset: f64,
     /// 虚线模式。
+    #[yaserde(attribute = true, rename = "DashPattern")]
     pub dash_pattern: Option<StArray>,
     /// 透明度。
+    #[yaserde(attribute = true, rename = "Alpha", default = "default_alpha")]
     pub alpha: i32,
     /// 图元动作。
+    #[yaserde(rename = "Actions")]
     pub actions: Option<Actions>,
     /// 裁剪区域。
-    pub clips: Option<Vec<Clip>>,
+    #[yaserde(rename = "Clips")]
+    pub clips: Option<Clips>,
 }
 
 /// 线端样式。
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, yaserde::DefaultYaSerde)]
 pub enum Cap {
     /// 平头。
     #[default]
@@ -138,8 +293,14 @@ pub enum Cap {
     Other(String),
 }
 
+crate::impl_xml_enum_codec!(Cap, Other, {
+    Butt => "Butt",
+    Round => "Round",
+    Square => "Square",
+});
+
 /// 线连接样式。
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, yaserde::DefaultYaSerde)]
 pub enum Join {
     /// 斜接。
     #[default]
@@ -152,88 +313,136 @@ pub enum Join {
     Other(String),
 }
 
+crate::impl_xml_enum_codec!(Join, Other, {
+    Miter => "Miter",
+    Round => "Round",
+    Bevel => "Bevel",
+});
+
 /// 文字图元。
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[yaserde(rename = "TextObject")]
 pub struct TextObject {
     /// 公共图元属性。
+    #[yaserde(flatten = true)]
     pub common: GraphicUnit,
     /// 字体资源 ID。
+    #[yaserde(attribute = true, rename = "Font")]
     pub font: StRefId,
     /// 字号。
+    #[yaserde(attribute = true, rename = "Size")]
     pub size: f64,
     /// 是否描边。
+    #[yaserde(attribute = true, rename = "Stroke", default = "default_false")]
     pub stroke: bool,
     /// 是否填充。
+    #[yaserde(attribute = true, rename = "Fill", default = "default_true")]
     pub fill: bool,
     /// 水平缩放。
+    #[yaserde(attribute = true, rename = "HScale", default = "default_hscale")]
     pub h_scale: f64,
     /// 阅读方向。
+    #[yaserde(
+        attribute = true,
+        rename = "ReadDirection",
+        default = "default_i32_zero"
+    )]
     pub read_direction: i32,
     /// 字符方向。
+    #[yaserde(
+        attribute = true,
+        rename = "CharDirection",
+        default = "default_i32_zero"
+    )]
     pub char_direction: i32,
     /// 字重。
+    #[yaserde(attribute = true, rename = "Weight", default = "default_weight")]
     pub weight: i32,
     /// 是否斜体。
+    #[yaserde(attribute = true, rename = "Italic", default = "default_false")]
     pub italic: bool,
     /// 填充色。
+    #[yaserde(rename = "FillColor")]
     pub fill_color: Option<Color>,
     /// 描边色。
+    #[yaserde(rename = "StrokeColor")]
     pub stroke_color: Option<Color>,
     /// 字形变换。
+    #[yaserde(rename = "CGTransform")]
     pub cg_transforms: Vec<CgTransform>,
     /// 文字片段。
+    #[yaserde(rename = "TextCode")]
     pub text_codes: Vec<TextCode>,
 }
 
 /// 文字片段。
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[yaserde(rename = "TextCode")]
 pub struct TextCode {
     /// X 坐标。
+    #[yaserde(attribute = true, rename = "X")]
     pub x: Option<f64>,
     /// Y 坐标。
+    #[yaserde(attribute = true, rename = "Y")]
     pub y: Option<f64>,
     /// X 增量。
+    #[yaserde(attribute = true, rename = "DeltaX")]
     pub delta_x: Option<StArray>,
     /// Y 增量。
+    #[yaserde(attribute = true, rename = "DeltaY")]
     pub delta_y: Option<StArray>,
     /// 文本。
+    #[yaserde(text = true)]
     pub text: String,
 }
 
 /// 字形变换。
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[yaserde(rename = "CGTransform")]
 pub struct CgTransform {
     /// 字符起点。
+    #[yaserde(attribute = true, rename = "CodePosition")]
     pub code_position: i32,
     /// 字符数量。
+    #[yaserde(attribute = true, rename = "CodeCount")]
     pub code_count: i32,
     /// 字形数量。
+    #[yaserde(attribute = true, rename = "GlyphCount")]
     pub glyph_count: i32,
     /// 字形索引。
+    #[yaserde(rename = "Glyphs")]
     pub glyphs: Option<StArray>,
 }
 
 /// 路径图元。
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[yaserde(rename = "PathObject")]
 pub struct PathObject {
     /// 公共图元属性。
+    #[yaserde(flatten = true)]
     pub common: GraphicUnit,
     /// 描边色。
+    #[yaserde(rename = "StrokeColor")]
     pub stroke_color: Option<Color>,
     /// 填充色。
+    #[yaserde(rename = "FillColor")]
     pub fill_color: Option<Color>,
     /// 缩写路径数据。
+    #[yaserde(rename = "AbbreviatedData")]
     pub abbreviated_data: String,
     /// 是否描边。
+    #[yaserde(attribute = true, rename = "Stroke", default = "default_true")]
     pub stroke: bool,
     /// 是否填充。
+    #[yaserde(attribute = true, rename = "Fill", default = "default_false")]
     pub fill: bool,
     /// 填充规则。
+    #[yaserde(attribute = true, rename = "Rule", default = "default_rule")]
     pub rule: PathRule,
 }
 
 /// 路径填充规则。
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, yaserde::DefaultYaSerde)]
 pub enum PathRule {
     /// 非零环绕。
     #[default]
@@ -244,44 +453,65 @@ pub enum PathRule {
     Other(String),
 }
 
+crate::impl_xml_enum_codec!(PathRule, Other, {
+    NonZero => "NonZero",
+    EvenOdd => "Even-Odd",
+});
+
 /// 图像图元。
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[yaserde(rename = "ImageObject")]
 pub struct ImageObject {
     /// 公共图元属性。
+    #[yaserde(flatten = true)]
     pub common: GraphicUnit,
     /// 图像资源 ID。
+    #[yaserde(attribute = true, rename = "ResourceID")]
     pub resource_id: StRefId,
     /// 替换资源 ID。
+    #[yaserde(attribute = true, rename = "Substitution")]
     pub substitution: Option<StRefId>,
     /// 图像蒙版 ID。
+    #[yaserde(attribute = true, rename = "ImageMask")]
     pub image_mask: Option<StRefId>,
     /// 边框。
+    #[yaserde(rename = "Border")]
     pub border: Option<Border>,
 }
 
 /// 图像边框。
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[yaserde(rename = "Border")]
 pub struct Border {
     /// 边框颜色。
+    #[yaserde(rename = "BorderColor")]
     pub color: Option<Color>,
     /// 线宽。
+    #[yaserde(attribute = true, rename = "LineWidth", default = "default_line_width")]
     pub line_width: f64,
     /// 水平圆角半径。
+    #[yaserde(attribute = true, rename = "HorizonalCornerRadius")]
     pub horizontal_corner_radius: f64,
     /// 垂直圆角半径。
+    #[yaserde(attribute = true, rename = "VerticalCornerRadius")]
     pub vertical_corner_radius: f64,
     /// 虚线偏移。
+    #[yaserde(attribute = true, rename = "DashOffset", default = "default_zero_f64")]
     pub dash_offset: f64,
     /// 虚线模式。
+    #[yaserde(attribute = true, rename = "DashPattern")]
     pub dash_pattern: Option<StArray>,
 }
 
 /// 复合图元。
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[yaserde(rename = "CompositeObject")]
 pub struct CompositeObject {
     /// 公共图元属性。
+    #[yaserde(flatten = true)]
     pub common: GraphicUnit,
     /// 复合资源 ID。
+    #[yaserde(attribute = true, rename = "ResourceID")]
     pub resource_id: StRefId,
 }
 
@@ -290,6 +520,49 @@ pub struct CompositeObject {
 pub struct PageBlock {
     /// 图元。
     pub objects: Vec<GraphicObject>,
+}
+
+impl YaSerialize for PageBlock {
+    fn serialize<W: Write>(&self, writer: &mut Serializer<W>) -> yaserde::Result<()> {
+        let name = writer
+            .get_start_event_name()
+            .unwrap_or_else(|| "PageBlock".to_owned());
+        writer
+            .write(yaserde::__xml::writer::XmlEvent::start_element(
+                name.as_str(),
+            ))
+            .map_err(yaserde::Error::custom)?;
+        for object in &self.objects {
+            writer.set_start_event_name(None);
+            object.serialize(writer)?;
+        }
+        writer
+            .write(yaserde::__xml::writer::XmlEvent::end_element())
+            .map_err(yaserde::Error::custom)?;
+        Ok(())
+    }
+
+    fn serialize_attributes(
+        &self,
+        attributes: Vec<yaserde::__xml::attribute::OwnedAttribute>,
+        namespace: yaserde::__xml::namespace::Namespace,
+    ) -> yaserde::Result<(
+        Vec<yaserde::__xml::attribute::OwnedAttribute>,
+        yaserde::__xml::namespace::Namespace,
+    )> {
+        Ok((attributes, namespace))
+    }
+}
+
+impl YaDeserialize for PageBlock {
+    fn deserialize<R: Read>(reader: &mut Deserializer<R>) -> yaserde::Result<Self> {
+        let event = reader.next_event()?;
+        let yaserde::__xml::reader::XmlEvent::StartElement { name, .. } = event else {
+            return Err(yaserde::Error::custom("PageBlock 缺少起始元素"));
+        };
+        let objects = deserialize_objects(reader, &name.local_name)?;
+        Ok(Self { objects })
+    }
 }
 
 /// 页块对象。
@@ -301,73 +574,181 @@ pub struct PageBlockObject {
     pub block: PageBlock,
 }
 
+impl YaSerialize for PageBlockObject {
+    fn serialize<W: Write>(&self, writer: &mut Serializer<W>) -> yaserde::Result<()> {
+        let id = self.id.to_string();
+        writer
+            .write(
+                yaserde::__xml::writer::XmlEvent::start_element("PageBlock")
+                    .attr("ID", id.as_str()),
+            )
+            .map_err(yaserde::Error::custom)?;
+        for object in &self.block.objects {
+            object.serialize(writer)?;
+        }
+        writer
+            .write(yaserde::__xml::writer::XmlEvent::end_element())
+            .map_err(yaserde::Error::custom)?;
+        Ok(())
+    }
+
+    fn serialize_attributes(
+        &self,
+        attributes: Vec<yaserde::__xml::attribute::OwnedAttribute>,
+        namespace: yaserde::__xml::namespace::Namespace,
+    ) -> yaserde::Result<(
+        Vec<yaserde::__xml::attribute::OwnedAttribute>,
+        yaserde::__xml::namespace::Namespace,
+    )> {
+        Ok((attributes, namespace))
+    }
+}
+
+impl YaDeserialize for PageBlockObject {
+    fn deserialize<R: Read>(reader: &mut Deserializer<R>) -> yaserde::Result<Self> {
+        let event = reader.next_event()?;
+        let yaserde::__xml::reader::XmlEvent::StartElement { attributes, .. } = event else {
+            return Err(yaserde::Error::custom("PageBlock 缺少起始元素"));
+        };
+        let id = attributes
+            .iter()
+            .find(|attribute| attribute.name.local_name == "ID")
+            .map(|attribute| attribute.value.parse().map_err(yaserde::Error::custom))
+            .transpose()?
+            .unwrap_or_default();
+        let objects = deserialize_objects(reader, "PageBlock")?;
+        Ok(Self {
+            id,
+            block: PageBlock { objects },
+        })
+    }
+}
+
+fn deserialize_objects<R: Read>(
+    reader: &mut Deserializer<R>,
+    end_name: &str,
+) -> yaserde::Result<Vec<GraphicObject>> {
+    let mut objects = Vec::new();
+    loop {
+        let event = reader.peek()?.to_owned();
+        match event {
+            yaserde::__xml::reader::XmlEvent::StartElement { .. } => {
+                objects.push(GraphicObject::deserialize(reader)?);
+            }
+            yaserde::__xml::reader::XmlEvent::EndElement { name } => {
+                if name.local_name == end_name {
+                    break;
+                }
+                let _ = reader.next_event()?;
+            }
+            yaserde::__xml::reader::XmlEvent::EndDocument => break,
+            _ => {
+                let _ = reader.next_event()?;
+            }
+        }
+    }
+    Ok(objects)
+}
+
+/// 裁剪区域集合。
+#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[yaserde(rename = "Clips")]
+pub struct Clips {
+    /// 裁剪区域。
+    #[yaserde(rename = "Clip")]
+    pub clips: Vec<Clip>,
+}
+
 /// 裁剪区域。
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[yaserde(rename = "Clip")]
 pub struct Clip {
     /// 裁剪区域。
+    #[yaserde(rename = "Area")]
     pub areas: Vec<ClipArea>,
 }
 
 /// 单个裁剪区域。
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[yaserde(rename = "Area")]
 pub struct ClipArea {
     /// 绘制参数引用。
+    #[yaserde(attribute = true, rename = "DrawParam")]
     pub draw_param: Option<StRefId>,
     /// 变换矩阵。
+    #[yaserde(attribute = true, rename = "CTM")]
     pub ctm: Option<StArray>,
     /// 裁剪内容。
+    #[yaserde(flatten = true)]
     pub content: ClipContent,
 }
 
 /// 裁剪内容。
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
 pub enum ClipContent {
-    /// 路径。
+    /// 空内容。
     #[default]
     Empty,
     /// 路径图元。
+    #[yaserde(rename = "Path")]
     Path(PathObject),
     /// 文字图元。
+    #[yaserde(rename = "Text")]
     Text(TextObject),
 }
 
 /// 颜色。
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[yaserde(rename = "Color")]
 pub struct Color {
     /// 颜色值。
+    #[yaserde(attribute = true, rename = "Value")]
     pub value: Option<StArray>,
     /// 颜色索引。
+    #[yaserde(attribute = true, rename = "Index")]
     pub index: Option<i32>,
     /// 颜色空间引用。
+    #[yaserde(attribute = true, rename = "ColorSpace")]
     pub color_space: Option<StRefId>,
     /// 透明度。
+    #[yaserde(attribute = true, rename = "Alpha", default = "default_alpha")]
     pub alpha: i32,
     /// 颜色内容。
+    #[yaserde(flatten = true)]
     pub kind: Option<ColorKind>,
 }
 
 /// 颜色内容。
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
 pub enum ColorKind {
     /// 底纹。
+    #[yaserde(rename = "Pattern")]
     Pattern(Pattern),
     /// 轴向渐变。
+    #[yaserde(rename = "AxialShd")]
     AxialShd(AxialShd),
     /// 径向渐变。
+    #[yaserde(rename = "RadialShd")]
     RadialShd(RadialShd),
     /// 高洛德渐变。
+    #[yaserde(rename = "GouraudShd")]
     GouraudShd(GouraudShd),
     /// 格点高洛德渐变。
+    #[yaserde(rename = "LaGourandShd")]
     LaGouraudShd(LaGouraudShd),
+}
+
+impl Default for ColorKind {
+    fn default() -> Self {
+        Self::Pattern(Pattern::default())
+    }
 }
 
 /// 底纹。
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Pattern {
     /// 单元格内容。
-    pub cell_content: PageBlock,
-    /// 缩略图。
-    pub thumbnail: Option<StRefId>,
+    pub cell_content: CellContent,
     /// 单元格宽。
     pub width: f64,
     /// 单元格高。
@@ -384,8 +765,148 @@ pub struct Pattern {
     pub ctm: Option<StArray>,
 }
 
+/// 底纹单元格内容。
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct CellContent {
+    /// 缩略图引用。
+    pub thumbnail: Option<StRefId>,
+    /// 单元格图元。
+    pub objects: Vec<GraphicObject>,
+}
+
+impl YaSerialize for CellContent {
+    fn serialize<W: Write>(&self, writer: &mut Serializer<W>) -> yaserde::Result<()> {
+        let thumbnail = self.thumbnail.map(|value| value.to_string());
+        let mut event = yaserde::__xml::writer::XmlEvent::start_element("CellContent");
+        if let Some(thumbnail) = &thumbnail {
+            event = event.attr("Thumbnail", thumbnail.as_str());
+        }
+        writer.write(event).map_err(yaserde::Error::custom)?;
+        for object in &self.objects {
+            writer.set_start_event_name(None);
+            object.serialize(writer)?;
+        }
+        writer
+            .write(yaserde::__xml::writer::XmlEvent::end_element())
+            .map_err(yaserde::Error::custom)?;
+        Ok(())
+    }
+
+    fn serialize_attributes(
+        &self,
+        attributes: Vec<yaserde::__xml::attribute::OwnedAttribute>,
+        namespace: yaserde::__xml::namespace::Namespace,
+    ) -> yaserde::Result<(
+        Vec<yaserde::__xml::attribute::OwnedAttribute>,
+        yaserde::__xml::namespace::Namespace,
+    )> {
+        Ok((attributes, namespace))
+    }
+}
+
+impl YaDeserialize for CellContent {
+    fn deserialize<R: Read>(reader: &mut Deserializer<R>) -> yaserde::Result<Self> {
+        let event = reader.next_event()?;
+        let yaserde::__xml::reader::XmlEvent::StartElement { attributes, .. } = event else {
+            return Err(yaserde::Error::custom("CellContent 缺少起始元素"));
+        };
+        let thumbnail = attributes
+            .iter()
+            .find(|attribute| attribute.name.local_name == "Thumbnail")
+            .map(|attribute| attribute.value.parse().map_err(yaserde::Error::custom))
+            .transpose()?;
+        let objects = deserialize_objects(reader, "CellContent")?;
+        Ok(Self { thumbnail, objects })
+    }
+}
+
+impl YaSerialize for Pattern {
+    fn serialize<W: Write>(&self, writer: &mut Serializer<W>) -> yaserde::Result<()> {
+        let width = self.width.to_string();
+        let height = self.height.to_string();
+        let x_step = self.x_step.map(|value| value.to_string());
+        let y_step = self.y_step.map(|value| value.to_string());
+        let reflect = self.reflect_method.to_string();
+        let relative = self.relative_to.to_string();
+        let ctm = self.ctm.as_ref().map(ToString::to_string);
+        let mut event = yaserde::__xml::writer::XmlEvent::start_element("Pattern")
+            .attr("Width", width.as_str())
+            .attr("Height", height.as_str())
+            .attr("ReflectMethod", reflect.as_str())
+            .attr("RelativeTo", relative.as_str());
+        if let Some(value) = &x_step {
+            event = event.attr("XStep", value.as_str());
+        }
+        if let Some(value) = &y_step {
+            event = event.attr("YStep", value.as_str());
+        }
+        if let Some(value) = &ctm {
+            event = event.attr("CTM", value.as_str());
+        }
+        writer.write(event).map_err(yaserde::Error::custom)?;
+        self.cell_content.serialize(writer)?;
+        writer
+            .write(yaserde::__xml::writer::XmlEvent::end_element())
+            .map_err(yaserde::Error::custom)?;
+        Ok(())
+    }
+
+    fn serialize_attributes(
+        &self,
+        attributes: Vec<yaserde::__xml::attribute::OwnedAttribute>,
+        namespace: yaserde::__xml::namespace::Namespace,
+    ) -> yaserde::Result<(
+        Vec<yaserde::__xml::attribute::OwnedAttribute>,
+        yaserde::__xml::namespace::Namespace,
+    )> {
+        Ok((attributes, namespace))
+    }
+}
+
+impl YaDeserialize for Pattern {
+    fn deserialize<R: Read>(reader: &mut Deserializer<R>) -> yaserde::Result<Self> {
+        let event = reader.next_event()?;
+        let yaserde::__xml::reader::XmlEvent::StartElement { attributes, .. } = event else {
+            return Err(yaserde::Error::custom("Pattern 缺少起始元素"));
+        };
+        let value = |key: &str| {
+            attributes
+                .iter()
+                .find(|attribute| attribute.name.local_name == key)
+                .map(|attribute| attribute.value.clone())
+        };
+        let number = |key: &str| -> yaserde::Result<Option<f64>> {
+            value(key)
+                .map(|value| value.parse().map_err(yaserde::Error::custom))
+                .transpose()
+        };
+        let width = number("Width")?.unwrap_or_default();
+        let height = number("Height")?.unwrap_or_default();
+        let cell_content = CellContent::deserialize(reader)?;
+        let _ = reader.next_event()?;
+        Ok(Self {
+            cell_content,
+            width,
+            height,
+            x_step: number("XStep")?,
+            y_step: number("YStep")?,
+            reflect_method: value("ReflectMethod")
+                .map(|value| value.parse().map_err(yaserde::Error::custom))
+                .transpose()?
+                .unwrap_or_default(),
+            relative_to: value("RelativeTo")
+                .map(|value| value.parse().map_err(yaserde::Error::custom))
+                .transpose()?
+                .unwrap_or_default(),
+            ctm: value("CTM")
+                .map(|value| value.parse().map_err(yaserde::Error::custom))
+                .transpose()?,
+        })
+    }
+}
+
 /// 底纹反射方式。
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, yaserde::DefaultYaSerde)]
 pub enum PatternReflect {
     /// 正常。
     #[default]
@@ -400,8 +921,15 @@ pub enum PatternReflect {
     Other(String),
 }
 
+crate::impl_xml_enum_codec!(PatternReflect, Other, {
+    Normal => "Normal",
+    Row => "Row",
+    Column => "Column",
+    RowAndColumn => "RowAndColumn",
+});
+
 /// 底纹相对对象。
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, yaserde::DefaultYaSerde)]
 pub enum PatternRelativeTo {
     /// 页面。
     Page,
@@ -412,8 +940,13 @@ pub enum PatternRelativeTo {
     Other(String),
 }
 
+crate::impl_xml_enum_codec!(PatternRelativeTo, Other, {
+    Page => "Page",
+    Object => "Object",
+});
+
 /// 渐变映射方式。
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, yaserde::DefaultYaSerde)]
 pub enum MapType {
     /// 直接。
     #[default]
@@ -426,102 +959,147 @@ pub enum MapType {
     Other(String),
 }
 
+crate::impl_xml_enum_codec!(MapType, Other, {
+    Direct => "Direct",
+    Repeat => "Repeat",
+    Reflect => "Reflect",
+});
+
 /// 渐变色标。
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[yaserde(rename = "Segment")]
 pub struct ShdSegment {
     /// 位置。
+    #[yaserde(attribute = true, rename = "Position")]
     pub position: Option<f64>,
     /// 颜色。
+    #[yaserde(rename = "Color")]
     pub color: Color,
 }
 
 /// 轴向渐变。
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[yaserde(rename = "AxialShd")]
 pub struct AxialShd {
     /// 色标。
+    #[yaserde(rename = "Segment")]
     pub segments: Vec<ShdSegment>,
     /// 映射方式。
+    #[yaserde(attribute = true, rename = "MapType")]
     pub map_type: MapType,
     /// 映射单位。
+    #[yaserde(attribute = true, rename = "MapUnit")]
     pub map_unit: Option<f64>,
     /// 扩展方式。
+    #[yaserde(attribute = true, rename = "Extend")]
     pub extend: i32,
     /// 起点。
+    #[yaserde(attribute = true, rename = "StartPoint")]
     pub start_point: StPos,
     /// 终点。
+    #[yaserde(attribute = true, rename = "EndPoint")]
     pub end_point: StPos,
 }
 
 /// 径向渐变。
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[yaserde(rename = "RadialShd")]
 pub struct RadialShd {
     /// 色标。
+    #[yaserde(rename = "Segment")]
     pub segments: Vec<ShdSegment>,
     /// 映射方式。
+    #[yaserde(attribute = true, rename = "MapType")]
     pub map_type: MapType,
     /// 映射单位。
+    #[yaserde(attribute = true, rename = "MapUnit")]
     pub map_unit: Option<f64>,
     /// 离心率。
+    #[yaserde(attribute = true, rename = "Eccentricity")]
     pub eccentricity: f64,
     /// 角度。
+    #[yaserde(attribute = true, rename = "Angle")]
     pub angle: f64,
     /// 起点。
+    #[yaserde(attribute = true, rename = "StartPoint")]
     pub start_point: StPos,
     /// 起始半径。
+    #[yaserde(attribute = true, rename = "StartRadius")]
     pub start_radius: f64,
     /// 终点。
+    #[yaserde(attribute = true, rename = "EndPoint")]
     pub end_point: StPos,
     /// 结束半径。
+    #[yaserde(attribute = true, rename = "EndRadius")]
     pub end_radius: f64,
     /// 扩展方式。
+    #[yaserde(attribute = true, rename = "Extend")]
     pub extend: i32,
 }
 
 /// 高洛德渐变。
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[yaserde(rename = "GouraudShd")]
 pub struct GouraudShd {
     /// 点。
+    #[yaserde(rename = "Point")]
     pub points: Vec<GouraudPoint>,
     /// 背景色。
+    #[yaserde(rename = "BackColor")]
     pub back_color: Option<Box<Color>>,
     /// 扩展方式。
+    #[yaserde(attribute = true, rename = "Extend")]
     pub extend: Option<i32>,
 }
 
 /// 高洛德渐变点。
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[yaserde(rename = "Point")]
 pub struct GouraudPoint {
     /// X 坐标。
+    #[yaserde(attribute = true, rename = "X")]
     pub x: f64,
     /// Y 坐标。
+    #[yaserde(attribute = true, rename = "Y")]
     pub y: f64,
     /// 边缘标志。
+    #[yaserde(attribute = true, rename = "EdgeFlag")]
     pub edge_flag: Option<i32>,
     /// 颜色。
+    #[yaserde(rename = "Color")]
     pub color: Color,
 }
 
 /// 格点高洛德渐变。
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[yaserde(rename = "LaGourandShd")]
 pub struct LaGouraudShd {
     /// 点。
+    #[yaserde(rename = "Point")]
     pub points: Vec<LaGouraudPoint>,
     /// 背景色。
+    #[yaserde(rename = "BackColor")]
     pub back_color: Option<Box<Color>>,
     /// 每行顶点数。
+    #[yaserde(attribute = true, rename = "VerticesPerRow")]
     pub vertices_per_row: i32,
     /// 扩展方式。
+    #[yaserde(attribute = true, rename = "Extend")]
     pub extend: Option<i32>,
 }
 
 /// 格点高洛德渐变点。
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[yaserde(rename = "Point")]
 pub struct LaGouraudPoint {
     /// X 坐标。
+    #[yaserde(attribute = true, rename = "X")]
     pub x: Option<f64>,
     /// Y 坐标。
+    #[yaserde(attribute = true, rename = "Y")]
     pub y: Option<f64>,
     /// 颜色。
+    #[yaserde(rename = "Color")]
     pub color: Color,
 }
 
@@ -530,3 +1108,74 @@ pub type PageActions = Actions;
 
 /// 单个动作的便捷类型。
 pub type PageAction = Action;
+
+impl YaSerialize for Box<Color> {
+    fn serialize<W: Write>(&self, writer: &mut Serializer<W>) -> yaserde::Result<()> {
+        (**self).serialize(writer)
+    }
+
+    fn serialize_attributes(
+        &self,
+        attributes: Vec<yaserde::__xml::attribute::OwnedAttribute>,
+        namespace: yaserde::__xml::namespace::Namespace,
+    ) -> yaserde::Result<(
+        Vec<yaserde::__xml::attribute::OwnedAttribute>,
+        yaserde::__xml::namespace::Namespace,
+    )> {
+        (**self).serialize_attributes(attributes, namespace)
+    }
+}
+
+impl YaDeserialize for Box<Color> {
+    fn deserialize<R: Read>(reader: &mut Deserializer<R>) -> yaserde::Result<Self> {
+        Ok(Box::new(Color::deserialize(reader)?))
+    }
+}
+
+fn default_true() -> bool {
+    true
+}
+
+fn default_false() -> bool {
+    false
+}
+
+fn default_line_width() -> f64 {
+    0.353
+}
+
+fn default_miter_limit() -> f64 {
+    4.234
+}
+
+fn default_alpha() -> i32 {
+    255
+}
+
+fn default_hscale() -> f64 {
+    1.0
+}
+
+fn default_weight() -> i32 {
+    400
+}
+
+fn default_cap() -> Cap {
+    Cap::Butt
+}
+
+fn default_join() -> Join {
+    Join::Miter
+}
+
+fn default_zero_f64() -> f64 {
+    0.0
+}
+
+fn default_i32_zero() -> i32 {
+    0
+}
+
+fn default_rule() -> PathRule {
+    PathRule::NonZero
+}
