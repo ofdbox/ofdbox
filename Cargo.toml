@@ -4,7 +4,6 @@ members = [
     "crates/ofdbox-algo",
     "crates/ofdbox-core",
     "crates/ofdbox-crypto",
-    "crates/ofdbox-model",
     "crates/ofdbox-seal",
     "crates/ofdbox",
 ]

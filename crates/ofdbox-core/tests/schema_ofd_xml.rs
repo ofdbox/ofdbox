@@ -1,6 +1,6 @@
-use ofdbox_model::model::definition::StLoc;
-use ofdbox_model::model::ofd::{DocBody, DocInfo, Ofd, VersionRef, Versions};
-use ofdbox_model::xml;
+use ofdbox_core::schema::definition::StLoc;
+use ofdbox_core::schema::ofd::{DocBody, DocInfo, Ofd, VersionRef, Versions};
+use ofdbox_core::schema_xml as xml;
 
 #[test]
 fn parses_and_writes_ofd_root() {

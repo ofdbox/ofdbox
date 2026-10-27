@@ -18,6 +18,7 @@ quick-xml.workspace = true
 thiserror.workspace = true
 zip.workspace = true
 zeroize.workspace = true
+yaserde = { git = "https://github.com/ofdbox/yaserde.git", rev = "f79e6c5", features = ["derive"] }
 
 [dev-dependencies]
 tempfile.workspace = true

@@ -439,6 +439,7 @@ dependencies = [
  "quick-xml",
  "tempfile",
  "thiserror",
+ "yaserde",
  "zeroize",
  "zip",
 ]
@@ -462,14 +463,6 @@ dependencies = [
  "thiserror",
  "x509-cert",
  "zeroize",
- "zip",
-]
-
-[[package]]
-name = "ofdbox-model"
-version = "0.0.1"
-dependencies = [
- "yaserde",
  "zip",
 ]
 

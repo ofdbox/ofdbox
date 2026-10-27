@@ -1,14 +1,14 @@
-use ofdbox_model::model::annotation::PageAnnot;
-use ofdbox_model::model::annotations::Annotations;
-use ofdbox_model::model::attachments::Attachments;
-use ofdbox_model::model::custom_tags::CustomTags;
-use ofdbox_model::model::document::Document;
-use ofdbox_model::model::extensions::Extensions;
-use ofdbox_model::model::res::Res;
-use ofdbox_model::model::signature::Signature;
-use ofdbox_model::model::signatures::Signatures;
-use ofdbox_model::model::version::DocVersion;
-use ofdbox_model::xml;
+use ofdbox_core::schema::annotation::PageAnnot;
+use ofdbox_core::schema::annotations::Annotations;
+use ofdbox_core::schema::attachments::Attachments;
+use ofdbox_core::schema::custom_tags::CustomTags;
+use ofdbox_core::schema::document::Document;
+use ofdbox_core::schema::extensions::Extensions;
+use ofdbox_core::schema::res::Res;
+use ofdbox_core::schema::signature::Signature;
+use ofdbox_core::schema::signatures::Signatures;
+use ofdbox_core::schema::version::DocVersion;
+use ofdbox_core::schema_xml as xml;
 
 fn roundtrip<T>(xml_text: &str)
 where
