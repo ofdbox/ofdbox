@@ -15,9 +15,12 @@ pub struct CustomTags {
 #[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
 #[yaserde(rename = "CustomTag")]
 pub struct CustomTag {
-    /// 命名空间。
+    /// 命名空间（旧版属性）。
     #[yaserde(attribute = true, rename = "NameSpace")]
-    pub namespace: String,
+    pub namespace: Option<String>,
+    /// 标引类型 ID。
+    #[yaserde(attribute = true, rename = "TypeID")]
+    pub type_id: Option<String>,
     /// 约束文件路径。
     #[yaserde(rename = "SchemaLoc")]
     pub schema_loc: Option<StLoc>,

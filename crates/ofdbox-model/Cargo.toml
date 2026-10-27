@@ -8,3 +8,6 @@ publish = false
 
 [dependencies]
 yaserde = { git = "https://github.com/ofdbox/yaserde.git", rev = "f79e6c5", features = ["derive"] }
+
+[dev-dependencies]
+zip.workspace = true

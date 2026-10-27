@@ -34,12 +34,20 @@ pub struct Attachment {
     #[yaserde(attribute = true, rename = "Size")]
     pub size: Option<f64>,
     /// 是否可见。
-    #[yaserde(attribute = true, rename = "Visible")]
+    #[yaserde(attribute = true, rename = "Visible", default = "default_true")]
     pub visible: bool,
     /// 用途。
-    #[yaserde(attribute = true, rename = "Usage")]
+    #[yaserde(attribute = true, rename = "Usage", default = "default_usage")]
     pub usage: String,
     /// 文件路径。
     #[yaserde(rename = "FileLoc")]
     pub file_loc: StLoc,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+fn default_usage() -> String {
+    "none".to_owned()
 }

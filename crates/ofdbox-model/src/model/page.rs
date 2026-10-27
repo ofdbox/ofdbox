@@ -187,13 +187,35 @@ pub enum GraphicObject {
 
 impl YaSerialize for GraphicObject {
     fn serialize<W: Write>(&self, writer: &mut Serializer<W>) -> yaserde::Result<()> {
-        match self {
-            Self::Text(value) => value.serialize(writer),
-            Self::Path(value) => value.serialize(writer),
-            Self::Image(value) => value.serialize(writer),
-            Self::Composite(value) => value.serialize(writer),
-            Self::PageBlock(value) => value.serialize(writer),
-        }
+        let (name, result) = match self {
+            Self::Text(value) => {
+                writer.set_start_event_name(Some("TextObject".to_owned()));
+                writer.set_skip_start_end(false);
+                ("TextObject", value.serialize(writer))
+            }
+            Self::Path(value) => {
+                writer.set_start_event_name(Some("PathObject".to_owned()));
+                writer.set_skip_start_end(false);
+                ("PathObject", value.serialize(writer))
+            }
+            Self::Image(value) => {
+                writer.set_start_event_name(Some("ImageObject".to_owned()));
+                writer.set_skip_start_end(false);
+                ("ImageObject", value.serialize(writer))
+            }
+            Self::Composite(value) => {
+                writer.set_start_event_name(Some("CompositeObject".to_owned()));
+                writer.set_skip_start_end(false);
+                ("CompositeObject", value.serialize(writer))
+            }
+            Self::PageBlock(value) => {
+                writer.set_start_event_name(Some("PageBlock".to_owned()));
+                writer.set_skip_start_end(false);
+                ("PageBlock", value.serialize(writer))
+            }
+        };
+        let _ = name;
+        result
     }
 
     fn serialize_attributes(
@@ -229,10 +251,10 @@ impl YaDeserialize for GraphicObject {
 #[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
 pub struct GraphicUnit {
     /// 图元 ID。
-    #[yaserde(attribute = true, rename = "ID")]
+    #[yaserde(attribute = true, rename = "ID", default = "default_st_id")]
     pub id: StId,
     /// 边界区域。
-    #[yaserde(attribute = true, rename = "Boundary")]
+    #[yaserde(attribute = true, rename = "Boundary", default = "default_st_box")]
     pub boundary: StBox,
     /// 名称。
     #[yaserde(attribute = true, rename = "Name")]
@@ -327,10 +349,10 @@ pub struct TextObject {
     #[yaserde(flatten = true)]
     pub common: GraphicUnit,
     /// 字体资源 ID。
-    #[yaserde(attribute = true, rename = "Font")]
+    #[yaserde(attribute = true, rename = "Font", default = "default_st_ref_id")]
     pub font: StRefId,
     /// 字号。
-    #[yaserde(attribute = true, rename = "Size")]
+    #[yaserde(attribute = true, rename = "Size", default = "default_zero_f64")]
     pub size: f64,
     /// 是否描边。
     #[yaserde(attribute = true, rename = "Stroke", default = "default_false")]
@@ -392,7 +414,7 @@ pub struct TextCode {
     #[yaserde(attribute = true, rename = "DeltaY")]
     pub delta_y: Option<StArray>,
     /// 文本。
-    #[yaserde(text = true)]
+    #[yaserde(text = true, default = "default_string")]
     pub text: String,
 }
 
@@ -428,7 +450,7 @@ pub struct PathObject {
     #[yaserde(rename = "FillColor")]
     pub fill_color: Option<Color>,
     /// 缩写路径数据。
-    #[yaserde(rename = "AbbreviatedData")]
+    #[yaserde(rename = "AbbreviatedData", default = "default_string")]
     pub abbreviated_data: String,
     /// 是否描边。
     #[yaserde(attribute = true, rename = "Stroke", default = "default_true")]
@@ -1178,4 +1200,21 @@ fn default_i32_zero() -> i32 {
 
 fn default_rule() -> PathRule {
     PathRule::NonZero
+}
+
+
+fn default_st_id() -> StId {
+    StId::default()
+}
+
+fn default_st_ref_id() -> StRefId {
+    StRefId::default()
+}
+
+fn default_string() -> String {
+    String::new()
+}
+
+fn default_st_box() -> StBox {
+    StBox::default()
 }

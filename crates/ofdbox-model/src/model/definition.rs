@@ -138,11 +138,8 @@ impl std::str::FromStr for StArray {
     fn from_str(value: &str) -> Result<Self, Self::Err> {
         let values = value
             .split_whitespace()
-            .map(|item| {
-                item.parse::<f64>()
-                    .map_err(|error| format!("无法解析数组元素 {item}: {error}"))
-            })
-            .collect::<Result<Vec<_>, _>>()?;
+            .map(|item| item.parse::<f64>().unwrap_or(0.0))
+            .collect::<Vec<_>>();
         Ok(Self(values))
     }
 }
@@ -265,7 +262,7 @@ pub struct Dest {
 #[yaserde(rename = "PageArea")]
 pub struct PageArea {
     /// 物理区域。
-    #[yaserde(rename = "PhysicalBox")]
+    #[yaserde(rename = "PhysicalBox", default = "default_st_box")]
     pub physical_box: StBox,
     /// 应用区域。
     #[yaserde(rename = "ApplicationBox")]
@@ -312,7 +309,7 @@ pub struct Actions {
 #[yaserde(rename = "Action")]
 pub struct Action {
     /// 触发事件。
-    #[yaserde(attribute = true, rename = "Event")]
+    #[yaserde(attribute = true, rename = "Event", default = "default_action_event")]
     pub event: ActionEvent,
     /// 动作区域。
     #[yaserde(rename = "Region")]
@@ -388,7 +385,7 @@ impl Default for ActionKind {
 #[yaserde(rename = "URI")]
 pub struct Uri {
     /// URI。
-    #[yaserde(attribute = true, rename = "URI")]
+    #[yaserde(attribute = true, rename = "URI", default = "default_string")]
     pub uri: String,
     /// 基准路径。
     #[yaserde(attribute = true, rename = "Base")]
@@ -403,7 +400,7 @@ pub struct Uri {
 #[yaserde(rename = "GotoA")]
 pub struct GotoA {
     /// 附件 ID。
-    #[yaserde(attribute = true, rename = "AttachID")]
+    #[yaserde(attribute = true, rename = "AttachID", default = "default_string")]
     pub attach_id: String,
     /// 是否新窗口。
     #[yaserde(attribute = true, rename = "NewWindow")]
@@ -532,10 +529,10 @@ impl YaDeserialize for RegionArea {
                     commands.push(RegionCommand::deserialize(reader)?);
                 }
                 yaserde::__xml::reader::XmlEvent::EndElement { name } => {
-                    let _ = reader.next_event()?;
                     if name.local_name == "Area" {
                         break;
                     }
+                    let _ = reader.next_event()?;
                 }
                 yaserde::__xml::reader::XmlEvent::EndDocument => break,
                 _ => {
@@ -724,4 +721,16 @@ impl YaDeserialize for RegionCommand {
         let _ = reader.next_event()?;
         Ok(command)
     }
+}
+
+fn default_string() -> String {
+    String::new()
+}
+
+fn default_st_box() -> StBox {
+    StBox::default()
+}
+
+fn default_action_event() -> ActionEvent {
+    ActionEvent::Do
 }

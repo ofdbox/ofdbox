@@ -470,6 +470,7 @@ name = "ofdbox-model"
 version = "0.0.1"
 dependencies = [
  "yaserde",
+ "zip",
 ]
 
 [[package]]

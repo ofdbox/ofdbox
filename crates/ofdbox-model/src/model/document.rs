@@ -141,7 +141,7 @@ pub struct OutlineElem {
     #[yaserde(attribute = true, rename = "Count")]
     pub count: Option<i32>,
     /// 是否展开。
-    #[yaserde(attribute = true, rename = "Expanded")]
+    #[yaserde(attribute = true, rename = "Expanded", default = "default_true")]
     pub expanded: bool,
     /// 动作。
     #[yaserde(rename = "Actions")]
@@ -358,4 +358,8 @@ pub struct Bookmark {
     /// 目标位置。
     #[yaserde(rename = "Dest")]
     pub dest: Dest,
+}
+
+fn default_true() -> bool {
+    true
 }

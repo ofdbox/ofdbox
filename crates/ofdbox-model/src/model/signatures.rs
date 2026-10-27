@@ -22,7 +22,7 @@ pub struct SignatureRef {
     #[yaserde(attribute = true, rename = "ID")]
     pub id: String,
     /// 签名类型。
-    #[yaserde(attribute = true, rename = "Type")]
+    #[yaserde(attribute = true, rename = "Type", default = "default_signature_type")]
     pub signature_type: SignatureType,
     /// 签名描述文件路径。
     #[yaserde(attribute = true, rename = "BaseLoc")]
@@ -45,3 +45,7 @@ crate::impl_xml_enum_codec!(SignatureType, Other, {
     Seal => "Seal",
     Sign => "Sign",
 });
+
+fn default_signature_type() -> SignatureType {
+    SignatureType::Seal
+}

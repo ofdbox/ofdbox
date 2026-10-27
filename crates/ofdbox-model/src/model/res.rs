@@ -8,7 +8,7 @@ use super::page::{Color, PageBlock};
 #[yaserde(rename = "Res")]
 pub struct Res {
     /// 资源基准路径。
-    #[yaserde(attribute = true, rename = "BaseLoc")]
+    #[yaserde(attribute = true, rename = "BaseLoc", default = "default_base_loc")]
     pub base_loc: StLoc,
     /// 颜色空间集合。
     #[yaserde(rename = "ColorSpaces")]
@@ -41,13 +41,13 @@ pub struct ColorSpaces {
 #[yaserde(rename = "ColorSpace")]
 pub struct ColorSpace {
     /// 资源 ID。
-    #[yaserde(attribute = true, rename = "ID")]
+    #[yaserde(attribute = true, rename = "ID", default = "default_st_id")]
     pub id: StId,
     /// 颜色空间类型。
     #[yaserde(attribute = true, rename = "Type")]
     pub color_space_type: ColorSpaceType,
     /// 每分量位数。
-    #[yaserde(attribute = true, rename = "BitsPerComponent")]
+    #[yaserde(attribute = true, rename = "BitsPerComponent", default = "default_bits")]
     pub bits_per_component: i32,
     /// ICC 配置路径。
     #[yaserde(attribute = true, rename = "Profile")]
@@ -100,7 +100,7 @@ pub struct DrawParams {
 #[yaserde(rename = "DrawParam")]
 pub struct DrawParam {
     /// 资源 ID。
-    #[yaserde(attribute = true, rename = "ID")]
+    #[yaserde(attribute = true, rename = "ID", default = "default_st_id")]
     pub id: StId,
     /// 相对参数引用。
     #[yaserde(attribute = true, rename = "Relative")]
@@ -145,7 +145,7 @@ pub struct Fonts {
 #[yaserde(rename = "Font")]
 pub struct Font {
     /// 资源 ID。
-    #[yaserde(attribute = true, rename = "ID")]
+    #[yaserde(attribute = true, rename = "ID", default = "default_st_id")]
     pub id: StId,
     /// 字体名。
     #[yaserde(attribute = true, rename = "FontName")]
@@ -154,19 +154,19 @@ pub struct Font {
     #[yaserde(attribute = true, rename = "FamilyName")]
     pub family_name: Option<String>,
     /// 字符集。
-    #[yaserde(attribute = true, rename = "Charset")]
+    #[yaserde(attribute = true, rename = "Charset", default = "default_charset")]
     pub charset: Charset,
     /// 是否斜体。
-    #[yaserde(attribute = true, rename = "Italic")]
+    #[yaserde(attribute = true, rename = "Italic", default = "default_false")]
     pub italic: bool,
     /// 是否粗体。
-    #[yaserde(attribute = true, rename = "Bold")]
+    #[yaserde(attribute = true, rename = "Bold", default = "default_false")]
     pub bold: bool,
     /// 是否衬线。
-    #[yaserde(attribute = true, rename = "Serif")]
+    #[yaserde(attribute = true, rename = "Serif", default = "default_false")]
     pub serif: bool,
     /// 是否等宽。
-    #[yaserde(attribute = true, rename = "FixedWidth")]
+    #[yaserde(attribute = true, rename = "FixedWidth", default = "default_false")]
     pub fixed_width: bool,
     /// 字体文件路径。
     #[yaserde(rename = "FontFile")]
@@ -219,10 +219,10 @@ pub struct MultiMedias {
 #[yaserde(rename = "MultiMedia")]
 pub struct MultiMedia {
     /// 资源 ID。
-    #[yaserde(attribute = true, rename = "ID")]
+    #[yaserde(attribute = true, rename = "ID", default = "default_st_id")]
     pub id: StId,
     /// 资源类型。
-    #[yaserde(attribute = true, rename = "Type")]
+    #[yaserde(attribute = true, rename = "Type", default = "default_media_type")]
     pub media_type: MultiMediaType,
     /// 格式。
     #[yaserde(attribute = true, rename = "Format")]
@@ -266,7 +266,7 @@ pub struct CompositeGraphicUnits {
 #[yaserde(rename = "CompositeGraphicUnit")]
 pub struct CompositeGraphicUnit {
     /// 资源 ID。
-    #[yaserde(attribute = true, rename = "ID")]
+    #[yaserde(attribute = true, rename = "ID", default = "default_st_id")]
     pub id: StId,
     /// 缩略图引用。
     #[yaserde(rename = "Thumbnail")]
@@ -283,4 +283,29 @@ pub struct CompositeGraphicUnit {
     /// 高。
     #[yaserde(attribute = true, rename = "Height")]
     pub height: f64,
+}
+
+fn default_charset() -> Charset {
+    Charset::Unicode
+}
+
+fn default_false() -> bool {
+    false
+}
+
+
+fn default_base_loc() -> StLoc {
+    StLoc::new(".")
+}
+
+fn default_st_id() -> StId {
+    StId::default()
+}
+
+fn default_bits() -> i32 {
+    8
+}
+
+fn default_media_type() -> MultiMediaType {
+    MultiMediaType::Image
 }
