@@ -83,3 +83,23 @@ fn page_entry_ref_loads_page() {
     let page = entry.load().expect("page");
     assert!(page.data.content.is_some());
 }
+
+
+#[test]
+#[ignore]
+fn loads_real_ofd_through_store() {
+    let dir = std::env::var("OFDBOX_TESTDATA_DIR").expect("OFDBOX_TESTDATA_DIR");
+    let path = std::fs::read_dir(&dir)
+        .expect("read dir")
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .find(|path| path.extension().is_some_and(|ext| ext == "ofd"))
+        .expect("ofd file");
+
+    let reader = OfdReader::open(&path).expect("open");
+    let ofd = reader.ofd().expect("ofd");
+    let doc = ofd.document(0).expect("document");
+    let entry = doc.pages().next().expect("page entry");
+    let page = entry.load().expect("page");
+    assert!(page.data.area.is_some() || page.data.content.is_some());
+}

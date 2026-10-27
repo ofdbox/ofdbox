@@ -1,11 +1,18 @@
 use std::rc::Rc;
 
 use crate::error::OfdError;
+use crate::schema::annotation::PageAnnot;
+use crate::schema::annotations::Annotations;
+use crate::schema::attachments::Attachments;
+use crate::schema::custom_tags::CustomTags;
 use crate::schema::definition::StLoc;
 use crate::schema::document::{Document, PageEntry};
+use crate::schema::extensions::Extensions;
 use crate::schema::ofd::{DocBody, Ofd};
 use crate::schema::page::Page;
+use crate::schema::res::Res;
 use crate::store::{ObjectContext, Stored};
+use yaserde::YaDeserialize;
 
 impl Stored<Ofd> {
     /// 按 DocBody 序号加载文档。
@@ -48,6 +55,36 @@ impl Stored<Document> {
         Stored::<Page>::load(Rc::clone(self.context()), location)
     }
 
+    /// 加载公共资源。
+    pub fn public_res(&self) -> Result<Vec<Stored<Res>>, OfdError> {
+        load_all(self.context(), &self.data.common_data.public_res)
+    }
+
+    /// 加载文档资源。
+    pub fn document_res(&self) -> Result<Vec<Stored<Res>>, OfdError> {
+        load_all(self.context(), &self.data.common_data.document_res)
+    }
+
+    /// 加载注释索引。
+    pub fn annotations(&self) -> Result<Option<Stored<Annotations>>, OfdError> {
+        load_optional(self.context(), self.data.annotations.as_ref())
+    }
+
+    /// 加载附件索引。
+    pub fn attachments(&self) -> Result<Option<Stored<Attachments>>, OfdError> {
+        load_optional(self.context(), self.data.attachments.as_ref())
+    }
+
+    /// 加载自定义标引索引。
+    pub fn custom_tags(&self) -> Result<Option<Stored<CustomTags>>, OfdError> {
+        load_optional(self.context(), self.data.custom_tags.as_ref())
+    }
+
+    /// 加载扩展索引。
+    pub fn extensions(&self) -> Result<Option<Stored<Extensions>>, OfdError> {
+        load_optional(self.context(), self.data.extensions.as_ref())
+    }
+
     /// 页面索引迭代器。
     pub fn pages(&self) -> impl Iterator<Item = PageEntryRef<'_>> {
         self.data.pages.pages.iter().map(|entry| PageEntryRef {
@@ -62,6 +99,67 @@ impl PageEntry {
     pub fn load(&self, document: &Stored<Document>) -> Result<Stored<Page>, OfdError> {
         document.page_entry(self)
     }
+}
+
+impl Stored<Page> {
+    /// 加载页面资源。
+    pub fn page_res(&self) -> Result<Vec<Stored<Res>>, OfdError> {
+        load_all(self.context(), &self.data.page_res)
+    }
+
+    /// 加载所属文档。
+    pub fn document(&self) -> Result<Stored<Document>, OfdError> {
+        let parent = self
+            .context()
+            .parent()
+            .ok_or_else(|| OfdError::InvalidStructure("页面缺少文档上下文".to_owned()))?;
+
+        Stored::<Document>::load(Rc::clone(parent), parent.current().clone())
+    }
+
+    /// 加载所属文档的文档资源。
+    pub fn document_res(&self) -> Result<Vec<Stored<Res>>, OfdError> {
+        self.document()?.document_res()
+    }
+}
+
+impl Stored<Annotations> {
+    /// 按页面 ID 加载页面注释。
+    pub fn page(&self, page_id: &str) -> Result<Stored<PageAnnot>, OfdError> {
+        let page = self
+            .data
+            .pages
+            .iter()
+            .find(|page| page.page_id.to_string() == page_id)
+            .ok_or_else(|| OfdError::InvalidStructure(format!("页面注释不存在: {page_id}")))?;
+
+        let location = self.context().resolve(&page.file_loc)?;
+        Stored::<PageAnnot>::load(Rc::clone(self.context()), location)
+    }
+}
+
+fn load_all<T: YaDeserialize>(
+    context: &Rc<ObjectContext>,
+    locations: &[StLoc],
+) -> Result<Vec<Stored<T>>, OfdError> {
+    locations
+        .iter()
+        .map(|location| {
+            let resolved = context.resolve(location)?;
+            Stored::<T>::load(Rc::clone(context), resolved)
+        })
+        .collect()
+}
+
+fn load_optional<T: YaDeserialize>(
+    context: &Rc<ObjectContext>,
+    location: Option<&StLoc>,
+) -> Result<Option<Stored<T>>, OfdError> {
+    let Some(location) = location else {
+        return Ok(None);
+    };
+    let resolved = context.resolve(location)?;
+    Ok(Some(Stored::<T>::load(Rc::clone(context), resolved)?))
 }
 
 /// 带文档上下文的页面索引引用。
@@ -116,6 +214,11 @@ impl OfdReader {
     /// 加载 OFD.xml。
     pub fn ofd(&self) -> Result<Stored<Ofd>, OfdError> {
         Stored::<Ofd>::load(Rc::clone(&self.root), StLoc::new("OFD.xml"))
+    }
+
+    /// 生成写回后的完整 OFD 字节。
+    pub fn to_bytes(&self) -> Result<Vec<u8>, OfdError> {
+        self.store.to_bytes()
     }
 
     /// 写回文件。
