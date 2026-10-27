@@ -68,10 +68,6 @@ pub fn to_bytes<T: YaSerialize>(value: &T) -> XmlResult<Vec<u8>> {
 }
 
 fn inject_default_namespace(xml: &mut String) {
-    if xml.contains("xmlns=") || xml.contains("xmlns:") {
-        return;
-    }
-
     let Some(declaration_end) = xml.find("?>") else {
         return;
     };
@@ -83,6 +79,10 @@ fn inject_default_namespace(xml: &mut String) {
         return;
     };
     let end = start + relative_end;
+
+    if xml[start..=end].contains("xmlns=") || xml[start..=end].contains("xmlns:") {
+        return;
+    }
 
     let insert_at = if xml[start..=end].ends_with("/>") {
         end - 1

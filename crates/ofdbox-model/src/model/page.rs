@@ -1143,7 +1143,11 @@ pub struct RadialShd {
     #[yaserde(attribute = true, rename = "MapUnit")]
     pub map_unit: Option<f64>,
     /// 离心率。
-    #[yaserde(attribute = true, rename = "Eccentricity", default = "default_zero_f64")]
+    #[yaserde(
+        attribute = true,
+        rename = "Eccentricity",
+        default = "default_zero_f64"
+    )]
     pub eccentricity: f64,
     /// 角度。
     #[yaserde(attribute = true, rename = "Angle", default = "default_zero_f64")]

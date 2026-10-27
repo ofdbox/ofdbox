@@ -91,7 +91,7 @@ impl YaDeserialize for Extension {
                 yaserde::__xml::reader::XmlEvent::StartElement { name, .. } => {
                     let item = match name.local_name.as_str() {
                         "Property" => ExtensionItem::Property(Property::deserialize(reader)?),
-                        "Data" => ExtensionItem::Data(read_text_content(reader, "Data")?),
+                        "Data" => ExtensionItem::Data(RawXml::read(reader, "Data")?),
                         "ExtendData" => ExtensionItem::ExtendData(StLoc(read_text_content(
                             reader,
                             "ExtendData",
@@ -156,13 +156,165 @@ fn read_text_content<R: Read>(
     Ok(text)
 }
 
-/// 扩展内容。
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct RawXml {
+    events: Vec<RawEvent>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+enum RawEvent {
+    Start {
+        name: String,
+        attributes: Vec<(String, String)>,
+        namespaces: Vec<(String, String)>,
+    },
+    End,
+    Text(String),
+    CData(String),
+}
+
+impl RawXml {
+    fn read<R: Read>(reader: &mut Deserializer<R>, expected: &str) -> yaserde::Result<Self> {
+        let event = reader.next_event()?;
+        let yaserde::__xml::reader::XmlEvent::StartElement { .. } = event else {
+            return Err(yaserde::Error::custom("Data 缺少起始元素"));
+        };
+
+        let mut events = Vec::new();
+        loop {
+            let event = reader.next_event()?;
+            match event {
+                yaserde::__xml::reader::XmlEvent::StartElement {
+                    name,
+                    attributes,
+                    namespace,
+                } => {
+                    events.push(RawEvent::Start {
+                        name: qualified_name(&name),
+                        attributes: attributes
+                            .iter()
+                            .map(|attribute| {
+                                (qualified_name(&attribute.name), attribute.value.clone())
+                            })
+                            .collect(),
+                        namespaces: namespace
+                            .iter()
+                            .filter(|(prefix, _)| {
+                                !prefix.is_empty() && *prefix != "xml" && *prefix != "xmlns"
+                            })
+                            .map(|(prefix, uri)| (prefix.to_owned(), uri.to_owned()))
+                            .collect(),
+                    });
+                }
+                yaserde::__xml::reader::XmlEvent::EndElement { name } => {
+                    if name.local_name == expected {
+                        break;
+                    }
+                    events.push(RawEvent::End);
+                }
+                yaserde::__xml::reader::XmlEvent::Characters(value) => {
+                    events.push(RawEvent::Text(value));
+                }
+                yaserde::__xml::reader::XmlEvent::CData(value) => {
+                    events.push(RawEvent::CData(value));
+                }
+                yaserde::__xml::reader::XmlEvent::EndDocument => break,
+                _ => {}
+            }
+        }
+        Ok(Self { events })
+    }
+}
+
+fn qualified_name(name: &yaserde::__xml::name::OwnedName) -> String {
+    match &name.prefix {
+        Some(prefix) => format!("{prefix}:{}", name.local_name),
+        None => name.local_name.clone(),
+    }
+}
+
+impl YaSerialize for RawXml {
+    fn serialize<W: Write>(&self, writer: &mut Serializer<W>) -> yaserde::Result<()> {
+        for event in &self.events {
+            match event {
+                RawEvent::Start {
+                    name,
+                    attributes,
+                    namespaces,
+                } => {
+                    let ns_attributes: Vec<(String, String)> = namespaces
+                        .iter()
+                        .map(|(prefix, uri)| {
+                            let key = if prefix.is_empty() {
+                                "xmlns".to_owned()
+                            } else {
+                                format!("xmlns:{prefix}")
+                            };
+                            (key, uri.clone())
+                        })
+                        .collect();
+                    let mut event = yaserde::__xml::writer::XmlEvent::start_element(name.as_str());
+                    for (key, value) in attributes {
+                        event = event.attr(key.as_str(), value.as_str());
+                    }
+                    for (key, value) in &ns_attributes {
+                        event = event.attr(key.as_str(), value.as_str());
+                    }
+                    writer.write(event).map_err(yaserde::Error::custom)?;
+                }
+                RawEvent::End => {
+                    writer
+                        .write(yaserde::__xml::writer::XmlEvent::end_element())
+                        .map_err(yaserde::Error::custom)?;
+                }
+                RawEvent::Text(value) => {
+                    writer
+                        .write(yaserde::__xml::writer::XmlEvent::characters(value))
+                        .map_err(yaserde::Error::custom)?;
+                }
+                RawEvent::CData(value) => {
+                    writer
+                        .write(yaserde::__xml::writer::XmlEvent::cdata(value))
+                        .map_err(yaserde::Error::custom)?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn serialize_attributes(
+        &self,
+        attributes: Vec<yaserde::__xml::attribute::OwnedAttribute>,
+        namespace: yaserde::__xml::namespace::Namespace,
+    ) -> yaserde::Result<(
+        Vec<yaserde::__xml::attribute::OwnedAttribute>,
+        yaserde::__xml::namespace::Namespace,
+    )> {
+        Ok((attributes, namespace))
+    }
+}
+
+fn write_raw_element<W: Write>(
+    writer: &mut Serializer<W>,
+    name: &str,
+    value: &RawXml,
+) -> yaserde::Result<()> {
+    writer
+        .write(yaserde::__xml::writer::XmlEvent::start_element(name))
+        .map_err(yaserde::Error::custom)?;
+    value.serialize(writer)?;
+    writer
+        .write(yaserde::__xml::writer::XmlEvent::end_element())
+        .map_err(yaserde::Error::custom)?;
+    Ok(())
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum ExtensionItem {
     /// 属性。
     Property(Property),
     /// 任意数据。
-    Data(String),
+    Data(RawXml),
     /// 外部数据路径。
     ExtendData(StLoc),
 }
@@ -171,7 +323,7 @@ impl YaSerialize for ExtensionItem {
     fn serialize<W: Write>(&self, writer: &mut Serializer<W>) -> yaserde::Result<()> {
         match self {
             Self::Property(value) => value.serialize(writer),
-            Self::Data(value) => write_text_element(writer, "Data", value),
+            Self::Data(value) => write_raw_element(writer, "Data", value),
             Self::ExtendData(value) => write_text_element(writer, "ExtendData", value.as_str()),
         }
     }

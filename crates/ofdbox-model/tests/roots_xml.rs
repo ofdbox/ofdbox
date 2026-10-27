@@ -89,3 +89,15 @@ fn page_annot_roundtrip() {
         r#"<PageAnnot xmlns="http://www.ofdspec.org/2016"><Annot ID="1" Type="Stamp" Creator="demo" LastModDate="2020-01-01" Visible="true" Print="true" NoZoom="false" NoRotate="false" ReadOnly="true"><Appearance Boundary="0 0 10 10"/></Annot></PageAnnot>"#,
     );
 }
+
+#[test]
+fn extension_data_raw_xml() {
+    let input = r#"<Extensions xmlns="http://www.ofdspec.org/2016"><Extension AppName="demo" RefId="1"><Data><vendor:Foo xmlns:vendor="urn:foo" a="1">bar</vendor:Foo></Data></Extension></Extensions>"#;
+    let parsed: Extensions = xml::from_str(input).expect("parse");
+    let written = xml::to_string(&parsed).expect("write");
+    println!("{written}");
+    let reparsed: Extensions = xml::from_str(&written).expect("reparse");
+    assert_eq!(parsed, reparsed);
+    assert!(written.contains("<vendor:Foo"), "{written}");
+    assert!(written.contains("xmlns:vendor=\"urn:foo\""), "{written}");
+}
