@@ -40,7 +40,7 @@ pub struct Attachment {
     #[yaserde(attribute = true, rename = "Usage", default = "default_usage")]
     pub usage: String,
     /// 文件路径。
-    #[yaserde(rename = "FileLoc")]
+    #[yaserde(rename = "FileLoc", default = "default_st_loc")]
     pub file_loc: StLoc,
 }
 
@@ -50,4 +50,8 @@ fn default_true() -> bool {
 
 fn default_usage() -> String {
     "none".to_owned()
+}
+
+fn default_st_loc() -> StLoc {
+    StLoc::default()
 }

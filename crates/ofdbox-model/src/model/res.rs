@@ -44,10 +44,18 @@ pub struct ColorSpace {
     #[yaserde(attribute = true, rename = "ID", default = "default_st_id")]
     pub id: StId,
     /// 颜色空间类型。
-    #[yaserde(attribute = true, rename = "Type")]
+    #[yaserde(
+        attribute = true,
+        rename = "Type",
+        default = "default_color_space_type"
+    )]
     pub color_space_type: ColorSpaceType,
     /// 每分量位数。
-    #[yaserde(attribute = true, rename = "BitsPerComponent", default = "default_bits")]
+    #[yaserde(
+        attribute = true,
+        rename = "BitsPerComponent",
+        default = "default_bits"
+    )]
     pub bits_per_component: i32,
     /// ICC 配置路径。
     #[yaserde(attribute = true, rename = "Profile")]
@@ -112,22 +120,22 @@ pub struct DrawParam {
     #[yaserde(rename = "StrokeColor")]
     pub stroke_color: Option<Color>,
     /// 线宽。
-    #[yaserde(attribute = true, rename = "LineWidth")]
+    #[yaserde(attribute = true, rename = "LineWidth", default = "default_line_width")]
     pub line_width: f64,
     /// 连接样式。
-    #[yaserde(attribute = true, rename = "Join")]
+    #[yaserde(attribute = true, rename = "Join", default = "default_join")]
     pub join: String,
     /// 线端样式。
-    #[yaserde(attribute = true, rename = "Cap")]
+    #[yaserde(attribute = true, rename = "Cap", default = "default_cap")]
     pub cap: String,
     /// 虚线偏移。
-    #[yaserde(attribute = true, rename = "DashOffset")]
+    #[yaserde(attribute = true, rename = "DashOffset", default = "default_zero")]
     pub dash_offset: f64,
     /// 虚线模式。
     #[yaserde(attribute = true, rename = "DashPattern")]
     pub dash_pattern: Option<StArray>,
     /// 斜接限制。
-    #[yaserde(attribute = true, rename = "MiterLimit")]
+    #[yaserde(attribute = true, rename = "MiterLimit", default = "default_miter")]
     pub miter_limit: f64,
 }
 
@@ -148,7 +156,7 @@ pub struct Font {
     #[yaserde(attribute = true, rename = "ID", default = "default_st_id")]
     pub id: StId,
     /// 字体名。
-    #[yaserde(attribute = true, rename = "FontName")]
+    #[yaserde(attribute = true, rename = "FontName", default = "default_string")]
     pub font_name: String,
     /// 字体族名。
     #[yaserde(attribute = true, rename = "FamilyName")]
@@ -228,7 +236,7 @@ pub struct MultiMedia {
     #[yaserde(attribute = true, rename = "Format")]
     pub format: Option<String>,
     /// 媒体文件路径。
-    #[yaserde(rename = "MediaFile")]
+    #[yaserde(rename = "MediaFile", default = "default_st_loc")]
     pub media_file: StLoc,
 }
 
@@ -293,7 +301,6 @@ fn default_false() -> bool {
     false
 }
 
-
 fn default_base_loc() -> StLoc {
     StLoc::new(".")
 }
@@ -308,4 +315,36 @@ fn default_bits() -> i32 {
 
 fn default_media_type() -> MultiMediaType {
     MultiMediaType::Image
+}
+
+fn default_line_width() -> f64 {
+    0.353
+}
+
+fn default_join() -> String {
+    "Miter".to_owned()
+}
+
+fn default_cap() -> String {
+    "Butt".to_owned()
+}
+
+fn default_zero() -> f64 {
+    0.0
+}
+
+fn default_miter() -> f64 {
+    4.234
+}
+
+fn default_st_loc() -> StLoc {
+    StLoc::default()
+}
+
+fn default_color_space_type() -> ColorSpaceType {
+    ColorSpaceType::Rgb
+}
+
+fn default_string() -> String {
+    String::new()
 }

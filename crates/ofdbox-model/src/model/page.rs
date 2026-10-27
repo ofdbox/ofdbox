@@ -34,10 +34,14 @@ pub struct Page {
 #[yaserde(rename = "Template")]
 pub struct Template {
     /// 模板 ID。
-    #[yaserde(attribute = true, rename = "TemplateID")]
+    #[yaserde(attribute = true, rename = "TemplateID", default = "default_st_ref_id")]
     pub template_id: StRefId,
     /// 显示层级。
-    #[yaserde(attribute = true, rename = "ZOrder")]
+    #[yaserde(
+        attribute = true,
+        rename = "ZOrder",
+        default = "default_template_z_order"
+    )]
     pub z_order: TemplateZOrder,
 }
 
@@ -423,13 +427,17 @@ pub struct TextCode {
 #[yaserde(rename = "CGTransform")]
 pub struct CgTransform {
     /// 字符起点。
-    #[yaserde(attribute = true, rename = "CodePosition")]
+    #[yaserde(
+        attribute = true,
+        rename = "CodePosition",
+        default = "default_i32_zero"
+    )]
     pub code_position: i32,
     /// 字符数量。
-    #[yaserde(attribute = true, rename = "CodeCount")]
+    #[yaserde(attribute = true, rename = "CodeCount", default = "default_one_i32")]
     pub code_count: i32,
     /// 字形数量。
-    #[yaserde(attribute = true, rename = "GlyphCount")]
+    #[yaserde(attribute = true, rename = "GlyphCount", default = "default_one_i32")]
     pub glyph_count: i32,
     /// 字形索引。
     #[yaserde(rename = "Glyphs")]
@@ -646,6 +654,15 @@ impl YaDeserialize for PageBlockObject {
     }
 }
 
+fn skip_current_element<R: Read>(reader: &mut Deserializer<R>) -> yaserde::Result<()> {
+    let depth = reader.depth();
+    let _ = reader.next_event()?;
+    while reader.depth() > depth {
+        let _ = reader.next_event()?;
+    }
+    Ok(())
+}
+
 fn deserialize_objects<R: Read>(
     reader: &mut Deserializer<R>,
     end_name: &str,
@@ -655,7 +672,13 @@ fn deserialize_objects<R: Read>(
         let event = reader.peek()?.to_owned();
         match event {
             yaserde::__xml::reader::XmlEvent::StartElement { .. } => {
-                objects.push(GraphicObject::deserialize(reader)?);
+                match GraphicObject::deserialize(reader) {
+                    Ok(object) => objects.push(object),
+                    Err(error) if error.to_string().contains("未知图元类型") => {
+                        skip_current_element(reader)?;
+                    }
+                    Err(error) => return Err(error),
+                }
             }
             yaserde::__xml::reader::XmlEvent::EndElement { name } => {
                 if name.local_name == end_name {
@@ -1202,7 +1225,6 @@ fn default_rule() -> PathRule {
     PathRule::NonZero
 }
 
-
 fn default_st_id() -> StId {
     StId::default()
 }
@@ -1217,4 +1239,12 @@ fn default_string() -> String {
 
 fn default_st_box() -> StBox {
     StBox::default()
+}
+
+fn default_template_z_order() -> TemplateZOrder {
+    TemplateZOrder::Background
+}
+
+fn default_one_i32() -> i32 {
+    1
 }

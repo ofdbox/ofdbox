@@ -49,7 +49,7 @@ pub struct CommonData {
     #[yaserde(rename = "MaxUnitID")]
     pub max_unit_id: StId,
     /// 默认页面区域。
-    #[yaserde(rename = "PageArea")]
+    #[yaserde(rename = "PageArea", default = "default_page_area")]
     pub page_area: PageArea,
     /// 公共资源路径。
     #[yaserde(rename = "PublicRes")]
@@ -189,7 +189,7 @@ pub struct PrintPermission {
     #[yaserde(attribute = true, rename = "Printable")]
     pub printable: bool,
     /// 打印份数。
-    #[yaserde(attribute = true, rename = "Copies")]
+    #[yaserde(attribute = true, rename = "Copies", default = "default_copies")]
     pub copies: i32,
 }
 
@@ -362,4 +362,12 @@ pub struct Bookmark {
 
 fn default_true() -> bool {
     true
+}
+
+fn default_page_area() -> PageArea {
+    PageArea::default()
+}
+
+fn default_copies() -> i32 {
+    -1
 }

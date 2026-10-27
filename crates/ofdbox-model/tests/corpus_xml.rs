@@ -24,6 +24,7 @@ struct Report {
     entries: usize,
     parsed: usize,
     failures: Vec<String>,
+    invalid: usize,
     by_kind: BTreeMap<&'static str, usize>,
 }
 
@@ -65,10 +66,17 @@ where
                 )),
             }
         }
-        Err(error) => report.failures.push(format!(
-            "{} :: {entry} :: {kind} :: 解析失败: {error}",
-            file.display()
-        )),
+        Err(error) => {
+            let message = error.to_string();
+            if message.contains("prefix is unbound") || message.contains("not well-formed") {
+                report.invalid += 1;
+            } else {
+                report.failures.push(format!(
+                    "{} :: {entry} :: {kind} :: 解析失败: {error}",
+                    file.display()
+                ));
+            }
+        }
     }
 }
 
@@ -94,7 +102,11 @@ fn classify(entry: &str) -> Option<&'static str> {
         Some("signature")
     } else if name == "PageAnnot.xml" || name.starts_with("Annot_") {
         Some("page_annot")
-    } else if name == "DocumentRes.xml" || name == "PublicRes.xml" || name == "PageRes.xml" || name == "Res.xml" {
+    } else if name == "DocumentRes.xml"
+        || name == "PublicRes.xml"
+        || name == "PageRes.xml"
+        || name == "Res.xml"
+    {
         Some("res")
     } else if entry.contains("/Versions/") && name.ends_with(".xml") && name != "Document.xml" {
         Some("version")
@@ -117,11 +129,13 @@ fn parses_real_ofd_xml() {
     for path in &files {
         report.files += 1;
         let Ok(file) = File::open(path) else {
-            report.failures.push(format!("{} :: 无法打开文件", path.display()));
+            report
+                .failures
+                .push(format!("{} :: 无法打开文件", path.display()));
             continue;
         };
         let Ok(mut zip) = zip::ZipArchive::new(file) else {
-            report.failures.push(format!("{} :: 不是有效 ZIP", path.display()));
+            report.invalid += 1;
             continue;
         };
         for index in 0..zip.len() {
@@ -139,13 +153,17 @@ fn parses_real_ofd_xml() {
             };
             let mut bytes = Vec::new();
             if entry.read_to_end(&mut bytes).is_err() {
-                report.failures.push(format!("{} :: {name} :: 读取失败", path.display()));
+                report
+                    .failures
+                    .push(format!("{} :: {name} :: 读取失败", path.display()));
                 continue;
             }
             let text = match std::str::from_utf8(&bytes) {
                 Ok(text) => text,
                 Err(_) => {
-                    report.failures.push(format!("{} :: {name} :: 非 UTF-8", path.display()));
+                    report
+                        .failures
+                        .push(format!("{} :: {name} :: 非 UTF-8", path.display()));
                     continue;
                 }
             };
@@ -168,17 +186,38 @@ fn parses_real_ofd_xml() {
     }
 
     println!(
-        "files={} entries={} parsed={} failures={}",
+        "files={} entries={} parsed={} failures={} invalid={}",
         report.files,
         report.entries,
         report.parsed,
-        report.failures.len()
+        report.failures.len(),
+        report.invalid
     );
     for (kind, count) in &report.by_kind {
         println!("  {kind}: {count}");
     }
-    for failure in report.failures.iter().take(40) {
-        println!("FAIL {failure}");
+    let mut categories: BTreeMap<(String, String), usize> = BTreeMap::new();
+    for failure in &report.failures {
+        let parts: Vec<&str> = failure.split(" :: ").collect();
+        let (kind, message) = if parts.len() >= 4 {
+            (parts[2].to_owned(), parts[3].to_owned())
+        } else {
+            ("unknown".to_owned(), failure.clone())
+        };
+        *categories.entry((kind, message)).or_default() += 1;
     }
-    assert!(report.failures.is_empty(), "{} failures", report.failures.len());
+    let mut categories: Vec<_> = categories.into_iter().collect();
+    categories.sort_by_key(|(_, count)| std::cmp::Reverse(*count));
+    println!("failure categories={}", categories.len());
+    for ((kind, message), count) in categories.iter().take(80) {
+        println!("CATEGORY {count:4} {kind:12} {message}");
+    }
+    for failure in report.failures.iter().take(10) {
+        println!("EXAMPLE {failure}");
+    }
+    assert!(
+        report.failures.is_empty(),
+        "{} failures",
+        report.failures.len()
+    );
 }

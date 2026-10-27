@@ -10,7 +10,7 @@ pub struct Ofd {
     #[yaserde(attribute = true, rename = "Version")]
     pub version: String,
     /// 文件类型。
-    #[yaserde(attribute = true, rename = "DocType")]
+    #[yaserde(attribute = true, rename = "DocType", default = "default_doc_type")]
     pub doc_type: String,
     /// 文档入口列表。
     #[yaserde(rename = "DocBody")]
@@ -106,7 +106,7 @@ pub struct CustomData {
     #[yaserde(attribute = true, rename = "Name")]
     pub name: String,
     /// 内容。
-    #[yaserde(text = true)]
+    #[yaserde(text = true, default = "default_string")]
     pub value: String,
 }
 
@@ -135,4 +135,12 @@ pub struct VersionRef {
     /// 版本描述文件路径。
     #[yaserde(attribute = true, rename = "BaseLoc")]
     pub base_loc: StLoc,
+}
+
+fn default_doc_type() -> String {
+    "OFD".to_owned()
+}
+
+fn default_string() -> String {
+    String::new()
 }

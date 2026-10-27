@@ -10,7 +10,7 @@ use yaserde::{YaDeserialize, YaSerialize};
 
 /// 文档内对象 ID。
 #[derive(
-    Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, yaserde::PrimitiveYaSerde,
+    Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, yaserde::DefaultYaSerde,
 )]
 pub struct StId(pub u32);
 
@@ -34,7 +34,7 @@ impl From<u32> for StId {
 
 /// 资源引用 ID。
 #[derive(
-    Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, yaserde::PrimitiveYaSerde,
+    Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, yaserde::DefaultYaSerde,
 )]
 pub struct StRefId(pub u32);
 
@@ -42,6 +42,34 @@ impl StRefId {
     /// 创建资源引用 ID。
     pub fn new(value: u32) -> Self {
         Self(value)
+    }
+}
+
+impl std::fmt::Display for StId {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(formatter)
+    }
+}
+
+impl std::str::FromStr for StId {
+    type Err = std::convert::Infallible;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        Ok(Self(value.trim().parse::<u32>().unwrap_or(0)))
+    }
+}
+
+impl std::fmt::Display for StRefId {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(formatter)
+    }
+}
+
+impl std::str::FromStr for StRefId {
+    type Err = std::convert::Infallible;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        Ok(Self(value.trim().parse::<u32>().unwrap_or(0)))
     }
 }
 
@@ -235,10 +263,10 @@ crate::impl_xml_enum_codec!(DestType, Other, {
 #[yaserde(rename = "Dest")]
 pub struct Dest {
     /// 目标类型。
-    #[yaserde(attribute = true, rename = "Type")]
+    #[yaserde(attribute = true, rename = "Type", default = "default_dest_type")]
     pub dest_type: DestType,
     /// 目标页面 ID。
-    #[yaserde(attribute = true, rename = "PageID")]
+    #[yaserde(attribute = true, rename = "PageID", default = "default_st_ref_id")]
     pub page_id: StRefId,
     /// 左坐标。
     #[yaserde(attribute = true, rename = "Left")]
@@ -733,4 +761,12 @@ fn default_st_box() -> StBox {
 
 fn default_action_event() -> ActionEvent {
     ActionEvent::Do
+}
+
+fn default_dest_type() -> DestType {
+    DestType::Xyz
+}
+
+fn default_st_ref_id() -> StRefId {
+    StRefId::default()
 }

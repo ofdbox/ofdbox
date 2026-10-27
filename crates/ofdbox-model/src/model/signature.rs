@@ -43,7 +43,7 @@ pub struct SignedInfo {
 #[yaserde(rename = "Provider")]
 pub struct Provider {
     /// 提供者名称。
-    #[yaserde(attribute = true, rename = "ProviderName")]
+    #[yaserde(attribute = true, rename = "ProviderName", default = "default_string")]
     pub provider_name: String,
     /// 版本。
     #[yaserde(attribute = true, rename = "Version")]
@@ -61,7 +61,11 @@ pub struct References {
     #[yaserde(rename = "Reference")]
     pub references: Vec<Reference>,
     /// 校验方法。
-    #[yaserde(attribute = true, rename = "CheckMethod")]
+    #[yaserde(
+        attribute = true,
+        rename = "CheckMethod",
+        default = "default_check_method"
+    )]
     pub check_method: CheckMethod,
 }
 
@@ -117,6 +121,18 @@ pub struct StampAnnot {
 #[yaserde(rename = "Seal")]
 pub struct Seal {
     /// 印章基准路径。
-    #[yaserde(rename = "BaseLoc")]
+    #[yaserde(rename = "BaseLoc", default = "default_st_loc")]
     pub base_loc: StLoc,
+}
+
+fn default_check_method() -> CheckMethod {
+    CheckMethod::Md5
+}
+
+fn default_string() -> String {
+    String::new()
+}
+
+fn default_st_loc() -> StLoc {
+    StLoc::default()
 }
