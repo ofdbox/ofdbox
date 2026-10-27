@@ -53,6 +53,8 @@ pub mod schema;
 pub mod schema_xml;
 mod sign;
 mod stamp;
+#[allow(missing_docs)]
+pub mod store;
 mod write;
 mod writer;
 mod xml;
