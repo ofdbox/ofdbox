@@ -84,7 +84,6 @@ fn page_entry_ref_loads_page() {
     assert!(page.data.content.is_some());
 }
 
-
 #[test]
 #[ignore]
 fn loads_real_ofd_through_store() {

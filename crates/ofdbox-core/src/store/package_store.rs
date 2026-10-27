@@ -115,10 +115,38 @@ impl PackageStore {
     }
 
     /// 写回文件。
+    ///
+    /// 先写同目录临时文件，再替换目标文件，避免中途失败留下半包。
     pub fn save(&self, path: impl AsRef<std::path::Path>) -> Result<(), OfdError> {
+        let path = path.as_ref();
         let bytes = self.to_bytes()?;
-        std::fs::write(path, bytes)?;
-        Ok(())
+        let parent = path
+            .parent()
+            .filter(|parent| !parent.as_os_str().is_empty());
+        let parent = parent.unwrap_or_else(|| std::path::Path::new("."));
+        let file_name = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("output.ofd");
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|duration| duration.as_nanos())
+            .unwrap_or_default();
+        let temporary = parent.join(format!(".{file_name}.{}.{unique}.tmp", std::process::id()));
+
+        let result = (|| {
+            std::fs::write(&temporary, bytes)?;
+            if path.exists() {
+                std::fs::remove_file(path)?;
+            }
+            std::fs::rename(&temporary, path)?;
+            Ok(())
+        })();
+
+        if result.is_err() {
+            let _ = std::fs::remove_file(&temporary);
+        }
+        result
     }
 
     fn lock(&self) -> Result<std::sync::MutexGuard<'_, StoreState>, OfdError> {

@@ -13,12 +13,14 @@ pub use ofdbox_algo as algo;
 pub use ofdbox_core as core;
 pub use ofdbox_core::model;
 pub use ofdbox_core::model::document::{Document, PageEntry};
+pub use ofdbox_core::schema;
 pub use ofdbox_core::{
     AnnotationEditReport, AnnotationEditor, AnnotationSpec, CacheOptions, DEFAULT_SIGNATURE_METHOD,
-    EntriesVerification, EntriesWriteOptions, EntriesWriteReport, OfdError, OfdPackage, OfdWriter,
-    PackageDateTime, PackageEdits, PackageWriteOptions, PageSize, ProtectScope, ProviderInfo,
-    ReadOptions, ReferenceGraphOptions, SignatureVerifiers, SignedValueFormat, SignedValueProducer,
-    SigningReport, SigningRequest, StampAppearance,
+    EntriesVerification, EntriesWriteOptions, EntriesWriteReport, ObjectContext, OfdError,
+    OfdPackage, OfdReader, OfdWriter, PackageDateTime, PackageEdits, PackageStore,
+    PackageWriteOptions, PageSize, ProtectScope, ProviderInfo, ReadOptions, ReferenceGraphOptions,
+    SignatureVerifiers, SignedValueFormat, SignedValueProducer, SigningReport, SigningRequest,
+    StampAppearance, Stored, StoredObject,
 };
 
 #[cfg(feature = "crypto")]
@@ -62,7 +64,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// 常用类型预导入。
 pub mod prelude {
     pub use crate::{
-        CacheOptions, Document, Error, OfdPackage, PackageEdits, PackageWriteOptions, PageEntry,
-        ReadOptions, Result,
+        CacheOptions, Document, Error, OfdPackage, OfdReader, PackageEdits, PackageWriteOptions,
+        PageEntry, ReadOptions, Result, Stored,
     };
 }
