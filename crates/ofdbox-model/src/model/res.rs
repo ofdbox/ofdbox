@@ -4,7 +4,7 @@ use super::definition::{StArray, StId, StLoc, StRefId};
 use super::page::{Color, PageBlock};
 
 /// 资源文件根对象。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(Clone, Debug, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
 #[yaserde(rename = "Res")]
 pub struct Res {
     /// 资源基准路径。
@@ -37,7 +37,7 @@ pub struct ColorSpaces {
 }
 
 /// 颜色空间。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(Clone, Debug, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
 #[yaserde(rename = "ColorSpace")]
 pub struct ColorSpace {
     /// 资源 ID。
@@ -104,7 +104,7 @@ pub struct DrawParams {
 }
 
 /// 绘制参数。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(Clone, Debug, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
 #[yaserde(rename = "DrawParam")]
 pub struct DrawParam {
     /// 资源 ID。
@@ -347,4 +347,46 @@ fn default_color_space_type() -> ColorSpaceType {
 
 fn default_string() -> String {
     String::new()
+}
+
+impl Default for Res {
+    fn default() -> Self {
+        Self {
+            base_loc: StLoc::new("."),
+            color_spaces: None,
+            draw_params: None,
+            fonts: None,
+            multi_medias: None,
+            composite_graphic_units: None,
+        }
+    }
+}
+
+impl Default for ColorSpace {
+    fn default() -> Self {
+        Self {
+            id: StId::default(),
+            color_space_type: ColorSpaceType::Rgb,
+            bits_per_component: 8,
+            profile: None,
+            palette: None,
+        }
+    }
+}
+
+impl Default for DrawParam {
+    fn default() -> Self {
+        Self {
+            id: StId::default(),
+            relative: None,
+            fill_color: None,
+            stroke_color: None,
+            line_width: 0.353,
+            join: "Miter".to_owned(),
+            cap: "Butt".to_owned(),
+            dash_offset: 0.0,
+            dash_pattern: None,
+            miter_limit: 4.234,
+        }
+    }
 }

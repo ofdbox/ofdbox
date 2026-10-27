@@ -19,7 +19,7 @@ pub struct PageAnnot {
 }
 
 /// 注释。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(Clone, Debug, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
 #[yaserde(rename = "Annot")]
 pub struct Annot {
     /// 注释 ID。
@@ -35,22 +35,22 @@ pub struct Annot {
     #[yaserde(attribute = true, rename = "LastModDate")]
     pub last_mod_date: String,
     /// 是否可见。
-    #[yaserde(attribute = true, rename = "Visible")]
+    #[yaserde(attribute = true, rename = "Visible", default = "default_true")]
     pub visible: bool,
     /// 子类型。
     #[yaserde(attribute = true, rename = "Subtype")]
     pub subtype: Option<String>,
     /// 是否打印。
-    #[yaserde(attribute = true, rename = "Print")]
+    #[yaserde(attribute = true, rename = "Print", default = "default_true")]
     pub print: bool,
     /// 是否随缩放。
-    #[yaserde(attribute = true, rename = "NoZoom")]
+    #[yaserde(attribute = true, rename = "NoZoom", default = "default_false")]
     pub no_zoom: bool,
     /// 是否随旋转。
-    #[yaserde(attribute = true, rename = "NoRotate")]
+    #[yaserde(attribute = true, rename = "NoRotate", default = "default_false")]
     pub no_rotate: bool,
     /// 是否只读。
-    #[yaserde(attribute = true, rename = "ReadOnly")]
+    #[yaserde(attribute = true, rename = "ReadOnly", default = "default_true")]
     pub read_only: bool,
     /// 备注。
     #[yaserde(rename = "Remark")]
@@ -184,4 +184,32 @@ impl YaDeserialize for Appearance {
             page_block: PageBlock { objects },
         })
     }
+}
+
+impl Default for Annot {
+    fn default() -> Self {
+        Self {
+            id: StId::default(),
+            annot_type: AnnotationType::Link,
+            creator: String::new(),
+            last_mod_date: String::new(),
+            visible: true,
+            subtype: None,
+            print: true,
+            no_zoom: false,
+            no_rotate: false,
+            read_only: true,
+            remark: None,
+            parameters: None,
+            appearance: Appearance::default(),
+        }
+    }
+}
+
+fn default_true() -> bool {
+    true
+}
+
+fn default_false() -> bool {
+    false
 }

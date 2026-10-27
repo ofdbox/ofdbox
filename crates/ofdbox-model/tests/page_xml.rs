@@ -72,6 +72,10 @@ fn builds_page_with_text() {
         ..Default::default()
     };
     let written = xml::to_string(&page).expect("serialize page");
+    assert!(!written.contains("Visible="), "{written}");
+    assert!(!written.contains("LineWidth="), "{written}");
+    assert!(!written.contains(r#"Type="Body""#), "{written}");
+    assert!(!written.contains(r#"Fill=""#), "{written}");
     let reparsed: Page = xml::from_str(&written).expect("reparse page");
     assert_eq!(reparsed, page);
 }

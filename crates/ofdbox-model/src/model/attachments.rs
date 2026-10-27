@@ -12,7 +12,7 @@ pub struct Attachments {
 }
 
 /// 附件。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(Clone, Debug, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
 #[yaserde(rename = "Attachment")]
 pub struct Attachment {
     /// 附件 ID。
@@ -54,4 +54,20 @@ fn default_usage() -> String {
 
 fn default_st_loc() -> StLoc {
     StLoc::default()
+}
+
+impl Default for Attachment {
+    fn default() -> Self {
+        Self {
+            id: String::new(),
+            name: String::new(),
+            format: None,
+            creation_date: None,
+            mod_date: None,
+            size: None,
+            visible: true,
+            usage: "none".to_owned(),
+            file_loc: StLoc::default(),
+        }
+    }
 }

@@ -131,7 +131,7 @@ pub struct Outlines {
 }
 
 /// 大纲元素。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(Clone, Debug, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
 #[yaserde(rename = "OutlineElem")]
 pub struct OutlineElem {
     /// 标题。
@@ -370,4 +370,25 @@ fn default_page_area() -> PageArea {
 
 fn default_copies() -> i32 {
     -1
+}
+
+impl Default for OutlineElem {
+    fn default() -> Self {
+        Self {
+            title: String::new(),
+            count: None,
+            expanded: true,
+            actions: None,
+            children: Vec::new(),
+        }
+    }
+}
+
+impl Default for PrintPermission {
+    fn default() -> Self {
+        Self {
+            printable: false,
+            copies: -1,
+        }
+    }
 }

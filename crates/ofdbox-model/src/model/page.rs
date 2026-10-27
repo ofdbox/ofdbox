@@ -71,6 +71,75 @@ pub struct PageContent {
     pub layers: Vec<Layer>,
 }
 
+impl Default for GraphicUnit {
+    fn default() -> Self {
+        Self {
+            id: StId::default(),
+            boundary: StBox::default(),
+            name: None,
+            visible: true,
+            ctm: None,
+            draw_param: None,
+            line_width: 0.353,
+            cap: Cap::Butt,
+            join: Join::Miter,
+            miter_limit: 4.234,
+            dash_offset: 0.0,
+            dash_pattern: None,
+            alpha: 255,
+            actions: None,
+            clips: None,
+        }
+    }
+}
+
+impl Default for TextObject {
+    fn default() -> Self {
+        Self {
+            common: GraphicUnit::default(),
+            font: StRefId::default(),
+            size: 0.0,
+            stroke: false,
+            fill: true,
+            h_scale: 1.0,
+            read_direction: 0,
+            char_direction: 0,
+            weight: 400,
+            italic: false,
+            fill_color: None,
+            stroke_color: None,
+            cg_transforms: Vec::new(),
+            text_codes: Vec::new(),
+        }
+    }
+}
+
+impl Default for PathObject {
+    fn default() -> Self {
+        Self {
+            common: GraphicUnit::default(),
+            stroke_color: None,
+            fill_color: None,
+            abbreviated_data: String::new(),
+            stroke: true,
+            fill: false,
+            rule: PathRule::NonZero,
+        }
+    }
+}
+
+impl Default for Color {
+    fn default() -> Self {
+        Self {
+            value: None,
+            index: None,
+            color_space: None,
+            alpha: 255,
+            kind: None,
+        }
+    }
+}
+
 /// 图层。
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Layer {
@@ -89,9 +158,11 @@ impl YaSerialize for Layer {
         let id = self.id.to_string();
         let layer_type = self.layer_type.to_string();
         let draw_param = self.draw_param.map(|value| value.to_string());
-        let mut event = yaserde::__xml::writer::XmlEvent::start_element("Layer")
-            .attr("ID", id.as_str())
-            .attr("Type", layer_type.as_str());
+        let mut event =
+            yaserde::__xml::writer::XmlEvent::start_element("Layer").attr("ID", id.as_str());
+        if self.layer_type != LayerType::Body {
+            event = event.attr("Type", layer_type.as_str());
+        }
         if let Some(draw_param) = &draw_param {
             event = event.attr("DrawParam", draw_param.as_str());
         }
@@ -252,7 +323,7 @@ impl YaDeserialize for GraphicObject {
 }
 
 /// 图元公共属性。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(Clone, Debug, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
 pub struct GraphicUnit {
     /// 图元 ID。
     #[yaserde(attribute = true, rename = "ID", default = "default_st_id")]
@@ -346,7 +417,7 @@ crate::impl_xml_enum_codec!(Join, Other, {
 });
 
 /// 文字图元。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(Clone, Debug, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
 #[yaserde(rename = "TextObject")]
 pub struct TextObject {
     /// 公共图元属性。
@@ -445,7 +516,7 @@ pub struct CgTransform {
 }
 
 /// 路径图元。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(Clone, Debug, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
 #[yaserde(rename = "PathObject")]
 pub struct PathObject {
     /// 公共图元属性。
@@ -510,7 +581,7 @@ pub struct ImageObject {
 }
 
 /// 图像边框。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(Clone, Debug, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
 #[yaserde(rename = "Border")]
 pub struct Border {
     /// 边框颜色。
@@ -520,10 +591,18 @@ pub struct Border {
     #[yaserde(attribute = true, rename = "LineWidth", default = "default_line_width")]
     pub line_width: f64,
     /// 水平圆角半径。
-    #[yaserde(attribute = true, rename = "HorizonalCornerRadius")]
+    #[yaserde(
+        attribute = true,
+        rename = "HorizonalCornerRadius",
+        default = "default_zero_f64"
+    )]
     pub horizontal_corner_radius: f64,
     /// 垂直圆角半径。
-    #[yaserde(attribute = true, rename = "VerticalCornerRadius")]
+    #[yaserde(
+        attribute = true,
+        rename = "VerticalCornerRadius",
+        default = "default_zero_f64"
+    )]
     pub vertical_corner_radius: f64,
     /// 虚线偏移。
     #[yaserde(attribute = true, rename = "DashOffset", default = "default_zero_f64")]
@@ -743,7 +822,7 @@ pub enum ClipContent {
 }
 
 /// 颜色。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(Clone, Debug, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
 #[yaserde(rename = "Color")]
 pub struct Color {
     /// 颜色值。
@@ -876,9 +955,13 @@ impl YaSerialize for Pattern {
         let ctm = self.ctm.as_ref().map(ToString::to_string);
         let mut event = yaserde::__xml::writer::XmlEvent::start_element("Pattern")
             .attr("Width", width.as_str())
-            .attr("Height", height.as_str())
-            .attr("ReflectMethod", reflect.as_str())
-            .attr("RelativeTo", relative.as_str());
+            .attr("Height", height.as_str());
+        if self.reflect_method != PatternReflect::Normal {
+            event = event.attr("ReflectMethod", reflect.as_str());
+        }
+        if self.relative_to != PatternRelativeTo::Object {
+            event = event.attr("RelativeTo", relative.as_str());
+        }
         if let Some(value) = &x_step {
             event = event.attr("XStep", value.as_str());
         }
@@ -1030,13 +1113,13 @@ pub struct AxialShd {
     #[yaserde(rename = "Segment")]
     pub segments: Vec<ShdSegment>,
     /// 映射方式。
-    #[yaserde(attribute = true, rename = "MapType")]
+    #[yaserde(attribute = true, rename = "MapType", default = "default_map_type")]
     pub map_type: MapType,
     /// 映射单位。
     #[yaserde(attribute = true, rename = "MapUnit")]
     pub map_unit: Option<f64>,
     /// 扩展方式。
-    #[yaserde(attribute = true, rename = "Extend")]
+    #[yaserde(attribute = true, rename = "Extend", default = "default_i32_zero")]
     pub extend: i32,
     /// 起点。
     #[yaserde(attribute = true, rename = "StartPoint")]
@@ -1054,22 +1137,22 @@ pub struct RadialShd {
     #[yaserde(rename = "Segment")]
     pub segments: Vec<ShdSegment>,
     /// 映射方式。
-    #[yaserde(attribute = true, rename = "MapType")]
+    #[yaserde(attribute = true, rename = "MapType", default = "default_map_type")]
     pub map_type: MapType,
     /// 映射单位。
     #[yaserde(attribute = true, rename = "MapUnit")]
     pub map_unit: Option<f64>,
     /// 离心率。
-    #[yaserde(attribute = true, rename = "Eccentricity")]
+    #[yaserde(attribute = true, rename = "Eccentricity", default = "default_zero_f64")]
     pub eccentricity: f64,
     /// 角度。
-    #[yaserde(attribute = true, rename = "Angle")]
+    #[yaserde(attribute = true, rename = "Angle", default = "default_zero_f64")]
     pub angle: f64,
     /// 起点。
     #[yaserde(attribute = true, rename = "StartPoint")]
     pub start_point: StPos,
     /// 起始半径。
-    #[yaserde(attribute = true, rename = "StartRadius")]
+    #[yaserde(attribute = true, rename = "StartRadius", default = "default_zero_f64")]
     pub start_radius: f64,
     /// 终点。
     #[yaserde(attribute = true, rename = "EndPoint")]
@@ -1078,7 +1161,7 @@ pub struct RadialShd {
     #[yaserde(attribute = true, rename = "EndRadius")]
     pub end_radius: f64,
     /// 扩展方式。
-    #[yaserde(attribute = true, rename = "Extend")]
+    #[yaserde(attribute = true, rename = "Extend", default = "default_i32_zero")]
     pub extend: i32,
 }
 
@@ -1247,4 +1330,21 @@ fn default_template_z_order() -> TemplateZOrder {
 
 fn default_one_i32() -> i32 {
     1
+}
+
+impl Default for Border {
+    fn default() -> Self {
+        Self {
+            color: None,
+            line_width: 0.353,
+            horizontal_corner_radius: 0.0,
+            vertical_corner_radius: 0.0,
+            dash_offset: 0.0,
+            dash_pattern: None,
+        }
+    }
+}
+
+fn default_map_type() -> MapType {
+    MapType::Direct
 }
