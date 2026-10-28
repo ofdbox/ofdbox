@@ -53,7 +53,7 @@ fn builds_basic_ofd_objects() {
         },
         pages: Pages {
             pages: vec![PageEntry {
-                id: StId(2),
+                id: "2".to_owned(),
                 base_loc: StLoc::new("Pages/Page_0/Content.xml"),
             }],
         },

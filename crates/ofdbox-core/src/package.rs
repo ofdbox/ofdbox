@@ -1818,7 +1818,7 @@ impl OfdPackage {
             Ok(existing) => {
                 crate::sign::append_signature(&existing, &id, &base_loc, &id, signature_type)?
             }
-            Err(_) => crate::sign::new_signatures_xml(&id, &base_loc, signature_type).into_bytes(),
+            Err(_) => crate::sign::new_signatures_xml(&id, &base_loc, signature_type)?.into_bytes(),
         };
 
         let mut edits = PackageEdits::new();

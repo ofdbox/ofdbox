@@ -1,9 +1,16 @@
 //! `OFD.xsd`：包主入口与文档元数据。
 
+use std::io::Write;
+
+use yaserde::{
+    __xml::attribute::OwnedAttribute, __xml::namespace::Namespace, __xml::writer::XmlEvent,
+    YaSerialize,
+};
+
 use super::definition::StLoc;
 
 /// `OFD.xml` 根对象。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(Clone, Debug, Default, PartialEq, yaserde::YaDeserialize)]
 #[yaserde(rename = "OFD")]
 pub struct Ofd {
     /// 文件格式版本。
@@ -18,6 +25,33 @@ pub struct Ofd {
 }
 
 /// 文档入口。
+impl YaSerialize for Ofd {
+    fn serialize<W: Write>(&self, writer: &mut yaserde::ser::Serializer<W>) -> yaserde::Result<()> {
+        writer
+            .write(
+                XmlEvent::start_element("OFD")
+                    .attr("Version", &self.version)
+                    .attr("DocType", &self.doc_type),
+            )
+            .map_err(yaserde::Error::custom)?;
+        for body in &self.doc_bodies {
+            body.serialize(writer)?;
+        }
+        writer
+            .write(XmlEvent::end_element())
+            .map_err(yaserde::Error::custom)?;
+        Ok(())
+    }
+
+    fn serialize_attributes(
+        &self,
+        attributes: Vec<OwnedAttribute>,
+        namespace: Namespace,
+    ) -> yaserde::Result<(Vec<OwnedAttribute>, Namespace)> {
+        Ok((attributes, namespace))
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
 #[yaserde(rename = "DocBody")]
 pub struct DocBody {

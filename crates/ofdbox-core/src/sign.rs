@@ -6,11 +6,18 @@
 
 use base64::Engine;
 use quick_xml::Writer;
-use quick_xml::events::{BytesDecl, BytesEnd, BytesStart, BytesText, Event};
+use quick_xml::events::{BytesEnd, BytesStart, BytesText, Event};
 
 use crate::error::OfdError;
+use crate::schema::definition::{StBox, StLoc};
+use crate::schema::ofd::Ofd;
+use crate::schema::signature::{
+    CheckMethod, Provider, Reference, References, Signature, SignedInfo,
+    StampAnnot as SchemaStampAnnot,
+};
+use crate::schema::signatures::{SignatureRef, SignatureType, Signatures};
+use crate::schema_xml;
 use crate::stamp::{StampAnnot, StampAppearance};
-use crate::xml::namespace::OFD_NAMESPACE;
 
 /// 单个 `Reference` 的摘要校验结果。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -223,85 +230,67 @@ pub(crate) fn write_signature_xml(
     signed_value_path: &str,
     stamps: &[StampAnnot],
 ) -> Result<String, OfdError> {
-    let mut writer = Writer::new(Vec::new());
-    writer.write_event(Event::Decl(BytesDecl::new("1.0", Some("UTF-8"), None)))?;
-    write_start(
-        &mut writer,
-        "ofd:Signature",
-        &[("xmlns:ofd", OFD_NAMESPACE)],
-    )?;
-
-    write_start(&mut writer, "ofd:SignedInfo", &[])?;
-    let mut attributes = vec![("ProviderName", request.provider.name.as_str())];
-    if let Some(company) = request.provider.company.as_deref() {
-        attributes.push(("Company", company));
-    }
-    if let Some(version) = request.provider.version.as_deref() {
-        attributes.push(("Version", version));
-    }
-    if let Some(protocol) = request.provider.protocol_version.as_deref() {
-        attributes.push(("ProtocolVer", protocol));
-    }
-    write_start(&mut writer, "ofd:Provider", &attributes)?;
-    if let Some(extend_data) = request.provider.extend_data.as_deref() {
-        text_element(&mut writer, "ofd:ExtendData", extend_data)?;
-    }
-    writer.write_event(Event::End(BytesEnd::new("ofd:Provider")))?;
-
-    text_element(&mut writer, "ofd:SignatureMethod", request.signature_method)?;
-    text_element(&mut writer, "ofd:SignatureDateTime", &request.signed_at)?;
-
-    write_start(
-        &mut writer,
-        "ofd:References",
-        &[("CheckMethod", DEFAULT_CHECK_METHOD)],
-    )?;
-    for reference in references {
-        let check_value = base64::engine::general_purpose::STANDARD.encode(&reference.expected);
-        write_start(
-            &mut writer,
-            "ofd:Reference",
-            &[("FileRef", reference.file_ref.as_str())],
-        )?;
-        text_element(&mut writer, "ofd:CheckValue", &check_value)?;
-        writer.write_event(Event::End(BytesEnd::new("ofd:Reference")))?;
-    }
-    writer.write_event(Event::End(BytesEnd::new("ofd:References")))?;
-
-    for stamp in stamps {
-        let boundary = format!(
-            "{} {} {} {}",
-            stamp.boundary[0], stamp.boundary[1], stamp.boundary[2], stamp.boundary[3]
-        );
-        let clip = stamp
-            .clip
-            .map(|clip| format!("{} {} {} {}", clip[0], clip[1], clip[2], clip[3]));
-        let mut attributes = vec![
-            ("ID", stamp.id.as_str()),
-            ("PageRef", stamp.page_id.as_str()),
-            ("Boundary", boundary.as_str()),
-        ];
-        if let Some(clip) = clip.as_deref() {
-            attributes.push(("Clip", clip));
-        }
-        write_start(&mut writer, "ofd:StampAnnot", &attributes)?;
-        writer.write_event(Event::End(BytesEnd::new("ofd:StampAnnot")))?;
-    }
-
-    writer.write_event(Event::End(BytesEnd::new("ofd:SignedInfo")))?;
-    text_element(&mut writer, "ofd:SignedValue", signed_value_path)?;
-    writer.write_event(Event::End(BytesEnd::new("ofd:Signature")))?;
-
-    String::from_utf8(writer.into_inner())
-        .map_err(|error| OfdError::InvalidStructure(format!("序列化结果不是 UTF-8: {error}")))
+    let references = references
+        .iter()
+        .map(|reference| Reference {
+            file_ref: StLoc::new(reference.file_ref.clone()),
+            check_value: base64::engine::general_purpose::STANDARD.encode(&reference.expected),
+        })
+        .collect();
+    let stamp_annots = stamps
+        .iter()
+        .map(|stamp| SchemaStampAnnot {
+            id: stamp.id.clone(),
+            page_ref: stamp.page_id.clone(),
+            boundary: StBox::new(
+                stamp.boundary[0],
+                stamp.boundary[1],
+                stamp.boundary[2],
+                stamp.boundary[3],
+            ),
+            clip: stamp
+                .clip
+                .map(|clip| StBox::new(clip[0], clip[1], clip[2], clip[3])),
+        })
+        .collect();
+    let signature = Signature {
+        signed_info: SignedInfo {
+            provider: Provider {
+                provider_name: request.provider.name.clone(),
+                version: request.provider.version.clone(),
+                company: request.provider.company.clone(),
+                protocol_version: request.provider.protocol_version.clone(),
+                extend_data: request.provider.extend_data.clone(),
+            },
+            signature_method: Some(request.signature_method.to_owned()),
+            signature_date_time: Some(request.signed_at.clone()),
+            references: References {
+                references,
+                check_method: CheckMethod::Other(DEFAULT_CHECK_METHOD.to_owned()),
+            },
+            stamp_annots,
+            seal: None,
+        },
+        signed_value: StLoc::new(signed_value_path),
+    };
+    schema_xml::to_string(&signature).map_err(|error| OfdError::InvalidStructure(error.to_string()))
 }
 
 /// 新建 `Signatures.xml`。
-pub(crate) fn new_signatures_xml(id: &str, base_loc: &str, signature_type: &str) -> String {
-    format!(
-        r#"<?xml version="1.0" encoding="UTF-8"?>
-<ofd:Signatures xmlns:ofd="{OFD_NAMESPACE}"><ofd:MaxSignId>{id}</ofd:MaxSignId><ofd:Signature ID="{id}" Type="{signature_type}" BaseLoc="{base_loc}"/></ofd:Signatures>"#
-    )
+pub(crate) fn new_signatures_xml(
+    id: &str,
+    base_loc: &str,
+    signature_type: &str,
+) -> Result<String, OfdError> {
+    let index = Signatures {
+        max_sign_id: Some(id.to_owned()),
+        signatures: vec![SignatureRef {
+            id: id.to_owned(),
+            signature_type: signature_type_value(signature_type),
+            base_loc: StLoc::new(base_loc),
+        }],
+    };
+    schema_xml::to_string(&index).map_err(|error| OfdError::InvalidStructure(error.to_string()))
 }
 
 /// 在已有 `Signatures.xml` 末尾追加一条签名记录，并更新 `MaxSignId`。
@@ -312,94 +301,30 @@ pub(crate) fn append_signature(
     max_id: &str,
     signature_type: &str,
 ) -> Result<Vec<u8>, OfdError> {
-    let text = std::str::from_utf8(existing).map_err(|error| {
-        OfdError::InvalidStructure(format!("Signatures.xml 不是 UTF-8: {error}"))
-    })?;
-    let prefix = detect_prefix(text)?;
-    let root = format!("<{prefix}Signatures");
-    let entry =
-        format!(r#"<{prefix}Signature ID="{id}" Type="{signature_type}" BaseLoc="{base_loc}"/>"#);
-    let close = format!("</{prefix}Signatures>");
-    let end = text
-        .find(&close)
-        .ok_or_else(|| OfdError::InvalidStructure("Signatures.xml 缺少结束标签".to_owned()))?;
-
-    let mut output = String::with_capacity(text.len() + entry.len() + 32);
-    output.push_str(&text[..end]);
-
-    let max_tag = format!("<{prefix}MaxSignId>");
-    let max_close = format!("</{prefix}MaxSignId>");
-    if let Some(start) = output.find(&max_tag)
-        && let Some(inner) = output[start + max_tag.len()..].find(&max_close)
-    {
-        let value_start = start + max_tag.len();
-        let value_end = value_start + inner;
-        output.replace_range(value_start..value_end, max_id);
-    }
-
-    output.push_str(&entry);
-    output.push_str(&text[end..]);
-
-    if !output.contains(&max_tag) {
-        // 没有 MaxSignId：插到根开始标签之后。
-        let root_at = output
-            .find(&root)
-            .ok_or_else(|| OfdError::InvalidStructure("Signatures.xml 根元素无效".to_owned()))?;
-        let tag_end = output[root_at..]
-            .find('>')
-            .map(|offset| root_at + offset + 1)
-            .ok_or_else(|| OfdError::InvalidStructure("Signatures.xml 根元素无效".to_owned()))?;
-        let insert = format!("<{prefix}MaxSignId>{max_id}</{prefix}MaxSignId>");
-        output.insert_str(tag_end, &insert);
-    }
-
-    Ok(output.into_bytes())
+    let mut index: Signatures = schema_xml::from_bytes(existing)
+        .map_err(|error| OfdError::InvalidStructure(error.to_string()))?;
+    index.max_sign_id = Some(max_id.to_owned());
+    index.signatures.push(SignatureRef {
+        id: id.to_owned(),
+        signature_type: signature_type_value(signature_type),
+        base_loc: StLoc::new(base_loc),
+    });
+    schema_xml::to_bytes(&index).map_err(|error| OfdError::InvalidStructure(error.to_string()))
 }
 
 /// 在 `OFD.xml` 的 `DocBody` 末尾补 `Signatures` 链接。
 pub(crate) fn insert_signatures_link(root_xml: &[u8], link: &str) -> Result<Vec<u8>, OfdError> {
-    let text = std::str::from_utf8(root_xml)
-        .map_err(|error| OfdError::InvalidStructure(format!("OFD.xml 不是 UTF-8: {error}")))?;
-    let prefix = detect_prefix(text)?;
-    let close = format!("</{prefix}DocBody>");
-    let end = text
-        .find(&close)
+    let mut ofd: Ofd = schema_xml::from_bytes(root_xml)
+        .map_err(|error| OfdError::InvalidStructure(error.to_string()))?;
+    let body = ofd
+        .doc_bodies
+        .first_mut()
         .ok_or_else(|| OfdError::InvalidStructure("OFD.xml 缺少 DocBody".to_owned()))?;
-    let escaped = quick_xml::escape::escape(link);
-    let element = format!("<{prefix}Signatures>{escaped}</{prefix}Signatures>");
-    let mut output = String::with_capacity(text.len() + element.len());
-    output.push_str(&text[..end]);
-    output.push_str(&element);
-    output.push_str(&text[end..]);
-    Ok(output.into_bytes())
+    body.signatures = Some(StLoc::new(link));
+    schema_xml::to_bytes(&ofd).map_err(|error| OfdError::InvalidStructure(error.to_string()))
 }
 
-/// 取根元素前缀（含冒号），无前缀返回空串。
-fn detect_prefix(xml: &str) -> Result<String, OfdError> {
-    let mut rest = xml;
-    loop {
-        let start = rest
-            .find('<')
-            .ok_or_else(|| OfdError::InvalidStructure("XML 缺少根元素".to_owned()))?;
-        let after = &rest[start + 1..];
-        if after.starts_with('?') || after.starts_with('!') {
-            rest = &after[after.find('>').map(|i| i + 1).unwrap_or(after.len())..];
-            continue;
-        }
-        let name_end = after
-            .find(|ch: char| ch.is_whitespace() || ch == '>' || ch == '/')
-            .unwrap_or(after.len());
-        let name = &after[..name_end];
-        return Ok(match name.split_once(':') {
-            Some((prefix, _)) => format!("{prefix}:"),
-            None => String::new(),
-        });
-    }
-}
-
-fn text_element(writer: &mut Writer<Vec<u8>>, name: &str, value: &str) -> Result<(), OfdError> {
-    write_start(writer, name, &[])?;
-    writer.write_event(Event::Text(BytesText::new(value)))?;
-    writer.write_event(Event::End(BytesEnd::new(name)))?;
-    Ok(())
+fn signature_type_value(value: &str) -> SignatureType {
+    // 写回时保留 Type 属性；Seal/Sign 的默认值不应被省略。
+    SignatureType::Other(value.to_owned())
 }

@@ -115,7 +115,7 @@ pub struct Pages {
 pub struct PageEntry {
     /// 页面 ID。
     #[yaserde(attribute = true, rename = "ID")]
-    pub id: StId,
+    pub id: String,
     /// 页面内容路径。
     #[yaserde(attribute = true, rename = "BaseLoc")]
     pub base_loc: StLoc,

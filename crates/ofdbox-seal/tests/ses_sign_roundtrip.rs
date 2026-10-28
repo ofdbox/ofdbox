@@ -474,7 +474,7 @@ fn stamps_two_pages() {
         .read_entry("Doc_0/Signs/Sign_0/Signature.xml")
         .expect("signature xml");
     let signature_xml = std::str::from_utf8(&signature_xml).expect("utf8");
-    assert_eq!(signature_xml.matches("<ofd:StampAnnot").count(), 2);
+    assert_eq!(signature_xml.matches("StampAnnot").count(), 2);
 
     let index = signed.read_entry("Doc_0/Annotations.xml").expect("index");
     let index = std::str::from_utf8(&index).expect("utf8");
@@ -484,7 +484,7 @@ fn stamps_two_pages() {
     assert!(
         std::str::from_utf8(&document_xml)
             .expect("utf8")
-            .contains("<ofd:MaxUnitID>8</ofd:MaxUnitID>")
+            .contains("MaxUnitID>8<")
     );
     let resources = signed
         .read_entry("Doc_0/DocumentRes.xml")

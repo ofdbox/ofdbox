@@ -5,7 +5,7 @@ use crate::schema::annotation::PageAnnot;
 use crate::schema::annotations::Annotations;
 use crate::schema::attachments::Attachments;
 use crate::schema::custom_tags::CustomTags;
-use crate::schema::definition::{StId, StLoc};
+use crate::schema::definition::StLoc;
 use crate::schema::document::{Document, PageEntry};
 use crate::schema::extensions::Extensions;
 use crate::schema::ofd::{DocBody, Ofd};
@@ -43,7 +43,7 @@ impl Stored<Document> {
             .pages
             .pages
             .iter()
-            .find(|entry| entry.id.to_string() == id)
+            .find(|entry| entry.id == id)
             .ok_or_else(|| OfdError::InvalidStructure(format!("页面不存在: {id}")))?;
 
         self.page_entry(entry)
@@ -92,11 +92,11 @@ impl Stored<Document> {
             .pages
             .pages
             .iter()
-            .map(|entry| entry.id.0)
+            .map(|entry| entry.id.parse::<u32>().unwrap_or(0))
             .max()
             .unwrap_or(0)
             + 1;
-        let id = StId(next_id);
+        let id = next_id.to_string();
         let base_loc = StLoc::new(format!("Pages/Page_{next_id}/Content.xml"));
         let location = self.context().resolve(&base_loc)?;
         let page_context = ObjectContext::child(self.context(), location.clone())?;
@@ -160,7 +160,7 @@ impl Stored<Annotations> {
             .data
             .pages
             .iter()
-            .find(|page| page.page_id.to_string() == page_id)
+            .find(|page| page.page_id == page_id)
             .ok_or_else(|| OfdError::InvalidStructure(format!("页面注释不存在: {page_id}")))?;
 
         let location = self.context().resolve(&page.file_loc)?;
@@ -205,7 +205,7 @@ impl<'a> PageEntryRef<'a> {
     }
 
     /// 页面 ID。
-    pub fn id(&self) -> &crate::schema::definition::StId {
+    pub fn id(&self) -> &String {
         &self.entry.id
     }
 

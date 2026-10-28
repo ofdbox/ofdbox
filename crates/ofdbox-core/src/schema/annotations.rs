@@ -1,6 +1,6 @@
 //! `Annotations.xsd`：按页组织的注释索引。
 
-use super::definition::{StLoc, StRefId};
+use super::definition::StLoc;
 
 /// `Annotations.xml` 根对象。
 #[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
@@ -17,7 +17,7 @@ pub struct Annotations {
 pub struct AnnotationsPage {
     /// 页面 ID。
     #[yaserde(attribute = true, rename = "PageID")]
-    pub page_id: StRefId,
+    pub page_id: String,
     /// 注释文件路径。
     #[yaserde(rename = "FileLoc")]
     pub file_loc: StLoc,

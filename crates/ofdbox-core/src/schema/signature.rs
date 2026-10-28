@@ -1,6 +1,6 @@
 //! `Signature.xsd`：签名/签章描述文件。
 
-use super::definition::{StBox, StLoc, StRefId};
+use super::definition::{StBox, StLoc};
 
 /// `Signature.xml` 根对象。
 #[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
@@ -51,6 +51,12 @@ pub struct Provider {
     /// 公司。
     #[yaserde(attribute = true, rename = "Company")]
     pub company: Option<String>,
+    /// 接口协议版本。
+    #[yaserde(attribute = true, rename = "ProtocolVer")]
+    pub protocol_version: Option<String>,
+    /// 组件扩展信息。
+    #[yaserde(rename = "ExtendData")]
+    pub extend_data: Option<String>,
 }
 
 /// 引用集合。
@@ -107,7 +113,7 @@ pub struct StampAnnot {
     pub id: String,
     /// 页面引用。
     #[yaserde(attribute = true, rename = "PageRef")]
-    pub page_ref: StRefId,
+    pub page_ref: String,
     /// 边界。
     #[yaserde(attribute = true, rename = "Boundary")]
     pub boundary: StBox,
