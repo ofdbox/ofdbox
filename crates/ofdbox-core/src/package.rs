@@ -124,16 +124,10 @@ pub struct EntriesWriteReport {
 pub struct CacheStats {
     /// 当前 entry 字节缓存占用。
     pub entry_bytes: usize,
-    /// 当前 XML 语法树缓存占用。
-    pub xml_bytes: usize,
     /// entry 缓存命中次数。
     pub entry_hits: u64,
     /// entry 缓存未命中次数。
     pub entry_misses: u64,
-    /// XML 缓存命中次数。
-    pub xml_hits: u64,
-    /// XML 缓存未命中次数。
-    pub xml_misses: u64,
     /// 解密后明文缓存占用。
     pub plain_bytes: usize,
     /// 明文缓存命中次数。
@@ -537,20 +531,6 @@ impl OfdPackage {
             .map(|operation| operation.default_key.clone())
     }
 
-    /// 所有加密操作的 EntriesMap 路径。
-    pub fn entries_map_locs(&mut self) -> Result<Vec<String>, OfdError> {
-        let encryptions = self.parse_encryptions()?;
-        Ok(encryptions
-            .encrypt_infos
-            .iter()
-            .filter_map(|info| {
-                info.entries_map_loc
-                    .as_ref()
-                    .map(|loc| loc.as_str().to_owned())
-            })
-            .collect())
-    }
-
     /// 按解密顺序返回操作索引与 EntriesMap 路径。
     pub fn ordered_entries_maps(&self) -> Vec<(usize, String)> {
         self.decryption
@@ -566,26 +546,6 @@ impl OfdPackage {
                             .entries_map_loc
                             .as_ref()
                             .map(|loc| (index, loc.as_str().to_owned()))
-                    })
-                    .collect()
-            })
-            .unwrap_or_default()
-    }
-
-    /// 按解密顺序返回所有 EntriesMap 路径。
-    pub fn ordered_entries_map_locs(&self) -> Vec<String> {
-        self.decryption
-            .as_ref()
-            .map(|context| {
-                context
-                    .operations
-                    .iter()
-                    .filter_map(|operation| {
-                        operation
-                            .info
-                            .entries_map_loc
-                            .as_ref()
-                            .map(|loc| loc.as_str().to_owned())
                     })
                     .collect()
             })
@@ -630,19 +590,6 @@ impl OfdPackage {
             .operations
             .get(index)
             .ok_or_else(|| OfdError::InvalidStructure("加密层索引越界".to_owned()))?;
-        context.backend.encrypt(&operation.default_key, data)
-    }
-
-    /// 使用默认文件密钥加密新增 entry。
-    pub fn encrypt_new_entry(&self, data: &[u8]) -> Result<Vec<u8>, OfdError> {
-        let context = self
-            .decryption
-            .as_ref()
-            .ok_or(OfdError::EncryptionRequired)?;
-        let operation = context
-            .operations
-            .first()
-            .ok_or_else(|| OfdError::InvalidStructure("缺少加密操作".to_owned()))?;
         context.backend.encrypt(&operation.default_key, data)
     }
 
@@ -831,26 +778,6 @@ impl OfdPackage {
     pub fn parse_entries_map(&mut self, loc: &str) -> Result<EncryptedEntries, OfdError> {
         let entry = resolve_loc("", loc)?;
         let bytes = self.read_entry(&entry)?;
-        crate::model_xml::from_bytes(&bytes)
-            .map_err(|error| OfdError::InvalidStructure(error.to_string()))
-    }
-
-    /// 解析明密文映射表；如果表中内容不是 XML，则用默认文件密钥解密。
-    pub fn parse_entries_map_decrypted(&mut self, loc: &str) -> Result<EncryptedEntries, OfdError> {
-        let entry = resolve_loc("", loc)?;
-        let raw = self.read_raw_entry(&entry)?;
-        let bytes = if looks_like_xml(&raw) {
-            raw.to_vec()
-        } else {
-            let key = self
-                .default_encryption_key()
-                .ok_or(OfdError::EncryptionRequired)?;
-            let context = self
-                .decryption
-                .as_ref()
-                .ok_or(OfdError::EncryptionRequired)?;
-            context.backend.decrypt(&key, &raw)?
-        };
         crate::model_xml::from_bytes(&bytes)
             .map_err(|error| OfdError::InvalidStructure(error.to_string()))
     }
@@ -1301,11 +1228,8 @@ impl OfdPackage {
         let plain = self.plain_cache.stats();
         CacheStats {
             entry_bytes: entry.bytes,
-            xml_bytes: 0,
             entry_hits: entry.hits,
             entry_misses: entry.misses,
-            xml_hits: 0,
-            xml_misses: 0,
             plain_bytes: plain.bytes,
             plain_hits: plain.hits,
             plain_misses: plain.misses,
