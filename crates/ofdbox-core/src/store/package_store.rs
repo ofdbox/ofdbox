@@ -69,6 +69,9 @@ impl PackageStore {
     }
 
     fn extract(package: &mut OfdPackage, storage: Storage) -> Result<Self, OfdError> {
+        if package.contains("Encryptions.xml") {
+            return Err(OfdError::EncryptionRequired);
+        }
         let store = Self::create(storage)?;
         let names = package.entry_names()?;
         for name in names {
