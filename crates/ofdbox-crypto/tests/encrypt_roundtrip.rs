@@ -1,7 +1,9 @@
 use std::io::{Cursor, Read, Write};
 
-use ofdbox_core::{OfdError, OfdPackage};
-use ofdbox_crypto::{EncryptOptions, EncryptionRecipient, PasswordBackend, encrypt_package};
+use ofdbox_core::{OfdError, OfdFile, OfdPackage};
+use ofdbox_crypto::{
+    EncryptOptions, EncryptionRecipient, PasswordBackend, edit_encrypted, encrypt_package,
+};
 use zip::ZipWriter;
 use zip::write::SimpleFileOptions;
 
@@ -260,4 +262,34 @@ fn decrypts_with_each_password_recipient() {
             .enable_decryption(Box::new(PasswordBackend::new("wrong")))
             .is_err()
     );
+}
+
+#[test]
+fn edits_encrypted_package_and_reencrypts() {
+    let plain = zip_with_entries(&[
+        ("OFD.xml", ROOT.as_bytes()),
+        ("Doc_0/Document.xml", DOCUMENT.as_bytes()),
+    ]);
+    let options = EncryptOptions::password("alice", "secret");
+    let encrypted = encrypt_package(&plain, &options).expect("encrypt");
+
+    let output = edit_encrypted(
+        &encrypted,
+        Box::new(PasswordBackend::new("secret")),
+        &options,
+        |file: &mut OfdFile| {
+            let ofd = file.ofd()?;
+            let _ = ofd.document(0)?;
+            Ok(())
+        },
+    )
+    .expect("edit encrypted");
+
+    let mut reopened = OfdPackage::from_bytes(output).expect("reopen");
+    reopened
+        .enable_decryption(Box::new(PasswordBackend::new("secret")))
+        .expect("decrypt edited");
+    reopened
+        .parse_document_schema()
+        .expect("document after edit");
 }

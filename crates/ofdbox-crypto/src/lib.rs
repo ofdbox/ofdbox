@@ -16,6 +16,7 @@ mod backend;
 mod certificate;
 mod cipher;
 mod digest;
+mod edit;
 mod encrypt;
 mod entries;
 mod error;
@@ -32,6 +33,7 @@ pub use certificate::{
 };
 pub use cipher::{decrypt_cbc, encrypt_cbc};
 pub use digest::sm3_digest;
+pub use edit::edit_encrypted;
 #[cfg(not(target_arch = "wasm32"))]
 pub use encrypt::encrypt_package;
 pub use encrypt::{
