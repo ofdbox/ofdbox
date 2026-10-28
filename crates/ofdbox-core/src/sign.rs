@@ -5,8 +5,6 @@
 //! （SM2 → GB/T 35275，签章 → GB/T 38540）。
 
 use base64::Engine;
-use quick_xml::Writer;
-use quick_xml::events::{BytesEnd, BytesStart, BytesText, Event};
 
 use crate::error::OfdError;
 use crate::schema::definition::{StBox, StLoc};
@@ -37,30 +35,6 @@ impl ReferenceDigest {
     pub fn matches(&self) -> bool {
         self.expected == self.actual
     }
-}
-
-pub(crate) fn write_start(
-    writer: &mut Writer<Vec<u8>>,
-    name: &str,
-    attributes: &[(&str, &str)],
-) -> Result<(), OfdError> {
-    let mut start = BytesStart::new(name);
-    for (key, value) in attributes {
-        start.push_attribute((*key, *value));
-    }
-    writer.write_event(Event::Start(start))?;
-    Ok(())
-}
-
-pub(crate) fn write_text_element(
-    writer: &mut Writer<Vec<u8>>,
-    name: &str,
-    value: &str,
-) -> Result<(), OfdError> {
-    writer.write_event(Event::Start(BytesStart::new(name)))?;
-    writer.write_event(Event::Text(BytesText::new(value)))?;
-    writer.write_event(Event::End(BytesEnd::new(name)))?;
-    Ok(())
 }
 
 /// 默认签名算法标识（SM2 with SM3）。

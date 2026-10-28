@@ -7,6 +7,7 @@ pub mod annotations;
 pub mod attachments;
 pub mod custom_tags;
 pub mod definition;
+pub mod doc_entries;
 pub mod document;
 pub mod extensions;
 pub mod ofd;

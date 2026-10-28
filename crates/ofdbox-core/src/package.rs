@@ -2,8 +2,6 @@ use std::collections::{HashMap, HashSet};
 use std::io::{Cursor, Read, Seek, Write};
 use std::sync::Arc;
 
-use quick_xml::Writer;
-use quick_xml::events::{BytesDecl, BytesEnd, Event};
 use zip::ZipArchive;
 
 use crate::cache::ByteLruCache;
@@ -28,12 +26,14 @@ use crate::package_write::{
     DecryptedWriteReport, ExistingEntry, PackageEdits, PackageWriteOptions, PlanItem, copy_raw,
     write_plain_entry,
 };
+use crate::schema::doc_entries::{
+    DocEntries as SchemaDocEntries, File as DocEntryFile, FileList as DocEntryFileList,
+};
 use crate::sign::ReferenceDigest;
 use crate::sign::{
     DEFAULT_SIGNATURE_METHOD, ProtectScope, SignedValueProducer, SigningContext, SigningReport,
     SigningRequest,
 };
-use crate::sign::{write_start, write_text_element};
 use crate::xml::parser::parse_xml;
 use crate::xml::tree::XmlDocument;
 
@@ -2135,38 +2135,25 @@ fn build_entries_xml(
     files: &[String],
     signed_value: &str,
 ) -> Result<Vec<u8>, OfdError> {
-    let mut writer = Writer::new(Vec::new());
-    writer.write_event(Event::Decl(BytesDecl::new("1.0", Some("UTF-8"), None)))?;
-    let mut attributes = vec![
-        ("xmlns:ofd", crate::xml::namespace::OFD_NAMESPACE),
-        ("ID", options.id.as_str()),
-    ];
-    if let Some(value) = options.creator_name.as_deref() {
-        attributes.push(("CreatorName", value));
-    }
-    if let Some(value) = options.version.as_deref() {
-        attributes.push(("Version", value));
-    }
-    if let Some(value) = options.creation_date.as_deref() {
-        attributes.push(("CreationDate", value));
-    }
-    write_start(&mut writer, "ofd:DocEntries", &attributes)?;
-
-    write_start(&mut writer, "ofd:FileList", &[])?;
-    for (index, path) in files.iter().enumerate() {
-        let id = format!("f{}", index + 1);
-        write_start(
-            &mut writer,
-            "ofd:File",
-            &[("ID", id.as_str()), ("FileLoc", path.as_str())],
-        )?;
-        writer.write_event(Event::End(BytesEnd::new("ofd:File")))?;
-    }
-    writer.write_event(Event::End(BytesEnd::new("ofd:FileList")))?;
-
-    write_text_element(&mut writer, "ofd:SignedValueLoc", signed_value)?;
-    writer.write_event(Event::End(BytesEnd::new("ofd:DocEntries")))?;
-    Ok(writer.into_inner())
+    let entries = SchemaDocEntries {
+        id: options.id.clone(),
+        creator_name: options.creator_name.clone(),
+        version: options.version.clone(),
+        creation_date: options.creation_date.clone(),
+        file_list: DocEntryFileList {
+            files: files
+                .iter()
+                .enumerate()
+                .map(|(index, path)| DocEntryFile {
+                    id: format!("f{}", index + 1),
+                    file_loc: crate::schema::definition::StLoc::new(path),
+                })
+                .collect(),
+        },
+        signed_value_loc: crate::schema::definition::StLoc::new(signed_value),
+    };
+    crate::schema_xml::to_bytes(&entries)
+        .map_err(|error| OfdError::InvalidStructure(error.to_string()))
 }
 
 #[cfg(test)]
