@@ -17,12 +17,7 @@ use crate::package::{OfdPackage, entry_key, parent_dir, resolve_loc};
 ///
 /// 模型化后不再支持按任意 XML 元素名扩展。
 #[derive(Clone, Debug, Default)]
-pub struct ReferenceGraphOptions {
-    /// 保留字段，当前忽略。
-    pub extra_text_refs: Vec<String>,
-    /// 保留字段，当前忽略。
-    pub extra_attribute_refs: Vec<String>,
-}
+pub struct ReferenceGraphOptions {}
 
 pub(crate) fn referenced_entries_with(
     package: &mut OfdPackage,

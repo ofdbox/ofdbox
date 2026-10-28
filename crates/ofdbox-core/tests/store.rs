@@ -43,7 +43,6 @@ fn loads_saves_and_reloads_page_through_store() {
         bytes,
         OpenOptions {
             storage: OpenStorage::Memory,
-            ..Default::default()
         },
     )
     .expect("open reader");
@@ -87,7 +86,6 @@ fn page_entry_ref_loads_page() {
         bytes,
         OpenOptions {
             storage: OpenStorage::Memory,
-            ..Default::default()
         },
     )
     .expect("open");

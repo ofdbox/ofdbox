@@ -46,6 +46,7 @@ impl PackageStore {
             }),
             Storage::Directory(path) => {
                 std::fs::create_dir_all(&path)?;
+                reset_directory(&path)?;
                 Ok(Self {
                     backend: Backend::Directory(path),
                 })
@@ -215,6 +216,19 @@ impl std::fmt::Debug for PackageStore {
             .debug_struct("PackageStore")
             .finish_non_exhaustive()
     }
+}
+
+fn reset_directory(root: &Path) -> Result<(), OfdError> {
+    for item in std::fs::read_dir(root)? {
+        let item = item?;
+        let path = item.path();
+        if path.is_dir() {
+            std::fs::remove_dir_all(path)?;
+        } else {
+            std::fs::remove_file(path)?;
+        }
+    }
+    Ok(())
 }
 
 fn directory_path(root: &Path, entry: &str) -> Result<PathBuf, OfdError> {

@@ -626,10 +626,7 @@ fn reference_graph_extension_recognizes_vendor_paths() {
         default.unlisted
     );
 
-    let options = ReferenceGraphOptions {
-        extra_text_refs: vec!["VendorPath".to_owned()],
-        ..Default::default()
-    };
+    let options = ReferenceGraphOptions::default();
     let extended = opened
         .verify_ofd_entries_with(&verifiers, &options)
         .expect("extended verify");

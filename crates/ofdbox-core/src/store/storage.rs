@@ -42,6 +42,4 @@ pub struct CreateOptions {
 pub struct OpenOptions {
     /// 打开方式。
     pub storage: OpenStorage,
-    /// 预留的口令。
-    pub password: Option<String>,
 }
