@@ -94,13 +94,11 @@ pub(crate) fn prepare(
     let annotations_entry = resolve_loc(&doc_dir, &annotations)?;
     let document_res_entry = resolve_loc(&doc_dir, &document_res)?;
 
-    let pages: std::collections::HashSet<String> = package
-        .parse_document()?
-        .pages()
-        .map(|pages| {
-            pages
-                .pages()
-                .filter_map(|page| page.id().map(str::to_owned))
+    let pages: std::collections::HashSet<String> = child(&document_doc, document_root, "Pages")
+        .map(|pages_node| {
+            document_doc
+                .children_named(pages_node, "Page")
+                .filter_map(|page| document_doc.attribute(page, "ID").map(str::to_owned))
                 .collect()
         })
         .unwrap_or_default();
