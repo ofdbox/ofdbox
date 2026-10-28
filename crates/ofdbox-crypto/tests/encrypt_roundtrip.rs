@@ -3,7 +3,8 @@ use std::io::{Cursor, Read, Write};
 use ofdbox_core::model::page::{GraphicObject, Page};
 use ofdbox_core::{OfdError, OfdFile, OfdPackage};
 use ofdbox_crypto::{
-    EncryptOptions, EncryptionRecipient, PasswordBackend, edit_encrypted, encrypt_package,
+    EncryptOptions, EncryptionRecipient, PasswordBackend, edit_encrypted,
+    edit_encrypted_preserving, encrypt_package,
 };
 use zip::ZipWriter;
 use zip::write::SimpleFileOptions;
@@ -61,6 +62,7 @@ fn wrong_password_fails() {
     let plain = zip_with_entries(&[
         ("OFD.xml", ROOT.as_bytes()),
         ("Doc_0/Document.xml", DOCUMENT.as_bytes()),
+        ("Doc_0/Res/a.bin", b"\x00\x01\x02\x03"),
     ]);
     let encrypted =
         encrypt_package(&plain, &EncryptOptions::password("alice", "secret")).expect("encrypt");
@@ -329,7 +331,6 @@ fn edits_encrypted_page_and_reencrypts() {
             };
             text.text_codes[0].text = "after".to_owned();
             page.save()?;
-            document.save()?;
             Ok(())
         },
     )
@@ -343,6 +344,73 @@ fn edits_encrypted_page_and_reencrypts() {
         .read_entry("Doc_0/Pages/Page_0/Content.xml")
         .expect("page");
     let page: Page = ofdbox_core::model_xml::from_bytes(&bytes).expect("parse page");
+    let GraphicObject::Text(text) = &page.content.as_ref().unwrap().layers[0].objects[0] else {
+        panic!("not text");
+    };
+    assert_eq!(text.text_codes[0].text, "after");
+}
+
+#[test]
+fn preserves_unmodified_encrypted_entries() {
+    let plain = zip_with_entries(&[
+        ("OFD.xml", ROOT.as_bytes()),
+        ("Doc_0/Document.xml", DOCUMENT.as_bytes()),
+        ("Doc_0/Pages/Page_0/Content.xml", PAGE.as_bytes()),
+    ]);
+    let options = EncryptOptions::password("alice", "secret");
+    let encrypted = encrypt_package(&plain, &options).expect("encrypt");
+
+    let mut original = OfdPackage::from_bytes(encrypted.clone()).expect("open original");
+    original
+        .enable_decryption(Box::new(PasswordBackend::new("secret")))
+        .expect("decrypt original");
+    let physical = original
+        .encrypted_entry_info("Doc_0/Document.xml")
+        .expect("info")
+        .expect("encrypted")
+        .0;
+    let resource_before = original
+        .read_raw_entry(&physical)
+        .expect("raw resource")
+        .to_vec();
+
+    let output = edit_encrypted_preserving(
+        &encrypted,
+        Box::new(PasswordBackend::new("secret")),
+        |file: &mut OfdFile| {
+            let document = file.document(0)?;
+            let mut page = document.page("1")?;
+            let GraphicObject::Text(text) =
+                &mut page.data.content.as_mut().unwrap().layers[0].objects[0]
+            else {
+                return Err(OfdError::InvalidStructure("not text".to_owned()));
+            };
+            text.text_codes[0].text = "after".to_owned();
+            page.save()?;
+            Ok(())
+        },
+    )
+    .expect("preserving edit");
+
+    let mut edited = OfdPackage::from_bytes(output).expect("open edited");
+    edited
+        .enable_decryption(Box::new(PasswordBackend::new("secret")))
+        .expect("decrypt edited");
+    let physical = edited
+        .encrypted_entry_info("Doc_0/Document.xml")
+        .expect("info")
+        .expect("encrypted")
+        .0;
+    let resource_after = edited
+        .read_raw_entry(&physical)
+        .expect("raw resource after")
+        .to_vec();
+    assert_eq!(resource_before, resource_after);
+
+    let page_bytes = edited
+        .read_entry("Doc_0/Pages/Page_0/Content.xml")
+        .expect("page");
+    let page: Page = ofdbox_core::model_xml::from_bytes(&page_bytes).expect("parse page");
     let GraphicObject::Text(text) = &page.content.as_ref().unwrap().layers[0].objects[0] else {
         panic!("not text");
     };

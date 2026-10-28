@@ -374,7 +374,8 @@ impl OfdPackage {
         Ok(())
     }
 
-    fn decryption_operation_count(&self) -> usize {
+    /// 当前解密会话的操作层数。
+    pub fn decryption_operation_count(&self) -> usize {
         self.decryption
             .as_ref()
             .map(|context| context.operations.len())
@@ -476,7 +477,8 @@ impl OfdPackage {
             .unwrap_or_else(|| name.to_owned())
     }
 
-    fn read_raw_entry(&mut self, name: &str) -> Result<Arc<[u8]>, OfdError> {
+    /// 读取 entry 的原始字节（不解密）。
+    pub fn read_raw_entry(&mut self, name: &str) -> Result<Arc<[u8]>, OfdError> {
         if let Some(bytes) = self.entry_cache.get(&name.to_owned()) {
             return Ok(bytes);
         }
@@ -513,6 +515,35 @@ impl OfdPackage {
     }
 
     /// 以 schema 解析 `OFD.xml`。
+    /// 查询逻辑 entry 的物理加密路径和文件密钥。
+    pub fn encrypted_entry_info(
+        &mut self,
+        name: &str,
+    ) -> Result<Option<(String, FileKey)>, OfdError> {
+        let name = normalize_entry_name(name)?;
+        let Some(layer) = self.decryption_layer(&name) else {
+            return Ok(None);
+        };
+        let physical = self.layer_physical(layer, &name)?;
+        let key = self.layer_key(layer, &name)?;
+        Ok(Some((physical, key)))
+    }
+
+    /// 使用当前解密会话的密钥重新加密逻辑 entry。
+    pub fn encrypt_entry(&mut self, name: &str, data: &[u8]) -> Result<Vec<u8>, OfdError> {
+        let name = normalize_entry_name(name)?;
+        let Some(layer) = self.decryption_layer(&name) else {
+            return Ok(data.to_vec());
+        };
+        let key = self.layer_key(layer, &name)?;
+        let context = self
+            .decryption
+            .as_ref()
+            .ok_or(OfdError::EncryptionRequired)?;
+        context.backend.encrypt(&key, data)
+    }
+
+    /// 以模型解析 `OFD.xml`。
     pub fn parse_root_schema(&mut self) -> Result<crate::model::ofd::Ofd, OfdError> {
         let entry = self.root_entry_name()?;
         let bytes = self.read_entry(&entry)?;
@@ -1140,6 +1171,19 @@ impl OfdPackage {
                 "加密包不支持直接替换 entry，请先 write_decrypted_to 另存为未加密包".to_owned(),
             ));
         }
+        let existing = self.existing_entries()?;
+        let normalized = edits.normalized()?;
+        let plan = crate::package_write::plan(&existing, &normalized, options)?;
+        self.execute_plan(writer, plan, options)
+    }
+
+    /// 写入已被调用方正确重新加密的 edits，不检查源包是否加密。
+    pub fn write_with_encrypted(
+        &mut self,
+        writer: &mut (impl Write + Seek),
+        edits: &PackageEdits,
+        options: &PackageWriteOptions,
+    ) -> Result<(), OfdError> {
         let existing = self.existing_entries()?;
         let normalized = edits.normalized()?;
         let plan = crate::package_write::plan(&existing, &normalized, options)?;

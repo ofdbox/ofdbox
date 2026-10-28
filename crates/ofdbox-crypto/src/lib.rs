@@ -33,7 +33,7 @@ pub use certificate::{
 };
 pub use cipher::{decrypt_cbc, encrypt_cbc};
 pub use digest::sm3_digest;
-pub use edit::edit_encrypted;
+pub use edit::{edit_encrypted, edit_encrypted_preserving};
 #[cfg(not(target_arch = "wasm32"))]
 pub use encrypt::encrypt_package;
 pub use encrypt::{

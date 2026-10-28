@@ -89,6 +89,11 @@ pub trait CryptoBackend {
     /// 解密包内文件或明密文映射表。
     fn decrypt(&self, key: &FileKey, data: &[u8]) -> Result<Vec<u8>, OfdError>;
 
+    /// 按已有文件密钥重新加密 entry。
+    fn encrypt(&self, _key: &FileKey, _data: &[u8]) -> Result<Vec<u8>, OfdError> {
+        Err(OfdError::UnsupportedScheme("encrypt".to_owned()))
+    }
+
     /// 解密并写入输出 sink；默认实现先完整解密。
     fn decrypt_to(
         &self,
@@ -164,6 +169,14 @@ impl CryptoBackend for CryptoRegistry {
             }
         }
         Err(OfdError::UnsupportedScheme(scheme.to_owned()))
+    }
+
+    fn encrypt(&self, key: &FileKey, data: &[u8]) -> Result<Vec<u8>, OfdError> {
+        let scheme = key.scheme().unwrap_or_default();
+        let backend = self
+            .backend_for(scheme)
+            .ok_or_else(|| OfdError::UnsupportedScheme(scheme.to_owned()))?;
+        backend.encrypt(key, data)
     }
 
     fn decrypt(&self, key: &FileKey, data: &[u8]) -> Result<Vec<u8>, OfdError> {

@@ -74,6 +74,11 @@ impl CryptoBackend for PasswordBackend {
             .map_err(|_| OfdError::Crypto("SM4 解密失败".to_owned()))
     }
 
+    fn encrypt(&self, key: &FileKey, data: &[u8]) -> Result<Vec<u8>, OfdError> {
+        crate::cipher::encrypt_cbc(key.key(), key.iv(), data)
+            .map_err(|_| OfdError::Crypto("SM4 加密失败".to_owned()))
+    }
+
     fn decrypt_to(
         &self,
         key: &FileKey,
@@ -149,6 +154,11 @@ impl CryptoBackend for CertificateBackend {
     fn decrypt(&self, key: &FileKey, data: &[u8]) -> Result<Vec<u8>, OfdError> {
         crate::cipher::decrypt_cbc(key.key(), key.iv(), data)
             .map_err(|_| OfdError::Crypto("SM4 解密失败".to_owned()))
+    }
+
+    fn encrypt(&self, key: &FileKey, data: &[u8]) -> Result<Vec<u8>, OfdError> {
+        crate::cipher::encrypt_cbc(key.key(), key.iv(), data)
+            .map_err(|_| OfdError::Crypto("SM4 加密失败".to_owned()))
     }
 
     fn decrypt_to(
