@@ -6,7 +6,9 @@ use ofdbox_yaserde::de::Deserializer;
 use ofdbox_yaserde::ser::Serializer;
 use ofdbox_yaserde::{YaDeserialize, YaSerialize};
 
-use super::definition::{Action, Actions, PageArea, StArray, StBox, StId, StLoc, StPos, StRefId};
+use super::definition::{
+    Action, Actions, ColorArray, DeltaArray, PageArea, StArray, StBox, StId, StLoc, StPos, StRefId,
+};
 
 /// `Content.xml` 根对象。
 #[derive(
@@ -505,10 +507,10 @@ pub struct TextCode {
     pub y: Option<f64>,
     /// X 增量。
     #[yaserde(attribute = true, rename = "DeltaX")]
-    pub delta_x: Option<StArray>,
+    pub delta_x: Option<DeltaArray>,
     /// Y 增量。
     #[yaserde(attribute = true, rename = "DeltaY")]
-    pub delta_y: Option<StArray>,
+    pub delta_y: Option<DeltaArray>,
     /// 文本。
     #[yaserde(text = true, default = "default_string")]
     pub text: String,
@@ -883,7 +885,7 @@ pub enum ClipContent {
 pub struct Color {
     /// 颜色值。
     #[yaserde(attribute = true, rename = "Value")]
-    pub value: Option<StArray>,
+    pub value: Option<ColorArray>,
     /// 颜色索引。
     #[yaserde(attribute = true, rename = "Index")]
     pub index: Option<i32>,

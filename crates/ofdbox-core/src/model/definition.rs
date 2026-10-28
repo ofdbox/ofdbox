@@ -190,6 +190,105 @@ impl std::str::FromStr for StArray {
     }
 }
 
+/// 颜色分量数组。
+#[derive(Clone, Debug, Default, PartialEq, ofdbox_yaserde::DefaultYaSerde)]
+pub struct ColorArray(pub Vec<u32>);
+
+impl ColorArray {
+    /// 创建颜色分量数组。
+    pub fn new(values: Vec<u32>) -> Self {
+        Self(values)
+    }
+}
+
+impl std::fmt::Display for ColorArray {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let text = self
+            .0
+            .iter()
+            .map(u32::to_string)
+            .collect::<Vec<_>>()
+            .join(" ");
+        formatter.write_str(&text)
+    }
+}
+
+impl std::str::FromStr for ColorArray {
+    type Err = String;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        let values = value
+            .split_whitespace()
+            .map(|token| {
+                if let Some(hex) = token.strip_prefix('#') {
+                    u32::from_str_radix(hex, 16).unwrap_or(0)
+                } else {
+                    token.parse::<u32>().unwrap_or(0)
+                }
+            })
+            .collect::<Vec<_>>();
+        Ok(Self(values))
+    }
+}
+
+/// 文字增量数组。
+#[derive(Clone, Debug, Default, PartialEq, ofdbox_yaserde::DefaultYaSerde)]
+pub struct DeltaArray(pub Vec<f64>);
+
+impl DeltaArray {
+    /// 创建增量数组。
+    pub fn new(values: Vec<f64>) -> Self {
+        Self(values)
+    }
+}
+
+impl std::fmt::Display for DeltaArray {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let text = self
+            .0
+            .iter()
+            .map(f64::to_string)
+            .collect::<Vec<_>>()
+            .join(" ");
+        formatter.write_str(&text)
+    }
+}
+
+impl std::str::FromStr for DeltaArray {
+    type Err = String;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        let tokens = value.split_whitespace().collect::<Vec<_>>();
+        let mut values = Vec::with_capacity(tokens.len());
+        let mut index = 0;
+
+        while index < tokens.len() {
+            // Some vendors encode repeated deltas as `g <count> <value>`.
+            // Example: `1 2 3 4 g 4 1 2 3` expands to
+            // `1 2 3 4 1 1 1 1 2 3`.
+            if tokens[index].eq_ignore_ascii_case("g")
+                && let (Some(count), Some(repeated)) = (
+                    tokens
+                        .get(index + 1)
+                        .and_then(|item| item.parse::<usize>().ok()),
+                    tokens
+                        .get(index + 2)
+                        .and_then(|item| item.parse::<f64>().ok()),
+                )
+            {
+                values.extend(std::iter::repeat_n(repeated, count));
+                index += 3;
+                continue;
+            }
+
+            values.push(tokens[index].parse::<f64>().unwrap_or(0.0));
+            index += 1;
+        }
+
+        Ok(Self(values))
+    }
+}
+
 impl std::fmt::Display for StBox {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(

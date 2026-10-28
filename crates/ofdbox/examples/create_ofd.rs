@@ -13,7 +13,7 @@
 //! `cargo run -p ofdbox --example create_ofd`
 
 use ofdbox::model;
-use ofdbox::model::definition::{StArray, StBox, StId, StLoc, StRefId};
+use ofdbox::model::definition::{ColorArray, DeltaArray, StBox, StId, StLoc, StRefId};
 use ofdbox::model::page::{
     Color, GraphicObject, GraphicUnit, Layer, LayerType, Page, PageContent, TextCode, TextObject,
 };
@@ -155,13 +155,13 @@ fn text_object(spec: TextSpec<'_>) -> GraphicObject {
         font: StRefId::new(spec.font),
         size: spec.size,
         fill_color: Some(Color {
-            value: Some(StArray::new(vec![32.0, 36.0, 44.0])),
+            value: Some(ColorArray::new(vec![32, 36, 44])),
             ..Default::default()
         }),
         text_codes: vec![TextCode {
             x: Some(0.0),
             y: Some(spec.size),
-            delta_x: Some(StArray::new(vec![
+            delta_x: Some(DeltaArray::new(vec![
                 spec.size;
                 spec.text.chars().count().max(1)
             ])),
