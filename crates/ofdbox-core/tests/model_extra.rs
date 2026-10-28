@@ -282,8 +282,12 @@ fn gouraud_gradient_back_color() {
 }
 
 #[test]
-fn empty_color_matches_default() {
-    let parsed: model::page::Color = model_xml::from_str("<Color/>").expect("parse");
-    assert_eq!(parsed, model::page::Color::default());
+fn solid_color_has_no_kind() {
+    let parsed: model::page::Color =
+        model_xml::from_str(r#"<Color Value="255 0 0"/>"#).expect("parse");
     assert!(matches!(parsed.kind, model::page::ColorKind::None));
+    let written = model_xml::to_string(&parsed).expect("serialize");
+    assert!(!written.contains("Pattern"), "{written}");
+    let reparsed: model::page::Color = model_xml::from_str(&written).expect("reparse");
+    assert_eq!(parsed, reparsed);
 }

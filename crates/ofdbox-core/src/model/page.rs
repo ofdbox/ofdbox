@@ -860,7 +860,7 @@ pub enum ColorKind {
     /// 格点高洛德渐变。
     #[yaserde(rename = "LaGourandShd")]
     LaGouraudShd(LaGouraudShd),
-    /// 无颜色内容。
+    /// 无颜色扩展（纯色）。
     #[default]
     None,
 }
