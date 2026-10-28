@@ -120,12 +120,12 @@ where
     }
 
     let mut edits = PackageEdits::new();
-    let map_locs = package.entries_map_locs()?;
+    let map_locs = package.ordered_entries_map_locs();
     let mut maps = Vec::new();
     for (index, loc) in map_locs.iter().enumerate() {
         let encrypted = package.entries_map_is_encrypted(loc)?;
         let entry = package.resolve_entry("", loc)?;
-        let model = package.parse_entries_map_decrypted(loc)?;
+        let model = package.parse_entries_map_decrypted_at(index, loc)?;
         maps.push(MapState {
             index,
             entry,

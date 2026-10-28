@@ -551,6 +551,26 @@ impl OfdPackage {
             .collect())
     }
 
+    /// 按解密顺序返回所有 EntriesMap 路径。
+    pub fn ordered_entries_map_locs(&self) -> Vec<String> {
+        self.decryption
+            .as_ref()
+            .map(|context| {
+                context
+                    .operations
+                    .iter()
+                    .filter_map(|operation| {
+                        operation
+                            .info
+                            .entries_map_loc
+                            .as_ref()
+                            .map(|loc| loc.as_str().to_owned())
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
     /// 指定加密层的默认文件密钥。
     pub fn default_encryption_key_at(&self, index: usize) -> Option<FileKey> {
         self.decryption
@@ -803,6 +823,30 @@ impl OfdPackage {
         } else {
             let key = self
                 .default_encryption_key()
+                .ok_or(OfdError::EncryptionRequired)?;
+            let context = self
+                .decryption
+                .as_ref()
+                .ok_or(OfdError::EncryptionRequired)?;
+            context.backend.decrypt(&key, &raw)?
+        };
+        crate::model_xml::from_bytes(&bytes)
+            .map_err(|error| OfdError::InvalidStructure(error.to_string()))
+    }
+
+    /// 按指定加密层解析 EntriesMap。
+    pub fn parse_entries_map_decrypted_at(
+        &mut self,
+        index: usize,
+        loc: &str,
+    ) -> Result<EncryptedEntries, OfdError> {
+        let entry = resolve_loc("", loc)?;
+        let raw = self.read_raw_entry(&entry)?;
+        let bytes = if looks_like_xml(&raw) {
+            raw.to_vec()
+        } else {
+            let key = self
+                .default_encryption_key_at(index)
                 .ok_or(OfdError::EncryptionRequired)?;
             let context = self
                 .decryption

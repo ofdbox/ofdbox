@@ -1,10 +1,12 @@
 use std::io::{Cursor, Read, Write};
 
+use base64::Engine;
+
 use ofdbox_core::model::page::{GraphicObject, Page};
 use ofdbox_core::{OfdError, OfdFile, OfdPackage};
 use ofdbox_crypto::{
-    EncryptOptions, EncryptionRecipient, PasswordBackend, edit_encrypted,
-    edit_encrypted_preserving, encrypt_package,
+    EncryptOptions, EncryptionRecipient, PASSWORD_CASE_ID, PasswordBackend, edit_encrypted,
+    edit_encrypted_preserving, encrypt_cbc, encrypt_package, wrap_file_key,
 };
 use zip::ZipWriter;
 use zip::write::SimpleFileOptions;
@@ -481,6 +483,147 @@ fn adds_encrypted_page() {
     assert_eq!(document.pages.pages.len(), 2);
     let entry = document.pages.pages.last().expect("second page");
     assert_eq!(entry.id, "2");
+    assert!(reopened.contains("Doc_0/Pages/Page_2/Content.xml"));
+    reopened
+        .read_entry("Doc_0/Pages/Page_2/Content.xml")
+        .expect("read new page");
+}
+
+fn multilayer_package() -> Vec<u8> {
+    let key0 = [1u8; 16];
+    let iv0 = [2u8; 16];
+    let key1 = [3u8; 16];
+    let iv1 = [4u8; 16];
+    let plain = [
+        ("OFD.xml", ROOT.as_bytes()),
+        ("Doc_0/Document.xml", DOCUMENT.as_bytes()),
+        ("Doc_0/Pages/Page_0/Content.xml", PAGE.as_bytes()),
+        ("Doc_0/Res/a.bin", b"\x00\x01\x02\x03"),
+    ];
+
+    let mut physical0 = Vec::new();
+    let mut physical1 = Vec::new();
+    let mut map0 = String::new();
+    let mut map1 = String::new();
+    for (index, (name, bytes)) in plain.iter().enumerate() {
+        let p0 = format!("Layer0/{index}.dat");
+        let p1 = format!("Layer1/{index}.dat");
+        let c0 = encrypt_cbc(&key0, &iv0, bytes).expect("layer0");
+        let c1 = encrypt_cbc(&key1, &iv1, &c0).expect("layer1");
+        physical0.push((p0.clone(), c0));
+        physical1.push((p1.clone(), c1));
+        map0.push_str(&format!(
+            "<ofd:EncryptEntry Path=\"/{name}\" EPath=\"/{p0}\"/>"
+        ));
+        map1.push_str(&format!(
+            "<ofd:EncryptEntry Path=\"/{name}\" EPath=\"/{p1}\"/>"
+        ));
+    }
+
+    let map0 = format!(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?><ofd:EncryptedEntries xmlns:ofd=\"http://www.ofdspec.org/2016\" ID=\"1\">{map0}</ofd:EncryptedEntries>"
+    );
+    let map1 = format!(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?><ofd:EncryptedEntries xmlns:ofd=\"http://www.ofdspec.org/2016\" ID=\"2\">{map1}</ofd:EncryptedEntries>"
+    );
+    let encrypted_map0 = encrypt_cbc(&key0, &iv0, map0.as_bytes()).expect("map0");
+    let encrypted_map1 = encrypt_cbc(&key1, &iv1, map1.as_bytes()).expect("map1");
+
+    let seed = |id: &str, iv: &[u8], key: &[u8]| {
+        let wrapped = wrap_file_key("secret", iv, key).expect("wrap");
+        let iv = base64::engine::general_purpose::STANDARD.encode(iv);
+        let wrapped = base64::engine::general_purpose::STANDARD.encode(wrapped);
+        format!(
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?><ofd:DecryptSeed xmlns:ofd=\"http://www.ofdspec.org/2016\" ID=\"{id}\" EncryptCaseId=\"{PASSWORD_CASE_ID}\"><ofd:UserInfo UserName=\"alice\"><ofd:EncryptedWK>{wrapped}</ofd:EncryptedWK><ofd:IVValue>{iv}</ofd:IVValue></ofd:UserInfo><ofd:ExtendParams/></ofd:DecryptSeed>"
+        )
+    };
+    let seed0 = seed("1", &iv0, &key0);
+    let seed1 = seed("2", &iv1, &key1);
+    let encryptions = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><ofd:Encryptions xmlns:ofd=\"http://www.ofdspec.org/2016\"><ofd:EncryptInfo ID=\"1\"><ofd:Provider Name=\"OFDBox\"/><ofd:EncryptScope>All</ofd:EncryptScope><ofd:DecryptSeedLoc>/decryptseed_0.dat</ofd:DecryptSeedLoc><ofd:EntriesMapLoc>/entriesmap_0.dat</ofd:EntriesMapLoc></ofd:EncryptInfo><ofd:EncryptInfo ID=\"2\" Relative=\"1\"><ofd:Provider Name=\"OFDBox\"/><ofd:EncryptScope>All</ofd:EncryptScope><ofd:DecryptSeedLoc>/decryptseed_1.dat</ofd:DecryptSeedLoc><ofd:EntriesMapLoc>/entriesmap_1.dat</ofd:EntriesMapLoc></ofd:EncryptInfo></ofd:Encryptions>";
+
+    let mut entries: Vec<(String, Vec<u8>)> = physical1;
+    entries.push(("entriesmap_0.dat".to_owned(), encrypted_map0));
+    entries.push(("entriesmap_1.dat".to_owned(), encrypted_map1));
+    entries.push(("decryptseed_0.dat".to_owned(), seed0.into_bytes()));
+    entries.push(("decryptseed_1.dat".to_owned(), seed1.into_bytes()));
+    entries.push((
+        "Encryptions.xml".to_owned(),
+        encryptions.as_bytes().to_vec(),
+    ));
+    let _ = physical0;
+    zip_with_entries(
+        &entries
+            .iter()
+            .map(|(n, d)| (n.as_str(), d.as_slice()))
+            .collect::<Vec<_>>(),
+    )
+}
+
+#[test]
+fn edits_multilayer_encrypted_package() {
+    let encrypted = multilayer_package();
+    let mut package = OfdPackage::from_bytes(encrypted.clone()).expect("open multilayer");
+    package
+        .enable_decryption(Box::new(PasswordBackend::new("secret")))
+        .expect("decrypt multilayer");
+    assert_eq!(package.decryption_operation_count(), 2);
+
+    let output = edit_encrypted_preserving(
+        &encrypted,
+        Box::new(PasswordBackend::new("secret")),
+        |file: &mut OfdFile| {
+            let document = file.document(0)?;
+            let mut page = document.page("1")?;
+            let GraphicObject::Text(text) =
+                &mut page.data.content.as_mut().unwrap().layers[0].objects[0]
+            else {
+                return Err(OfdError::InvalidStructure("not text".to_owned()));
+            };
+            text.text_codes[0].text = "after".to_owned();
+            page.save()?;
+            Ok(())
+        },
+    )
+    .unwrap_or_else(|error| panic!("edit multilayer: {error:?}"));
+
+    let mut reopened = OfdPackage::from_bytes(output).expect("reopen");
+    reopened
+        .enable_decryption(Box::new(PasswordBackend::new("secret")))
+        .expect("decrypt edited");
+    let bytes = reopened
+        .read_entry("Doc_0/Pages/Page_0/Content.xml")
+        .expect("page");
+    let page: Page = ofdbox_core::model_xml::from_bytes(&bytes).expect("parse page");
+    let GraphicObject::Text(text) = &page.content.as_ref().unwrap().layers[0].objects[0] else {
+        panic!("not text");
+    };
+    assert_eq!(text.text_codes[0].text, "after");
+}
+
+#[test]
+fn adds_page_to_multilayer_encrypted_package() {
+    let encrypted = multilayer_package();
+    let output = edit_encrypted_preserving(
+        &encrypted,
+        Box::new(PasswordBackend::new("secret")),
+        |file: &mut OfdFile| {
+            let mut document = file.document(0)?;
+            document.add_page(Page::default())?;
+            document.save()?;
+            Ok(())
+        },
+    )
+    .unwrap_or_else(|error| panic!("add page multilayer: {error:?}"));
+
+    let mut reopened = OfdPackage::from_bytes(output).expect("reopen");
+    reopened
+        .enable_decryption(Box::new(PasswordBackend::new("secret")))
+        .expect("decrypt edited");
+    let document = reopened
+        .parse_document_schema()
+        .expect("document after add");
+    assert_eq!(document.pages.pages.len(), 2);
+    assert_eq!(document.pages.pages[1].id, "2");
     assert!(reopened.contains("Doc_0/Pages/Page_2/Content.xml"));
     reopened
         .read_entry("Doc_0/Pages/Page_2/Content.xml")
