@@ -114,7 +114,6 @@ fn doc_entries_roundtrip() {
     assert_eq!(entries.file_list.files.len(), 2);
 }
 
-
 #[test]
 fn page_annot_text_roundtrip() {
     let xml = r#"<PageAnnot>
@@ -126,10 +125,10 @@ fn page_annot_text_roundtrip() {
     </Appearance>
   </Annot>
 </PageAnnot>"#;
-    let parsed: model::annotation::PageAnnot = model_xml::from_bytes(xml.as_bytes()).expect("parse");
+    let parsed: model::annotation::PageAnnot =
+        model_xml::from_bytes(xml.as_bytes()).expect("parse");
     let written = model_xml::to_bytes(&parsed).expect("serialize");
-    let reparsed: model::annotation::PageAnnot =
-        model_xml::from_bytes(&written).expect("reparse");
+    let reparsed: model::annotation::PageAnnot = model_xml::from_bytes(&written).expect("reparse");
     assert_eq!(parsed, reparsed);
 }
 
@@ -143,7 +142,29 @@ fn signatures_index_roundtrip() {
     let parsed: model::signatures::Signatures =
         model_xml::from_bytes(xml.as_bytes()).expect("parse");
     let written = model_xml::to_bytes(&parsed).expect("serialize");
-    let reparsed: model::signatures::Signatures =
-        model_xml::from_bytes(&written).expect("reparse");
+    let reparsed: model::signatures::Signatures = model_xml::from_bytes(&written).expect("reparse");
+    assert_eq!(parsed, reparsed);
+}
+
+#[test]
+fn page_with_axial_gradient() {
+    let xml = r#"<Page>
+  <Content>
+    <Layer ID="1">
+      <PathObject ID="2" Boundary="0 0 100 100" Fill="true">
+        <FillColor>
+          <AxialShd StartPoint="0 0" EndPoint="100 0">
+            <Segment Position="0"><Color Value="255 0 0"/></Segment>
+            <Segment Position="1"><Color Value="0 0 255"/></Segment>
+          </AxialShd>
+        </FillColor>
+        <AbbreviatedData>M 0 0 L 100 0</AbbreviatedData>
+      </PathObject>
+    </Layer>
+  </Content>
+</Page>"#;
+    let parsed: model::page::Page = model_xml::from_bytes(xml.as_bytes()).expect("parse");
+    let written = model_xml::to_bytes(&parsed).expect("serialize");
+    let reparsed: model::page::Page = model_xml::from_bytes(&written).expect("reparse");
     assert_eq!(parsed, reparsed);
 }

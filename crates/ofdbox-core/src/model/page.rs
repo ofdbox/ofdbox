@@ -1127,7 +1127,7 @@ crate::impl_xml_enum_codec!(MapType, Other, {
 });
 
 /// 渐变色标。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(Clone, Debug, Default, PartialEq, yaserde::YaDeserialize)]
 #[yaserde(rename = "Segment")]
 pub struct ShdSegment {
     /// 位置。
@@ -1139,7 +1139,7 @@ pub struct ShdSegment {
 }
 
 /// 轴向渐变。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(Clone, Debug, Default, PartialEq, yaserde::YaDeserialize)]
 #[yaserde(rename = "AxialShd")]
 pub struct AxialShd {
     /// 色标。
@@ -1163,7 +1163,7 @@ pub struct AxialShd {
 }
 
 /// 径向渐变。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(Clone, Debug, Default, PartialEq, yaserde::YaDeserialize)]
 #[yaserde(rename = "RadialShd")]
 pub struct RadialShd {
     /// 色标。
@@ -1203,7 +1203,7 @@ pub struct RadialShd {
 }
 
 /// 高洛德渐变。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(Clone, Debug, Default, PartialEq, yaserde::YaDeserialize)]
 #[yaserde(rename = "GouraudShd")]
 pub struct GouraudShd {
     /// 点。
@@ -1218,7 +1218,7 @@ pub struct GouraudShd {
 }
 
 /// 高洛德渐变点。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(Clone, Debug, Default, PartialEq, yaserde::YaDeserialize)]
 #[yaserde(rename = "Point")]
 pub struct GouraudPoint {
     /// X 坐标。
@@ -1236,7 +1236,7 @@ pub struct GouraudPoint {
 }
 
 /// 格点高洛德渐变。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(Clone, Debug, Default, PartialEq, yaserde::YaDeserialize)]
 #[yaserde(rename = "LaGourandShd")]
 pub struct LaGouraudShd {
     /// 点。
@@ -1254,7 +1254,7 @@ pub struct LaGouraudShd {
 }
 
 /// 格点高洛德渐变点。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(Clone, Debug, Default, PartialEq, yaserde::YaDeserialize)]
 #[yaserde(rename = "Point")]
 pub struct LaGouraudPoint {
     /// X 坐标。
@@ -1266,6 +1266,281 @@ pub struct LaGouraudPoint {
     /// 颜色。
     #[yaserde(rename = "Color")]
     pub color: Color,
+}
+
+impl YaSerialize for ShdSegment {
+    fn serialize<W: Write>(&self, writer: &mut Serializer<W>) -> yaserde::Result<()> {
+        let position = self.position.map(|value| value.to_string());
+        let mut event = yaserde::__xml::writer::XmlEvent::start_element("Segment");
+        if let Some(position) = &position {
+            event = event.attr("Position", position.as_str());
+        }
+        writer.write(event).map_err(yaserde::Error::custom)?;
+        write_color(writer, &self.color)?;
+        writer
+            .write(yaserde::__xml::writer::XmlEvent::end_element())
+            .map_err(yaserde::Error::custom)?;
+        Ok(())
+    }
+
+    fn serialize_attributes(
+        &self,
+        attributes: Vec<yaserde::__xml::attribute::OwnedAttribute>,
+        namespace: yaserde::__xml::namespace::Namespace,
+    ) -> yaserde::Result<(
+        Vec<yaserde::__xml::attribute::OwnedAttribute>,
+        yaserde::__xml::namespace::Namespace,
+    )> {
+        Ok((attributes, namespace))
+    }
+}
+
+impl YaSerialize for AxialShd {
+    fn serialize<W: Write>(&self, writer: &mut Serializer<W>) -> yaserde::Result<()> {
+        let map_type = self.map_type.to_string();
+        let start = self.start_point.to_string();
+        let end = self.end_point.to_string();
+        let map_unit = self.map_unit.map(|value| value.to_string());
+        let extend = (self.extend != 0).then(|| self.extend.to_string());
+        let mut event = yaserde::__xml::writer::XmlEvent::start_element("AxialShd")
+            .attr("MapType", map_type.as_str())
+            .attr("StartPoint", start.as_str())
+            .attr("EndPoint", end.as_str());
+        if let Some(value) = &extend {
+            event = event.attr("Extend", value.as_str());
+        }
+        if let Some(value) = &map_unit {
+            event = event.attr("MapUnit", value.as_str());
+        }
+        writer.write(event).map_err(yaserde::Error::custom)?;
+        for segment in &self.segments {
+            segment.serialize(writer)?;
+        }
+        writer
+            .write(yaserde::__xml::writer::XmlEvent::end_element())
+            .map_err(yaserde::Error::custom)?;
+        Ok(())
+    }
+
+    fn serialize_attributes(
+        &self,
+        attributes: Vec<yaserde::__xml::attribute::OwnedAttribute>,
+        namespace: yaserde::__xml::namespace::Namespace,
+    ) -> yaserde::Result<(
+        Vec<yaserde::__xml::attribute::OwnedAttribute>,
+        yaserde::__xml::namespace::Namespace,
+    )> {
+        Ok((attributes, namespace))
+    }
+}
+
+impl YaSerialize for RadialShd {
+    fn serialize<W: Write>(&self, writer: &mut Serializer<W>) -> yaserde::Result<()> {
+        let map_type = self.map_type.to_string();
+        let start = self.start_point.to_string();
+        let end = self.end_point.to_string();
+        let end_radius = self.end_radius.to_string();
+        let map_unit = self.map_unit.map(|value| value.to_string());
+        let extend = (self.extend != 0).then(|| self.extend.to_string());
+        let eccentricity = (self.eccentricity != 0.0).then(|| self.eccentricity.to_string());
+        let angle = (self.angle != 0.0).then(|| self.angle.to_string());
+        let start_radius = (self.start_radius != 0.0).then(|| self.start_radius.to_string());
+        let mut event = yaserde::__xml::writer::XmlEvent::start_element("RadialShd")
+            .attr("MapType", map_type.as_str())
+            .attr("StartPoint", start.as_str())
+            .attr("EndPoint", end.as_str())
+            .attr("EndRadius", end_radius.as_str());
+        if let Some(value) = &extend {
+            event = event.attr("Extend", value.as_str());
+        }
+        if let Some(value) = &eccentricity {
+            event = event.attr("Eccentricity", value.as_str());
+        }
+        if let Some(value) = &angle {
+            event = event.attr("Angle", value.as_str());
+        }
+        if let Some(value) = &start_radius {
+            event = event.attr("StartRadius", value.as_str());
+        }
+        if let Some(value) = &map_unit {
+            event = event.attr("MapUnit", value.as_str());
+        }
+        writer.write(event).map_err(yaserde::Error::custom)?;
+        for segment in &self.segments {
+            segment.serialize(writer)?;
+        }
+        writer
+            .write(yaserde::__xml::writer::XmlEvent::end_element())
+            .map_err(yaserde::Error::custom)?;
+        Ok(())
+    }
+
+    fn serialize_attributes(
+        &self,
+        attributes: Vec<yaserde::__xml::attribute::OwnedAttribute>,
+        namespace: yaserde::__xml::namespace::Namespace,
+    ) -> yaserde::Result<(
+        Vec<yaserde::__xml::attribute::OwnedAttribute>,
+        yaserde::__xml::namespace::Namespace,
+    )> {
+        Ok((attributes, namespace))
+    }
+}
+
+impl YaSerialize for GouraudPoint {
+    fn serialize<W: Write>(&self, writer: &mut Serializer<W>) -> yaserde::Result<()> {
+        let x = self.x.to_string();
+        let y = self.y.to_string();
+        let edge = self.edge_flag.map(|value| value.to_string());
+        let mut event = yaserde::__xml::writer::XmlEvent::start_element("Point")
+            .attr("X", x.as_str())
+            .attr("Y", y.as_str());
+        if let Some(value) = &edge {
+            event = event.attr("EdgeFlag", value.as_str());
+        }
+        writer.write(event).map_err(yaserde::Error::custom)?;
+        write_color(writer, &self.color)?;
+        writer
+            .write(yaserde::__xml::writer::XmlEvent::end_element())
+            .map_err(yaserde::Error::custom)?;
+        Ok(())
+    }
+
+    fn serialize_attributes(
+        &self,
+        attributes: Vec<yaserde::__xml::attribute::OwnedAttribute>,
+        namespace: yaserde::__xml::namespace::Namespace,
+    ) -> yaserde::Result<(
+        Vec<yaserde::__xml::attribute::OwnedAttribute>,
+        yaserde::__xml::namespace::Namespace,
+    )> {
+        Ok((attributes, namespace))
+    }
+}
+
+impl YaSerialize for GouraudShd {
+    fn serialize<W: Write>(&self, writer: &mut Serializer<W>) -> yaserde::Result<()> {
+        let extend = self.extend.map(|value| value.to_string());
+        let mut event = yaserde::__xml::writer::XmlEvent::start_element("GouraudShd");
+        if let Some(value) = &extend {
+            event = event.attr("Extend", value.as_str());
+        }
+        writer.write(event).map_err(yaserde::Error::custom)?;
+        for point in &self.points {
+            point.serialize(writer)?;
+        }
+        if let Some(color) = &self.back_color {
+            write_color(writer, color)?;
+        }
+        writer
+            .write(yaserde::__xml::writer::XmlEvent::end_element())
+            .map_err(yaserde::Error::custom)?;
+        Ok(())
+    }
+
+    fn serialize_attributes(
+        &self,
+        attributes: Vec<yaserde::__xml::attribute::OwnedAttribute>,
+        namespace: yaserde::__xml::namespace::Namespace,
+    ) -> yaserde::Result<(
+        Vec<yaserde::__xml::attribute::OwnedAttribute>,
+        yaserde::__xml::namespace::Namespace,
+    )> {
+        Ok((attributes, namespace))
+    }
+}
+
+impl YaSerialize for LaGouraudPoint {
+    fn serialize<W: Write>(&self, writer: &mut Serializer<W>) -> yaserde::Result<()> {
+        let x = self.x.map(|value| value.to_string());
+        let y = self.y.map(|value| value.to_string());
+        let mut event = yaserde::__xml::writer::XmlEvent::start_element("Point");
+        if let Some(value) = &x {
+            event = event.attr("X", value.as_str());
+        }
+        if let Some(value) = &y {
+            event = event.attr("Y", value.as_str());
+        }
+        writer.write(event).map_err(yaserde::Error::custom)?;
+        write_color(writer, &self.color)?;
+        writer
+            .write(yaserde::__xml::writer::XmlEvent::end_element())
+            .map_err(yaserde::Error::custom)?;
+        Ok(())
+    }
+
+    fn serialize_attributes(
+        &self,
+        attributes: Vec<yaserde::__xml::attribute::OwnedAttribute>,
+        namespace: yaserde::__xml::namespace::Namespace,
+    ) -> yaserde::Result<(
+        Vec<yaserde::__xml::attribute::OwnedAttribute>,
+        yaserde::__xml::namespace::Namespace,
+    )> {
+        Ok((attributes, namespace))
+    }
+}
+
+impl YaSerialize for LaGouraudShd {
+    fn serialize<W: Write>(&self, writer: &mut Serializer<W>) -> yaserde::Result<()> {
+        let vertices = self.vertices_per_row.to_string();
+        let extend = self.extend.map(|value| value.to_string());
+        let mut event = yaserde::__xml::writer::XmlEvent::start_element("LaGourandShd")
+            .attr("VerticesPerRow", vertices.as_str());
+        if let Some(value) = &extend {
+            event = event.attr("Extend", value.as_str());
+        }
+        writer.write(event).map_err(yaserde::Error::custom)?;
+        for point in &self.points {
+            point.serialize(writer)?;
+        }
+        if let Some(color) = &self.back_color {
+            write_color(writer, color)?;
+        }
+        writer
+            .write(yaserde::__xml::writer::XmlEvent::end_element())
+            .map_err(yaserde::Error::custom)?;
+        Ok(())
+    }
+
+    fn serialize_attributes(
+        &self,
+        attributes: Vec<yaserde::__xml::attribute::OwnedAttribute>,
+        namespace: yaserde::__xml::namespace::Namespace,
+    ) -> yaserde::Result<(
+        Vec<yaserde::__xml::attribute::OwnedAttribute>,
+        yaserde::__xml::namespace::Namespace,
+    )> {
+        Ok((attributes, namespace))
+    }
+}
+
+fn write_color<W: Write>(writer: &mut Serializer<W>, color: &Color) -> yaserde::Result<()> {
+    let value = color.value.as_ref().map(ToString::to_string);
+    let index = color.index.map(|value| value.to_string());
+    let color_space = color.color_space.map(|value| value.to_string());
+    let alpha = (color.alpha != 255).then(|| color.alpha.to_string());
+    let mut event = yaserde::__xml::writer::XmlEvent::start_element("Color");
+    if let Some(value) = &value {
+        event = event.attr("Value", value.as_str());
+    }
+    if let Some(value) = &index {
+        event = event.attr("Index", value.as_str());
+    }
+    if let Some(space) = &color_space {
+        event = event.attr("ColorSpace", space.as_str());
+    }
+    if let Some(value) = &alpha {
+        event = event.attr("Alpha", value.as_str());
+    }
+    writer.write(event).map_err(yaserde::Error::custom)?;
+    if let Some(kind) = &color.kind {
+        kind.serialize(writer)?;
+    }
+    writer
+        .write(yaserde::__xml::writer::XmlEvent::end_element())
+        .map_err(yaserde::Error::custom)?;
+    Ok(())
 }
 
 /// 动作集合的便捷类型。
