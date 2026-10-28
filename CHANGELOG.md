@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.0.2 - 2026-10-29
 
 ### 新增
 
@@ -55,6 +55,8 @@
 - CI 的 feature matrix 改用现存 crate 与 feature，删除已无二进制目标的 release 工作流。
 
 ### 变更
+
+- 迁移到 `ofdbox-yaserde` 0.13.1：元素 namespace 改为 URI 驱动并支持继承，删除 XML 前缀文本后处理。
 
 - 测试改为按标准自行构造：盖章测试用 `SealBuilder` 现场生成印章，加密测试用 `encrypt_package` 现场造包，不再依赖外部样张；外部语料只保留一个 `ofdbox/tests/corpus_compat.rs`（`#[ignore]`，需 `OFDBOX_TESTDATA_DIR`），统一做读包、重打包、验签与引用摘要的兼容性统计。
 - 35275 `SignedData` 测试补齐负例：detached 内容篡改、缺 `signedAttrs`、未知摘要算法、缺证书、签名值篡改，以及旧 SM2 签名 OID `.301.1` 的正向兼容。

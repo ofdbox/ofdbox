@@ -16,7 +16,7 @@ base64.workspace = true
 cbc.workspace = true
 cms.workspace = true
 ofdbox-algo = { path = "../ofdbox-algo", version = "0.1.0", features = ["x509"] }
-ofdbox-core = { path = "../ofdbox-core", version = "0.0.1" }
+ofdbox-core = { path = "../ofdbox-core", version = "0.0.2" }
 der.workspace = true
 md-5.workspace = true
 sha1.workspace = true

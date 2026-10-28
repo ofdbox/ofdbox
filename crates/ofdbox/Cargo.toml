@@ -19,9 +19,9 @@ full = ["crypto", "seal"]
 
 [dependencies]
 ofdbox-algo = { path = "../ofdbox-algo", version = "0.1.0" }
-ofdbox-core = { path = "../ofdbox-core", version = "0.0.1" }
-ofdbox-crypto = { path = "../ofdbox-crypto", version = "0.0.1", optional = true }
-ofdbox-seal = { path = "../ofdbox-seal", version = "0.0.1", optional = true }
+ofdbox-core = { path = "../ofdbox-core", version = "0.0.2" }
+ofdbox-crypto = { path = "../ofdbox-crypto", version = "0.0.2", optional = true }
+ofdbox-seal = { path = "../ofdbox-seal", version = "0.0.2", optional = true }
 thiserror.workspace = true
 
 [dev-dependencies]
