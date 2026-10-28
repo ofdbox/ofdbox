@@ -629,3 +629,36 @@ fn adds_page_to_multilayer_encrypted_package() {
         .read_entry("Doc_0/Pages/Page_2/Content.xml")
         .expect("read new page");
 }
+
+#[test]
+fn rejects_broken_relative_chain() {
+    let encrypted = multilayer_package();
+    let broken = rewrite_entry(&encrypted, "Encryptions.xml", |data| {
+        let text = String::from_utf8_lossy(data).replace("Relative=\"1\"", "Relative=\"9\"");
+        *data = text.into_bytes();
+    });
+    let mut package = OfdPackage::from_bytes(broken).expect("open");
+    assert!(
+        package
+            .enable_decryption(Box::new(PasswordBackend::new("secret")))
+            .is_err()
+    );
+}
+
+#[test]
+fn rejects_relative_cycle() {
+    let encrypted = multilayer_package();
+    let broken = rewrite_entry(&encrypted, "Encryptions.xml", |data| {
+        let text = String::from_utf8_lossy(data).replace(
+            "<ofd:EncryptInfo ID=\"1\">",
+            "<ofd:EncryptInfo ID=\"1\" Relative=\"2\">",
+        );
+        *data = text.into_bytes();
+    });
+    let mut package = OfdPackage::from_bytes(broken).expect("open");
+    assert!(
+        package
+            .enable_decryption(Box::new(PasswordBackend::new("secret")))
+            .is_err()
+    );
+}
