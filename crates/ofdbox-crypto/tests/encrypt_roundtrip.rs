@@ -448,3 +448,41 @@ fn deletes_encrypted_page_preserving() {
     assert!(document.pages.pages.is_empty());
     assert!(!reopened.contains("Doc_0/Pages/Page_0/Content.xml"));
 }
+
+#[test]
+fn adds_encrypted_page() {
+    let plain = zip_with_entries(&[
+        ("OFD.xml", ROOT.as_bytes()),
+        ("Doc_0/Document.xml", DOCUMENT.as_bytes()),
+        ("Doc_0/Pages/Page_0/Content.xml", PAGE.as_bytes()),
+    ]);
+    let options = EncryptOptions::password("alice", "secret");
+    let encrypted = encrypt_package(&plain, &options).expect("encrypt");
+
+    let output = edit_encrypted_preserving(
+        &encrypted,
+        Box::new(PasswordBackend::new("secret")),
+        |file: &mut OfdFile| {
+            let mut document = file.document(0)?;
+            document.add_page(Page::default())?;
+            document.save()?;
+            Ok(())
+        },
+    )
+    .expect("add page");
+
+    let mut reopened = OfdPackage::from_bytes(output).expect("reopen");
+    reopened
+        .enable_decryption(Box::new(PasswordBackend::new("secret")))
+        .expect("decrypt");
+    let document = reopened
+        .parse_document_schema()
+        .expect("document after add");
+    assert_eq!(document.pages.pages.len(), 2);
+    let entry = document.pages.pages.last().expect("second page");
+    assert_eq!(entry.id, "2");
+    assert!(reopened.contains("Doc_0/Pages/Page_2/Content.xml"));
+    reopened
+        .read_entry("Doc_0/Pages/Page_2/Content.xml")
+        .expect("read new page");
+}

@@ -529,6 +529,27 @@ impl OfdPackage {
         Ok(Some((physical, key)))
     }
 
+    /// 当前解密会话的默认文件密钥。
+    pub fn default_encryption_key(&self) -> Option<FileKey> {
+        self.decryption
+            .as_ref()
+            .and_then(|context| context.operations.first())
+            .map(|operation| operation.default_key.clone())
+    }
+
+    /// 使用默认文件密钥加密新增 entry。
+    pub fn encrypt_new_entry(&self, data: &[u8]) -> Result<Vec<u8>, OfdError> {
+        let context = self
+            .decryption
+            .as_ref()
+            .ok_or(OfdError::EncryptionRequired)?;
+        let operation = context
+            .operations
+            .first()
+            .ok_or_else(|| OfdError::InvalidStructure("缺少加密操作".to_owned()))?;
+        context.backend.encrypt(&operation.default_key, data)
+    }
+
     /// 使用当前解密会话的密钥重新加密逻辑 entry。
     pub fn encrypt_entry(&mut self, name: &str, data: &[u8]) -> Result<Vec<u8>, OfdError> {
         let name = normalize_entry_name(name)?;
@@ -706,6 +727,26 @@ impl OfdPackage {
     pub fn parse_entries_map(&mut self, loc: &str) -> Result<EncryptedEntries, OfdError> {
         let entry = resolve_loc("", loc)?;
         let bytes = self.read_entry(&entry)?;
+        crate::model_xml::from_bytes(&bytes)
+            .map_err(|error| OfdError::InvalidStructure(error.to_string()))
+    }
+
+    /// 解析明密文映射表；如果表中内容不是 XML，则用默认文件密钥解密。
+    pub fn parse_entries_map_decrypted(&mut self, loc: &str) -> Result<EncryptedEntries, OfdError> {
+        let entry = resolve_loc("", loc)?;
+        let raw = self.read_raw_entry(&entry)?;
+        let bytes = if looks_like_xml(&raw) {
+            raw.to_vec()
+        } else {
+            let key = self
+                .default_encryption_key()
+                .ok_or(OfdError::EncryptionRequired)?;
+            let context = self
+                .decryption
+                .as_ref()
+                .ok_or(OfdError::EncryptionRequired)?;
+            context.backend.decrypt(&key, &raw)?
+        };
         crate::model_xml::from_bytes(&bytes)
             .map_err(|error| OfdError::InvalidStructure(error.to_string()))
     }

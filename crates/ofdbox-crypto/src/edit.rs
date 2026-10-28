@@ -3,9 +3,10 @@
 use std::collections::{HashMap, HashSet};
 use std::io::{Cursor, Read};
 
+use ofdbox_core::model::entries_map::EncryptEntry;
 use ofdbox_core::{
     CryptoBackend, OfdError, OfdFile, OfdPackage, OpenOptions, OpenStorage, PackageEdits,
-    PackageWriteOptions,
+    PackageWriteOptions, model_xml,
 };
 
 use crate::EncryptOptions;
@@ -116,11 +117,27 @@ where
     }
 
     let mut edits = PackageEdits::new();
+    let encryptions = package.parse_encryptions()?;
+    let map_loc = encryptions
+        .encrypt_infos
+        .first()
+        .and_then(|info| info.entries_map_loc.as_ref())
+        .ok_or_else(|| OfdError::InvalidStructure("加密包缺少 EntriesMapLoc".to_owned()))?;
+    let map_entry = package.resolve_entry("", map_loc.as_str())?;
+    let mut entries_map = package.parse_entries_map_decrypted(map_loc.as_str())?;
+    let mut map_changed = false;
+
     for (name, bytes) in &edited_entries {
         let Some(original) = originals.get(name) else {
-            return Err(OfdError::InvalidStructure(format!(
-                "加密包暂不支持新增 entry: {name}"
-            )));
+            let encrypted = package.encrypt_new_entry(bytes)?;
+            entries_map.entries.push(EncryptEntry {
+                path: name.clone(),
+                epath: name.clone(),
+                decrypt_seed_loc: None,
+            });
+            map_changed = true;
+            edits.add(name, encrypted);
+            continue;
         };
         if *bytes == original.plaintext {
             continue;
@@ -143,6 +160,17 @@ where
         } else {
             edits.remove(name);
         }
+    }
+
+    if map_changed {
+        let map_plain = model_xml::to_bytes(&entries_map)
+            .map_err(|error| OfdError::InvalidStructure(error.to_string()))?;
+        let map_bytes = package.encrypt_new_entry(&map_plain)?;
+        let physical = package
+            .encrypted_entry_info(&map_entry)?
+            .map(|(physical, _)| physical)
+            .unwrap_or_else(|| map_entry.clone());
+        edits.replace(physical, map_bytes);
     }
 
     let mut output = Cursor::new(Vec::new());
