@@ -1,8 +1,8 @@
 use std::rc::Rc;
 
 use crate::error::OfdError;
-use crate::package::{parent_dir, resolve_loc};
 use crate::model::definition::StLoc;
+use crate::package::{parent_dir, resolve_loc};
 use crate::store::PackageStore;
 
 /// 模型对象的共享上下文。

@@ -7,8 +7,6 @@ use std::collections::{HashMap, HashSet};
 use std::io::{Seek, Write};
 
 use crate::error::OfdError;
-use crate::package::{OfdPackage, parent_dir, resolve_loc};
-use crate::package_write::{PackageEdits, PackageWriteOptions};
 use crate::model::annotation::{Annot, AnnotationType, Appearance, PageAnnot};
 use crate::model::annotations::{Annotations, AnnotationsPage};
 use crate::model::definition::{StArray, StBox, StId, StLoc, StRefId};
@@ -21,6 +19,8 @@ use crate::model::page::{
 use crate::model::res::{MultiMedia, MultiMediaType, MultiMedias, Res};
 use crate::model::signatures::Signatures;
 use crate::model_xml;
+use crate::package::{OfdPackage, parent_dir, resolve_loc};
+use crate::package_write::{PackageEdits, PackageWriteOptions};
 
 /// 单条注释的描述。
 #[derive(Clone, Debug)]

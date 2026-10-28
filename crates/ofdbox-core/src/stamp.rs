@@ -6,7 +6,6 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::error::OfdError;
-use crate::package::{OfdPackage, parent_dir, resolve_loc};
 use crate::model::annotation::{Annot, AnnotationType, Appearance, PageAnnot};
 use crate::model::annotations::{Annotations, AnnotationsPage};
 use crate::model::definition::{StBox, StId, StLoc, StRefId};
@@ -14,6 +13,7 @@ use crate::model::document::Document;
 use crate::model::page::{GraphicObject, GraphicUnit, ImageObject, PageBlock};
 use crate::model::res::{MultiMedia, MultiMediaType, MultiMedias, Res};
 use crate::model_xml;
+use crate::package::{OfdPackage, parent_dir, resolve_loc};
 
 /// 盖章位置与印模。
 #[derive(Clone, Debug)]

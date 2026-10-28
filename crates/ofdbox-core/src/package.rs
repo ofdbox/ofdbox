@@ -7,17 +7,17 @@ use zip::ZipArchive;
 use crate::cache::ByteLruCache;
 use crate::crypto::{CryptoBackend, FileKey, SignatureVerifiers, detect_signed_value_format};
 use crate::error::OfdError;
-use crate::options::{CacheOptions, ReadOptions};
-use crate::package_write::{
-    DecryptedWriteReport, ExistingEntry, PackageEdits, PackageWriteOptions, PlanItem, copy_raw,
-    write_plain_entry,
-};
 use crate::model::decrypt_seed::DecryptSeed;
 use crate::model::doc_entries::DocEntries;
 use crate::model::encryption::Encryptions;
 use crate::model::entries_map::EncryptedEntries;
 use crate::model::signature::Signature;
 use crate::model::signatures::Signatures;
+use crate::options::{CacheOptions, ReadOptions};
+use crate::package_write::{
+    DecryptedWriteReport, ExistingEntry, PackageEdits, PackageWriteOptions, PlanItem, copy_raw,
+    write_plain_entry,
+};
 use crate::sign::ReferenceDigest;
 use crate::sign::{
     DEFAULT_SIGNATURE_METHOD, ProtectScope, SignedValueProducer, SigningContext, SigningReport,

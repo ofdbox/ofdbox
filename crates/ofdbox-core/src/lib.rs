@@ -3,13 +3,12 @@
 
 //! OFD 核心库。
 //!
-//! 当前阶段覆盖 GB/T 33190-2016 的 `OFD.xml`：
+//! 结构：
 //!
-//! - 从 ZIP 容器按需读取 `OFD.xml`，支持文件后端与内存后端；
-//! - 宽松模式容忍真实文件中常见的命名空间变体、混合前缀、元素乱序；
-//! - 严格模式校验命名空间、顺序、必选字段和未知节点；
-//! - 严格写出只从类型化视图产出标准命名空间、标准前缀和 XSD 顺序；
-//! - 缓存按需解压的 entry 字节和解析后的 XML 语法树。
+//! - [`model`]：OFD XML 的纯数据模型；
+//! - [`model_xml`]：模型与 XML 的双向转换；
+//! - [`store`]：`OfdFile`、`Stored<T>`、`ObjectContext` 与存储后端；
+//! - `OfdPackage`：ZIP、加密解密与底层 entry 读写。
 
 /// 为简单的字符串枚举生成 `Display` / `FromStr`，供 XML 属性解析使用。
 #[macro_export]
@@ -41,14 +40,14 @@ mod annotation_edit;
 mod cache;
 mod crypto;
 mod error;
-mod options;
-mod package;
-mod package_write;
-mod refs;
 #[allow(missing_docs)]
 pub mod model;
 #[allow(missing_docs)]
 pub mod model_xml;
+mod options;
+mod package;
+mod package_write;
+mod refs;
 mod sign;
 mod stamp;
 #[allow(missing_docs)]
