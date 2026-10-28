@@ -85,3 +85,33 @@ pub struct EncryptionParameter {
     #[yaserde(text = true)]
     pub value: String,
 }
+
+
+impl Encryptions {
+    /// 遍历加密操作。
+    pub fn encrypt_infos(&self) -> impl Iterator<Item = &EncryptInfo> {
+        self.encrypt_infos.iter()
+    }
+}
+
+impl EncryptInfo {
+    /// 加密操作标识。
+    pub fn id(&self) -> Option<&str> {
+        Some(self.id.as_str())
+    }
+
+    /// 上一次加密操作标识。
+    pub fn relative(&self) -> Option<&str> {
+        self.relative.as_deref()
+    }
+
+    /// 密钥描述文件路径。
+    pub fn decrypt_seed_loc(&self) -> Option<&str> {
+        self.decrypt_seed_loc.as_ref().map(|loc| loc.as_str())
+    }
+
+    /// 明密文映射表路径。
+    pub fn entries_map_loc(&self) -> Option<&str> {
+        self.entries_map_loc.as_ref().map(|loc| loc.as_str())
+    }
+}

@@ -58,7 +58,7 @@ fn package_parses_ofd_entries() {
     let bytes = fixtures::zip_with_entry("OFDEntries.xml", ENTRIES.as_bytes());
     let mut package = OfdPackage::from_bytes(bytes).expect("package");
     let view = package.parse_ofd_entries().expect("OFDEntries");
-    assert_eq!(view.files().count(), 2);
+    assert_eq!(view.file_list.files.len(), 2);
 }
 
 #[test]

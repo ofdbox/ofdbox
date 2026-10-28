@@ -28,3 +28,28 @@ pub struct EncryptEntry {
     #[yaserde(attribute = true, rename = "DecryptSeedLoc")]
     pub decrypt_seed_loc: Option<StLoc>,
 }
+
+
+impl EncryptedEntries {
+    /// 明密文条目。
+    pub fn entries(&self) -> impl Iterator<Item = &EncryptEntry> {
+        self.entries.iter()
+    }
+}
+
+impl EncryptEntry {
+    /// 加密前路径。
+    pub fn path(&self) -> Option<&str> {
+        Some(self.path.as_str())
+    }
+
+    /// 加密后路径。
+    pub fn epath(&self) -> Option<&str> {
+        Some(self.epath.as_str())
+    }
+
+    /// 条目独立密钥描述路径。
+    pub fn decrypt_seed_loc(&self) -> Option<&str> {
+        self.decrypt_seed_loc.as_ref().map(|loc| loc.as_str())
+    }
+}

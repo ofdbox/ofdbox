@@ -1,7 +1,7 @@
 mod fixtures;
 
-use ofdbox_core::model::decrypt_seed::DecryptSeed;
-use ofdbox_core::model::encryption::EncryptInfo;
+use ofdbox_core::schema::decrypt_seed::DecryptSeed;
+use ofdbox_core::schema::encryption::EncryptInfo;
 use ofdbox_core::{CryptoBackend, FileKey, OfdError, OfdPackage, ReadOptions};
 
 const ROOT: &str = r#"<?xml version="1.0" encoding="UTF-8"?>

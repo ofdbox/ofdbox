@@ -62,3 +62,43 @@ pub struct ExtendParameter {
     #[yaserde(text = true)]
     pub text: String,
 }
+
+
+impl DecryptSeed {
+    /// 加密保护方案标识。
+    pub fn encrypt_case_id(&self) -> Option<&str> {
+        Some(self.encrypt_case_id.as_str())
+    }
+
+    /// 可解密用户。
+    pub fn users(&self) -> impl Iterator<Item = &DecryptUser> {
+        self.users.iter()
+    }
+}
+
+impl DecryptUser {
+    /// 用户名称。
+    pub fn user_name(&self) -> Option<&str> {
+        Some(self.user_name.as_str())
+    }
+
+    /// 用户类型。
+    pub fn user_type(&self) -> Option<&str> {
+        self.user_type.as_deref()
+    }
+
+    /// 用户证书。
+    pub fn user_cert(&self) -> Option<&str> {
+        self.user_cert.as_deref()
+    }
+
+    /// 包装密钥。
+    pub fn encrypted_work_key(&self) -> Option<&str> {
+        self.encrypted_work_key.as_deref()
+    }
+
+    /// 初始化向量。
+    pub fn iv_value(&self) -> Option<&str> {
+        self.iv_value.as_deref()
+    }
+}

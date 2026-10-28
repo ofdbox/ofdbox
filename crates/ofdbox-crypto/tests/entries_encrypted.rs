@@ -95,5 +95,5 @@ fn generates_entries_for_encrypted_package() {
         .enable_decryption(Box::new(PasswordBackend::new("new-secret")))
         .expect("decrypt result");
     let entries = result.parse_ofd_entries().expect("entries");
-    assert_eq!(entries.files().count(), 1);
+    assert_eq!(entries.file_list.files.len(), 1);
 }

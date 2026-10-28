@@ -10,12 +10,12 @@ use crate::error::OfdError;
 use crate::model::annotation::{Annotations, PageAnnot};
 use crate::model::attachment::Attachments;
 use crate::model::custom_tags::CustomTags;
-use crate::model::decrypt_seed::DecryptSeed;
 use crate::model::document::{Document, PageEntry};
-use crate::model::encryption::Encryptions;
-use crate::model::entries_map::EncryptedEntries;
 use crate::model::extensions::Extensions;
-use crate::model::integrity::DocEntries;
+use crate::schema::doc_entries::DocEntries;
+use crate::schema::decrypt_seed::DecryptSeed;
+use crate::schema::encryption::Encryptions;
+use crate::schema::entries_map::EncryptedEntries;
 use crate::model::ofd::OfdRoot;
 use crate::model::page::Page;
 use crate::model::res::Res;
@@ -25,9 +25,6 @@ use crate::options::{CacheOptions, ReadOptions};
 use crate::package_write::{
     DecryptedWriteReport, ExistingEntry, PackageEdits, PackageWriteOptions, PlanItem, copy_raw,
     write_plain_entry,
-};
-use crate::schema::doc_entries::{
-    DocEntries as SchemaDocEntries, File as DocEntryFile, FileList as DocEntryFileList,
 };
 use crate::sign::ReferenceDigest;
 use crate::sign::{
@@ -53,7 +50,7 @@ struct DecryptionEntry {
 
 struct DecryptionOperation {
     /// 所属加密操作，用于按条目解包包装密钥。
-    info: crate::model::encryption::EncryptInfo,
+    info: crate::schema::encryption::EncryptInfo,
     /// 该次加密操作的通用文件密钥。
     default_key: FileKey,
     /// 逻辑路径 -> 解密信息。
@@ -998,31 +995,17 @@ impl OfdPackage {
     /// 解析包根目录下的解密入口 `Encryptions.xml`。
     pub fn parse_encryptions(&mut self) -> Result<Encryptions, OfdError> {
         let entry = resolve_loc("", "Encryptions.xml")?;
-        let key = (entry.clone(), self.options.strict);
-        if let Some(doc) = self.xml_cache.get(&key) {
-            return Encryptions::from_document(doc, self.options);
-        }
-
         let bytes = self.read_entry(&entry)?;
-        let doc = Arc::new(parse_xml(&bytes, self.options)?);
-        self.xml_cache
-            .insert(key, Arc::clone(&doc), doc.estimated_size());
-        Encryptions::from_document(doc, self.options)
+        crate::schema_xml::from_bytes(&bytes)
+            .map_err(|error| OfdError::InvalidStructure(error.to_string()))
     }
 
     /// 解析密钥描述文件，路径相对于包根。
     pub fn parse_decrypt_seed(&mut self, loc: &str) -> Result<DecryptSeed, OfdError> {
         let entry = resolve_loc("", loc)?;
-        let key = (entry.clone(), self.options.strict);
-        if let Some(doc) = self.xml_cache.get(&key) {
-            return DecryptSeed::from_document(doc, self.options);
-        }
-
         let bytes = self.read_entry(&entry)?;
-        let doc = Arc::new(parse_xml(&bytes, self.options)?);
-        self.xml_cache
-            .insert(key, Arc::clone(&doc), doc.estimated_size());
-        DecryptSeed::from_document(doc, self.options)
+        crate::schema_xml::from_bytes(&bytes)
+            .map_err(|error| OfdError::InvalidStructure(error.to_string()))
     }
 
     /// 解析未加密的明密文映射表，路径相对于包根。
@@ -1030,16 +1013,9 @@ impl OfdPackage {
     /// `entriesmap.dat` 可能是加密二进制，需先解密后再调用本方法。
     pub fn parse_entries_map(&mut self, loc: &str) -> Result<EncryptedEntries, OfdError> {
         let entry = resolve_loc("", loc)?;
-        let key = (entry.clone(), self.options.strict);
-        if let Some(doc) = self.xml_cache.get(&key) {
-            return EncryptedEntries::from_document(doc, self.options);
-        }
-
         let bytes = self.read_entry(&entry)?;
-        let doc = Arc::new(parse_xml(&bytes, self.options)?);
-        self.xml_cache
-            .insert(key, Arc::clone(&doc), doc.estimated_size());
-        EncryptedEntries::from_document(doc, self.options)
+        crate::schema_xml::from_bytes(&bytes)
+            .map_err(|error| OfdError::InvalidStructure(error.to_string()))
     }
 
     /// 启用文档解密。
@@ -1099,7 +1075,8 @@ impl OfdPackage {
                     .decrypt(&file_key, &map_raw)
                     .map_err(|_| OfdError::Crypto("明密文映射表解密失败".to_owned()))?
             };
-            let map = EncryptedEntries::from_xml(&map_bytes, self.options)?;
+            let map: EncryptedEntries = crate::schema_xml::from_bytes(&map_bytes)
+                .map_err(|error| OfdError::InvalidStructure(error.to_string()))?;
             let mut entries = HashMap::new();
             for entry in map.entries() {
                 let path = entry.path().ok_or_else(|| {
@@ -1119,7 +1096,7 @@ impl OfdPackage {
                 );
             }
             operations.push(DecryptionOperation {
-                info: info.clone(),
+                info: (*info).clone(),
                 default_key: file_key,
                 entries,
             });
@@ -1239,16 +1216,9 @@ impl OfdPackage {
     /// 解析包根目录下的完整性保护描述 `OFDEntries.xml`。
     pub fn parse_ofd_entries(&mut self) -> Result<DocEntries, OfdError> {
         let entry = resolve_loc("", "OFDEntries.xml")?;
-        let key = (entry.clone(), self.options.strict);
-        if let Some(doc) = self.xml_cache.get(&key) {
-            return DocEntries::from_document(doc, self.options);
-        }
-
         let bytes = self.read_entry(&entry)?;
-        let doc = Arc::new(parse_xml(&bytes, self.options)?);
-        self.xml_cache
-            .insert(key, Arc::clone(&doc), doc.estimated_size());
-        DocEntries::from_document(doc, self.options)
+        crate::schema_xml::from_bytes(&bytes)
+            .map_err(|error| OfdError::InvalidStructure(error.to_string()))
     }
 
     /// 校验 `OFDEntries.xml`：列出文件必须存在、不得重复；`SignedValueLoc`
@@ -1272,10 +1242,8 @@ impl OfdPackage {
 
         let mut seen = HashSet::new();
         let mut files = 0usize;
-        for file in view.files() {
-            let file_loc = file
-                .file_loc()
-                .ok_or_else(|| OfdError::InvalidStructure("File 缺少 FileLoc 属性".to_owned()))?;
+        for file in &view.file_list.files {
+            let file_loc = file.file_loc.as_str();
             let path = resolve_loc("", file_loc)?;
             if !seen.insert(entry_key(&path)) {
                 return Err(OfdError::InvalidStructure(format!(
@@ -1290,15 +1258,15 @@ impl OfdPackage {
             files += 1;
         }
 
-        let signed_value = match view.signed_value_loc() {
-            Some(loc) => {
+        let signed_value = match view.signed_value_loc.as_str() {
+            "" => None,
+            loc => {
                 let path = resolve_loc("", loc)?;
                 let value = self.read_entry(&path)?;
                 let format = detect_signed_value_format(&value);
                 verifiers.verify(format, DEFAULT_SIGNATURE_METHOD, &entries_bytes, &value)?;
                 Some(format!("/{path}"))
             }
-            None => None,
         };
 
         let referenced = crate::refs::referenced_entries_with(self, graph)?;
@@ -1309,8 +1277,9 @@ impl OfdPackage {
             }
         }
         let mut listed = HashMap::new();
-        for file in view.files() {
-            if let Some(loc) = file.file_loc() {
+        for file in &view.file_list.files {
+            let loc = file.file_loc.as_str();
+            {
                 let path = resolve_loc("", loc)?;
                 listed.insert(entry_key(&path), format!("/{path}"));
             }
@@ -1976,8 +1945,9 @@ impl OfdPackage {
             }
         }
         if let Ok(entries) = self.parse_ofd_entries() {
-            for file in entries.files() {
-                if let Some(loc) = file.file_loc()
+            for file in &entries.file_list.files {
+                if !file.file_loc.as_str().is_empty()
+                    && let loc = file.file_loc.as_str()
                     && let Ok(normalized) = normalize_entry_name(loc)
                 {
                     paths.push(entry_key(&normalized));
@@ -2135,16 +2105,16 @@ fn build_entries_xml(
     files: &[String],
     signed_value: &str,
 ) -> Result<Vec<u8>, OfdError> {
-    let entries = SchemaDocEntries {
+    let entries = DocEntries {
         id: options.id.clone(),
         creator_name: options.creator_name.clone(),
         version: options.version.clone(),
         creation_date: options.creation_date.clone(),
-        file_list: DocEntryFileList {
+        file_list: crate::schema::doc_entries::FileList {
             files: files
                 .iter()
                 .enumerate()
-                .map(|(index, path)| DocEntryFile {
+                .map(|(index, path)| crate::schema::doc_entries::File {
                     id: format!("f{}", index + 1),
                     file_loc: crate::schema::definition::StLoc::new(path),
                 })

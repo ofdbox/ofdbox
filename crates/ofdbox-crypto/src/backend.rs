@@ -1,8 +1,8 @@
 use std::io::Write;
 
 use base64::Engine;
-use ofdbox_core::model::decrypt_seed::DecryptSeed;
-use ofdbox_core::model::encryption::EncryptInfo;
+use ofdbox_core::schema::decrypt_seed::DecryptSeed;
+use ofdbox_core::schema::encryption::EncryptInfo;
 use ofdbox_core::{CryptoBackend, FileKey, OfdError};
 use zeroize::Zeroizing;
 

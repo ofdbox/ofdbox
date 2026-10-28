@@ -22,7 +22,7 @@ pub struct DocEntries {
     #[yaserde(rename = "FileList")]
     pub file_list: FileList,
     /// 签名值路径。
-    #[yaserde(rename = "SignedValueLoc")]
+    #[yaserde(rename = "SignedValueLoc", default = "default_st_loc")]
     pub signed_value_loc: StLoc,
 }
 
@@ -45,4 +45,8 @@ pub struct File {
     /// 包内绝对路径。
     #[yaserde(attribute = true, rename = "FileLoc")]
     pub file_loc: StLoc,
+}
+
+fn default_st_loc() -> StLoc {
+    StLoc::default()
 }

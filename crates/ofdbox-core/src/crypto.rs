@@ -4,8 +4,8 @@ use ofdbox_algo::AlgorithmRegistry;
 use zeroize::Zeroizing;
 
 use crate::error::OfdError;
-use crate::model::decrypt_seed::DecryptSeed;
-use crate::model::encryption::EncryptInfo;
+use crate::schema::decrypt_seed::DecryptSeed;
+use crate::schema::encryption::EncryptInfo;
 
 /// 把摘要方法写法归一化为标准名称。
 ///
@@ -450,8 +450,8 @@ mod tests {
     impl CryptoBackend for EmptyBackend {
         fn unwrap_file_key(
             &self,
-            _operation: &crate::model::encryption::EncryptInfo,
-            _seed: &crate::model::decrypt_seed::DecryptSeed,
+            _operation: &crate::schema::encryption::EncryptInfo,
+            _seed: &crate::schema::decrypt_seed::DecryptSeed,
         ) -> Result<FileKey, OfdError> {
             Err(OfdError::Crypto("unused".to_owned()))
         }
