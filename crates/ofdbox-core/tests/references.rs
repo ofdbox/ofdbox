@@ -2,8 +2,7 @@ mod fixtures;
 
 use ofdbox_core::schema::decrypt_seed::DecryptSeed;
 use ofdbox_core::schema::encryption::EncryptInfo;
-use ofdbox_core::model::signature::Signature;
-use ofdbox_core::{CryptoBackend, FileKey, OfdError, OfdPackage, ReadOptions};
+use ofdbox_core::{CryptoBackend, FileKey, OfdError, OfdPackage};
 
 struct IdentityDigest;
 
@@ -44,7 +43,7 @@ fn signature_xml(check_value: &str) -> String {
 fn reference_digest_matches() {
     let bytes = fixtures::zip_with_entry("a.txt", b"hello");
     let mut package = OfdPackage::from_bytes(bytes).expect("package");
-    let signature = Signature::from_xml(signature_xml("aGVsbG8=").as_bytes(), ReadOptions::LENIENT)
+    let signature = ofdbox_core::schema_xml::from_bytes(signature_xml("aGVsbG8=").as_bytes())
         .expect("signature");
     let checks = package
         .verify_references(&signature, &IdentityDigest)
@@ -58,7 +57,7 @@ fn reference_digest_matches() {
 fn reference_digest_mismatch_is_reported() {
     let bytes = fixtures::zip_with_entry("a.txt", b"hello");
     let mut package = OfdPackage::from_bytes(bytes).expect("package");
-    let signature = Signature::from_xml(signature_xml("d3Jvbmc=").as_bytes(), ReadOptions::LENIENT)
+    let signature = ofdbox_core::schema_xml::from_bytes(signature_xml("d3Jvbmc=").as_bytes())
         .expect("signature");
     let checks = package
         .verify_references(&signature, &IdentityDigest)
@@ -70,7 +69,7 @@ fn reference_digest_mismatch_is_reported() {
 fn missing_reference_file_is_an_error() {
     let bytes = fixtures::zip_with_entry("b.txt", b"hello");
     let mut package = OfdPackage::from_bytes(bytes).expect("package");
-    let signature = Signature::from_xml(signature_xml("aGVsbG8=").as_bytes(), ReadOptions::LENIENT)
+    let signature = ofdbox_core::schema_xml::from_bytes(signature_xml("aGVsbG8=").as_bytes())
         .expect("signature");
     assert!(matches!(
         package.verify_references(&signature, &IdentityDigest),

@@ -19,7 +19,8 @@ use crate::schema::entries_map::EncryptedEntries;
 use crate::model::ofd::OfdRoot;
 use crate::model::page::Page;
 use crate::model::res::Res;
-use crate::model::signature::{Signature, Signatures};
+use crate::schema::signature::Signature;
+use crate::schema::signatures::Signatures;
 use crate::model::version::Version;
 use crate::options::{CacheOptions, ReadOptions};
 use crate::package_write::{
@@ -858,17 +859,17 @@ impl OfdPackage {
     ///
     /// `Signatures` 相对于 `OFD.xml` 所在目录解析。
     pub fn parse_signatures(&mut self) -> Result<Signatures, OfdError> {
-        let loc = {
-            let root = self.parse_root()?;
-            root.doc_bodies()
-                .next()
-                .and_then(|body| body.signatures().map(str::to_owned))
-        }
-        .ok_or_else(|| OfdError::InvalidStructure("OFD.xml 未声明 Signatures".to_owned()))?;
-        let entry = resolve_loc("", &loc)?;
-        let view = self.parse_signatures_entry(entry.clone())?;
-        self.signatures_entry = Some(entry);
-        Ok(view)
+        let entry = self.root_entry_name()?;
+        let bytes = self.read_entry(&entry)?;
+        let ofd: crate::schema::ofd::Ofd = crate::schema_xml::from_bytes(&bytes)
+            .map_err(|error| OfdError::InvalidStructure(error.to_string()))?;
+        let loc = ofd
+            .doc_bodies
+            .first()
+            .and_then(|body| body.signatures.as_ref())
+            .ok_or_else(|| OfdError::InvalidStructure("OFD.xml 未声明 Signatures".to_owned()))?;
+        let entry = resolve_loc("", loc.as_str())?;
+        self.parse_signatures_entry(entry)
     }
 
     /// 返回已定位的 `Document.xml` entry。
@@ -965,16 +966,11 @@ impl OfdPackage {
     }
 
     fn parse_signatures_entry(&mut self, entry: String) -> Result<Signatures, OfdError> {
-        let key = (entry.clone(), self.options.strict);
-        if let Some(doc) = self.xml_cache.get(&key) {
-            return Signatures::from_document(doc, self.options);
-        }
-
         let bytes = self.read_entry(&entry)?;
-        let doc = Arc::new(parse_xml(&bytes, self.options)?);
-        self.xml_cache
-            .insert(key, Arc::clone(&doc), doc.estimated_size());
-        Signatures::from_document(doc, self.options)
+        let index: Signatures = crate::schema_xml::from_bytes(&bytes)
+            .map_err(|error| OfdError::InvalidStructure(error.to_string()))?;
+        self.signatures_entry = Some(entry);
+        Ok(index)
     }
 
     /// 解析版本列表 `BaseLoc` 指向的版本描述文件，路径相对于包根。
@@ -1410,17 +1406,11 @@ impl OfdPackage {
     }
 
     fn parse_signature_entry(&mut self, entry: String) -> Result<Signature, OfdError> {
-        self.signature_entry = Some(entry.clone());
-        let key = (entry.clone(), self.options.strict);
-        if let Some(doc) = self.xml_cache.get(&key) {
-            return Signature::from_document(doc, self.options);
-        }
-
         let bytes = self.read_entry(&entry)?;
-        let doc = Arc::new(parse_xml(&bytes, self.options)?);
-        self.xml_cache
-            .insert(key, Arc::clone(&doc), doc.estimated_size());
-        Signature::from_document(doc, self.options)
+        let signature: Signature = crate::schema_xml::from_bytes(&bytes)
+            .map_err(|error| OfdError::InvalidStructure(error.to_string()))?;
+        self.signature_entry = Some(entry);
+        Ok(signature)
     }
 
     /// 清空缓存；已经取出的 `Arc` 视图仍然有效。
@@ -1921,10 +1911,8 @@ impl OfdPackage {
                     let Ok(bytes) = self.read_entry(&entry) else {
                         continue;
                     };
-                    let Ok(doc) = parse_xml(&bytes, self.options) else {
-                        continue;
-                    };
-                    let Ok(signature) = Signature::from_document(Arc::new(doc), self.options)
+                    let Ok(signature): Result<Signature, _> =
+                        crate::schema_xml::from_bytes(&bytes)
                     else {
                         continue;
                     };

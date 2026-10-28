@@ -19,7 +19,7 @@ pub struct Signature {
 #[yaserde(rename = "SignedInfo")]
 pub struct SignedInfo {
     /// 签名提供者。
-    #[yaserde(rename = "Provider")]
+    #[yaserde(rename = "Provider", default = "default_provider")]
     pub provider: Provider,
     /// 签名算法。
     #[yaserde(rename = "SignatureMethod")]
@@ -28,7 +28,7 @@ pub struct SignedInfo {
     #[yaserde(rename = "SignatureDateTime")]
     pub signature_date_time: Option<String>,
     /// 引用。
-    #[yaserde(rename = "References")]
+    #[yaserde(rename = "References", default = "default_references")]
     pub references: References,
     /// 签章注释。
     #[yaserde(rename = "StampAnnot")]
@@ -141,4 +141,120 @@ fn default_string() -> String {
 
 fn default_st_loc() -> StLoc {
     StLoc::default()
+}
+
+
+impl Signature {
+    /// 签名信息。
+    pub fn signed_info(&self) -> Option<&SignedInfo> {
+        Some(&self.signed_info)
+    }
+
+    /// 签名值路径。
+    pub fn signed_value(&self) -> Option<&str> {
+        Some(self.signed_value.as_str())
+    }
+}
+
+impl SignedInfo {
+    /// 引用集合。
+    pub fn references(&self) -> Option<&References> {
+        Some(&self.references)
+    }
+
+    /// 签名方法。
+    pub fn signature_method(&self) -> Option<&str> {
+        self.signature_method.as_deref()
+    }
+
+    /// 印章信息。
+    pub fn seal(&self) -> Option<&Seal> {
+        self.seal.as_ref()
+    }
+
+    /// 签名提供者。
+    pub fn provider(&self) -> Option<&Provider> {
+        Some(&self.provider)
+    }
+
+    /// 签名时间。
+    pub fn signature_date_time(&self) -> Option<&str> {
+        self.signature_date_time.as_deref()
+    }
+}
+
+impl Provider {
+    /// 组件名称。
+    pub fn name(&self) -> Option<&str> {
+        Some(self.provider_name.as_str())
+    }
+
+    /// 组件名称。
+    pub fn provider_name(&self) -> Option<&str> {
+        Some(self.provider_name.as_str())
+    }
+
+    /// 公司。
+    pub fn company(&self) -> Option<&str> {
+        self.company.as_deref()
+    }
+
+    /// 版本。
+    pub fn version(&self) -> Option<&str> {
+        self.version.as_deref()
+    }
+
+    /// 协议版本。
+    pub fn protocol_version(&self) -> Option<&str> {
+        self.protocol_version.as_deref()
+    }
+
+    /// 扩展信息。
+    pub fn extend_data(&self) -> Option<&str> {
+        self.extend_data.as_deref()
+    }
+}
+
+impl References {
+    /// 引用。
+    pub fn references(&self) -> impl Iterator<Item = &Reference> {
+        self.references.iter()
+    }
+
+    /// 校验方法。
+    pub fn check_method(&self) -> Option<&str> {
+        Some(match &self.check_method {
+            CheckMethod::Md5 => "MD5",
+            CheckMethod::Sha1 => "SHA1",
+            CheckMethod::Other(value) => value,
+        })
+    }
+}
+
+impl Reference {
+    /// 文件路径。
+    pub fn file_ref(&self) -> Option<&str> {
+        Some(self.file_ref.as_str())
+    }
+
+    /// 校验值。
+    pub fn check_value(&self) -> &str {
+        &self.check_value
+    }
+}
+
+
+impl Seal {
+    /// 印章基准路径。
+    pub fn base_loc(&self) -> Option<&str> {
+        Some(self.base_loc.as_str())
+    }
+}
+
+fn default_provider() -> Provider {
+    Provider::default()
+}
+
+fn default_references() -> References {
+    References::default()
 }

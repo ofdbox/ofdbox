@@ -49,3 +49,37 @@ crate::impl_xml_enum_codec!(SignatureType, Other, {
 fn default_signature_type() -> SignatureType {
     SignatureType::Seal
 }
+
+
+impl Signatures {
+    /// 最大签名 ID。
+    pub fn max_sign_id(&self) -> Option<&str> {
+        self.max_sign_id.as_deref()
+    }
+
+    /// 签名索引。
+    pub fn signatures(&self) -> impl Iterator<Item = &SignatureRef> {
+        self.signatures.iter()
+    }
+}
+
+impl SignatureRef {
+    /// 签名标识。
+    pub fn id(&self) -> Option<&str> {
+        Some(self.id.as_str())
+    }
+
+    /// 签名类型。
+    pub fn signature_type(&self) -> Option<&str> {
+        Some(match &self.signature_type {
+            SignatureType::Seal => "Seal",
+            SignatureType::Sign => "Sign",
+            SignatureType::Other(value) => value,
+        })
+    }
+
+    /// 签名描述文件路径。
+    pub fn base_loc(&self) -> Option<&str> {
+        Some(self.base_loc.as_str())
+    }
+}
