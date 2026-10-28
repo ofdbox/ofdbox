@@ -38,7 +38,8 @@ fn parses_and_writes_ofd_root() {
     );
 
     let written = xml::to_string(&parsed).expect("write OFD");
-    assert!(written.contains(r#"xmlns="http://www.ofdspec.org/2016""#));
+    assert!(written.contains(r#"xmlns:ofd="http://www.ofdspec.org/2016""#));
+    assert!(written.contains("<ofd:OFD"));
     let reparsed: Ofd = xml::from_str(&written).expect("reparse OFD");
     assert_eq!(reparsed, parsed);
 }
@@ -68,9 +69,9 @@ fn builds_ofd_xml() {
     };
 
     let written = xml::to_string(&ofd).expect("serialize");
-    assert!(written.contains("<DocID>demo</DocID>"), "{written}");
+    assert!(written.contains("<ofd:DocID>demo</ofd:DocID>"), "{written}");
     assert!(
-        written.contains("<DocRoot>Doc_0/Document.xml</DocRoot>"),
+        written.contains("<ofd:DocRoot>Doc_0/Document.xml</ofd:DocRoot>"),
         "{written}"
     );
     let reparsed: Ofd = xml::from_str(&written).expect("reparse");

@@ -199,8 +199,11 @@ impl RawXml {
                             .collect(),
                         namespaces: namespace
                             .iter()
-                            .filter(|(prefix, _)| {
-                                !prefix.is_empty() && *prefix != "xml" && *prefix != "xmlns"
+                            .filter(|(prefix, uri)| {
+                                !prefix.is_empty()
+                                    && *prefix != "xml"
+                                    && *prefix != "xmlns"
+                                    && *uri != crate::model_xml::OFD_NAMESPACE
                             })
                             .map(|(prefix, uri)| (prefix.to_owned(), uri.to_owned()))
                             .collect(),
@@ -302,7 +305,15 @@ fn write_raw_element<W: Write>(
     writer
         .write(yaserde::__xml::writer::XmlEvent::start_element(name))
         .map_err(yaserde::Error::custom)?;
+    writer
+        .write(yaserde::__xml::writer::XmlEvent::comment(
+            "ofdbox-raw-start",
+        ))
+        .map_err(yaserde::Error::custom)?;
     value.serialize(writer)?;
+    writer
+        .write(yaserde::__xml::writer::XmlEvent::comment("ofdbox-raw-end"))
+        .map_err(yaserde::Error::custom)?;
     writer
         .write(yaserde::__xml::writer::XmlEvent::end_element())
         .map_err(yaserde::Error::custom)?;
