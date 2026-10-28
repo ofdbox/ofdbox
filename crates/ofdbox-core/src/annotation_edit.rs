@@ -10,6 +10,11 @@ use crate::error::OfdError;
 use crate::options::ReadOptions;
 use crate::package::{OfdPackage, parent_dir, resolve_loc};
 use crate::package_write::{PackageEdits, PackageWriteOptions};
+use crate::schema::annotations::Annotations;
+use crate::schema::document::Document;
+use crate::schema::ofd::Ofd;
+use crate::schema::signatures::Signatures;
+use crate::schema_xml;
 use crate::xml::parser::parse_xml;
 use crate::xml::tree::{NodeId, XmlDocument};
 
@@ -271,58 +276,43 @@ impl<'a> AnnotationEditor<'a> {
     /// `Document.xml` 必须已声明 `Annotations`；`allow_signed` 为 `false` 时，
     /// 已签名文档会拒绝编辑。
     pub fn new(package: &'a mut OfdPackage, allow_signed: bool) -> Result<Self, OfdError> {
-        let document = package.parse_document()?;
+        let ofd = parse_schema::<Ofd>(&package.read_entry("OFD.xml")?)?;
+        let body = ofd
+            .doc_bodies
+            .first()
+            .ok_or_else(|| OfdError::InvalidStructure("OFD.xml 缺少 DocBody".to_owned()))?;
+        let document_entry = resolve_loc("", body.doc_root.as_str())?;
+        let document = parse_schema::<Document>(&package.read_entry(&document_entry)?)?;
         let annotations_loc = document
-            .annotations()
+            .annotations
+            .as_ref()
             .ok_or_else(|| {
                 OfdError::InvalidStructure("Document.xml 未声明 Annotations".to_owned())
             })?
-            .to_owned();
-        let document_entry = package
-            .document_entry_name()
-            .ok_or_else(|| OfdError::InvalidStructure("尚未定位 Document.xml".to_owned()))?
-            .to_owned();
+            .to_string();
         let base = parent_dir(&document_entry).unwrap_or("");
         let annotations_entry = resolve_loc(base, &annotations_loc)?;
         if !package.contains(&annotations_entry) {
             return Err(OfdError::MissingEntry(annotations_entry));
         }
-        if !allow_signed
-            && package
-                .parse_signatures()
-                .map(|index| index.signatures().next().is_some())
-                .unwrap_or(false)
-        {
+        if !allow_signed && has_signatures(package, &body.signatures)? {
             return Err(OfdError::InvalidStructure(
                 "文档已签名，注释编辑会破坏签名；需要显式允许".to_owned(),
             ));
         }
 
-        let index = package.parse_annotations()?;
+        let index = parse_schema::<Annotations>(&package.read_entry(&annotations_entry)?)?;
         let mut pages = Vec::new();
-        for page in index.pages() {
-            let page_id = page
-                .page_id()
-                .ok_or_else(|| OfdError::InvalidStructure("注释索引缺少 PageID".to_owned()))?;
-            let file_loc = page
-                .file_loc()
-                .ok_or_else(|| OfdError::InvalidStructure("注释索引缺少 FileLoc".to_owned()))?;
-            pages.push((page_id.to_owned(), file_loc.to_owned()));
+        for page in index.pages {
+            pages.push((page.page_id.to_string(), page.file_loc.to_string()));
         }
-        let page_ids = document
-            .pages()
-            .map(|pages| {
-                pages
-                    .pages()
-                    .filter_map(|page| page.id().map(str::to_owned))
-                    .collect()
-            })
-            .unwrap_or_default();
-        let max_unit_id = document
-            .common_data()
-            .and_then(|common| common.max_unit_id().map(str::to_owned))
-            .and_then(|value| value.parse::<i64>().ok())
-            .unwrap_or(0);
+        let page_ids: HashSet<String> = document
+            .pages
+            .pages
+            .iter()
+            .map(|page| page.id.to_string())
+            .collect();
+        let max_unit_id = i64::from(document.common_data.max_unit_id.0);
         let annotations_dir = parent_dir(&annotations_entry).unwrap_or("").to_owned();
 
         Ok(Self {
@@ -565,6 +555,25 @@ impl<'a> AnnotationEditor<'a> {
         }
         name
     }
+}
+
+fn parse_schema<T: yaserde::YaDeserialize>(bytes: &[u8]) -> Result<T, OfdError> {
+    schema_xml::from_bytes(bytes).map_err(|error| OfdError::InvalidStructure(error.to_string()))
+}
+
+fn has_signatures(
+    package: &mut OfdPackage,
+    signatures: &Option<crate::schema::definition::StLoc>,
+) -> Result<bool, OfdError> {
+    let Some(location) = signatures else {
+        return Ok(false);
+    };
+    let entry = resolve_loc("", location.as_str())?;
+    if !package.contains(&entry) {
+        return Ok(false);
+    }
+    let index = parse_schema::<Signatures>(&package.read_entry(&entry)?)?;
+    Ok(!index.signatures.is_empty())
 }
 
 fn parse_existing_annots(bytes: &[u8]) -> Result<Vec<(String, String)>, OfdError> {
