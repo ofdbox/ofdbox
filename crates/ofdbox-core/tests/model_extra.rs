@@ -213,3 +213,54 @@ fn page_with_la_gouraud_gradient() {
     let reparsed: model::page::Page = model_xml::from_bytes(&written).expect("reparse");
     assert_eq!(parsed, reparsed);
 }
+
+#[test]
+fn document_outlines_permissions_preferences() {
+    let xml = r#"<Document>
+  <CommonData>
+    <MaxUnitID>1</MaxUnitID>
+    <PageArea><PhysicalBox>0 0 210 297</PhysicalBox></PageArea>
+  </CommonData>
+  <Pages><Page ID="1" BaseLoc="Pages/Page_0/Content.xml"/></Pages>
+  <Outlines>
+    <OutlineElem Title="root" Expanded="true">
+      <OutlineElem Title="child"/>
+    </OutlineElem>
+  </Outlines>
+  <Permissions>
+    <Edit>true</Edit>
+    <Print Printable="true" Copies="2"/>
+  </Permissions>
+  <VPreferences>
+    <PageMode>FullScreen</PageMode>
+    <PageLayout>SinglePage</PageLayout>
+  </VPreferences>
+</Document>"#;
+    let parsed: model::document::Document = model_xml::from_bytes(xml.as_bytes()).expect("parse");
+    let written = model_xml::to_bytes(&parsed).expect("serialize");
+    let reparsed: model::document::Document = model_xml::from_bytes(&written).expect("reparse");
+    assert_eq!(parsed, reparsed);
+}
+
+#[test]
+fn page_with_clip_and_composite() {
+    let xml = r#"<Page>
+  <Content>
+    <Layer ID="1">
+      <CompositeObject ID="2" Boundary="0 0 100 100" ResourceID="10"/>
+      <PathObject ID="3" Boundary="0 0 100 100">
+        <AbbreviatedData>M 0 0 L 100 100</AbbreviatedData>
+        <Clips>
+          <Clip>
+            <Area><Path><AbbreviatedData>M 0 0 L 50 50</AbbreviatedData><PathObject/></Path></Area>
+          </Clip>
+        </Clips>
+      </PathObject>
+    </Layer>
+  </Content>
+</Page>"#;
+    let parsed: model::page::Page = model_xml::from_bytes(xml.as_bytes()).expect("parse");
+    let written = model_xml::to_bytes(&parsed).expect("serialize");
+    let reparsed: model::page::Page = model_xml::from_bytes(&written).expect("reparse");
+    assert_eq!(parsed, reparsed);
+}
