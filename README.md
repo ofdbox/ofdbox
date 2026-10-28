@@ -21,7 +21,7 @@ OFDBox 是一个 Rust 实现的 OFD 版式文档工具箱，依据 GB/T 33190—
 | crate | 职责 |
 | --- | --- |
 | `ofdbox-algo` | 国密算法原语、OID 元数据与算法注册表；不依赖其他 `ofdbox-*` crate |
-| `ofdbox-core` | ZIP/XML 解析、OFD/GM 结构模型、严格写出、缓存、解密会话 |
+| `ofdbox-core` | `model` 纯数据模型、`model_xml` 编解码、`store` 对象上下文、ZIP/加密/签名底层 |
 | `ofdbox-crypto` | SM3-KDF、SM4-CBC、SM2 加解密/签名、证书链、SignedData |
 | `ofdbox-seal` | 印章结构识别、图片提取、印章验签 |
 | `ofdbox` | 对外门面：常用类型、统一错误、feature 转发 |
@@ -31,8 +31,14 @@ OFDBox 是一个 Rust 实现的 OFD 版式文档工具箱，依据 GB/T 33190—
 ```rust
 use ofdbox::prelude::*;
 
-let mut package = OfdPackage::open("sample.ofd")?;
-let document = package.parse_document()?;
+let file = OfdFile::open("sample.ofd")?;
+let ofd = file.ofd()?;
+let document = ofd.document(0)?;
+
+for entry in document.pages() {
+    let page = entry.load()?;
+    println!("page {}", entry.id());
+}
 ```
 
 签名与加密的完整流程见 `crates/ofdbox/examples/sign_and_verify.rs`：建包 → 签名（35275）→ 验签 → 口令加密 → 解密再验签。加密文档也可直接使用 `PasswordBackend` / `CertificateBackend` 与 `enable_decryption`；签章验签见 `ofdbox::SesSignatureVerifier`。
