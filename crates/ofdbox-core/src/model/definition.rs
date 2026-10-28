@@ -542,8 +542,10 @@ impl YaSerialize for RegionArea {
     fn serialize<W: Write>(&self, writer: &mut Serializer<W>) -> ofdbox_yaserde::Result<()> {
         writer
             .write(
-                ofdbox_yaserde::__xml::writer::XmlEvent::start_element("Area")
-                    .attr("Start", &self.start.to_string()),
+                ofdbox_yaserde::__xml::writer::XmlEvent::start_element(
+                    crate::model_xml::ofd_name(writer, "Area").as_str(),
+                )
+                .attr("Start", &self.start.to_string()),
             )
             .map_err(ofdbox_yaserde::Error::custom)?;
         for command in &self.commands {
@@ -696,7 +698,9 @@ impl YaSerialize for RegionCommand {
             Self::Close => ("Close", Vec::new()),
         };
 
-        let mut event = ofdbox_yaserde::__xml::writer::XmlEvent::start_element(tag);
+        let element_name = crate::model_xml::ofd_name(writer, tag);
+        let mut event =
+            ofdbox_yaserde::__xml::writer::XmlEvent::start_element(element_name.as_str());
         for (key, value) in &attrs {
             event = event.attr(key.as_str(), value.as_str());
         }

@@ -173,8 +173,10 @@ impl YaSerialize for Layer {
         let id = self.id.to_string();
         let layer_type = self.layer_type.to_string();
         let draw_param = self.draw_param.map(|value| value.to_string());
+        let element_name = crate::model_xml::ofd_name(writer, "Layer");
         let mut event =
-            ofdbox_yaserde::__xml::writer::XmlEvent::start_element("Layer").attr("ID", id.as_str());
+            ofdbox_yaserde::__xml::writer::XmlEvent::start_element(element_name.as_str())
+                .attr("ID", id.as_str());
         if self.layer_type != LayerType::Body {
             event = event.attr("Type", layer_type.as_str());
         }
@@ -661,9 +663,14 @@ impl YaSerialize for PageBlock {
         let name = writer
             .get_start_event_name()
             .unwrap_or_else(|| "PageBlock".to_owned());
+        let element_name = if name.contains(':') {
+            name
+        } else {
+            crate::model_xml::ofd_name(writer, name.as_str())
+        };
         writer
             .write(ofdbox_yaserde::__xml::writer::XmlEvent::start_element(
-                name.as_str(),
+                element_name.as_str(),
             ))
             .map_err(ofdbox_yaserde::Error::custom)?;
         for object in &self.objects {
@@ -713,8 +720,10 @@ impl YaSerialize for PageBlockObject {
         let id = self.id.to_string();
         writer
             .write(
-                ofdbox_yaserde::__xml::writer::XmlEvent::start_element("PageBlock")
-                    .attr("ID", id.as_str()),
+                ofdbox_yaserde::__xml::writer::XmlEvent::start_element(
+                    crate::model_xml::ofd_name(writer, "PageBlock").as_str(),
+                )
+                .attr("ID", id.as_str()),
             )
             .map_err(ofdbox_yaserde::Error::custom)?;
         for object in &self.block.objects {
@@ -981,7 +990,9 @@ pub struct CellContent {
 impl YaSerialize for CellContent {
     fn serialize<W: Write>(&self, writer: &mut Serializer<W>) -> ofdbox_yaserde::Result<()> {
         let thumbnail = self.thumbnail.map(|value| value.to_string());
-        let mut event = ofdbox_yaserde::__xml::writer::XmlEvent::start_element("CellContent");
+        let element_name = crate::model_xml::ofd_name(writer, "CellContent");
+        let mut event =
+            ofdbox_yaserde::__xml::writer::XmlEvent::start_element(element_name.as_str());
         if let Some(thumbnail) = &thumbnail {
             event = event.attr("Thumbnail", thumbnail.as_str());
         }
@@ -1038,9 +1049,11 @@ impl YaSerialize for Pattern {
         let reflect = self.reflect_method.to_string();
         let relative = self.relative_to.to_string();
         let ctm = self.ctm.as_ref().map(ToString::to_string);
-        let mut event = ofdbox_yaserde::__xml::writer::XmlEvent::start_element("Pattern")
-            .attr("Width", width.as_str())
-            .attr("Height", height.as_str());
+        let element_name = crate::model_xml::ofd_name(writer, "Pattern");
+        let mut event =
+            ofdbox_yaserde::__xml::writer::XmlEvent::start_element(element_name.as_str())
+                .attr("Width", width.as_str())
+                .attr("Height", height.as_str());
         if self.reflect_method != PatternReflect::Normal {
             event = event.attr("ReflectMethod", reflect.as_str());
         }
@@ -1323,7 +1336,9 @@ pub struct LaGouraudPoint {
 impl YaSerialize for ShdSegment {
     fn serialize<W: Write>(&self, writer: &mut Serializer<W>) -> ofdbox_yaserde::Result<()> {
         let position = self.position.map(|value| value.to_string());
-        let mut event = ofdbox_yaserde::__xml::writer::XmlEvent::start_element("Segment");
+        let element_name = crate::model_xml::ofd_name(writer, "Segment");
+        let mut event =
+            ofdbox_yaserde::__xml::writer::XmlEvent::start_element(element_name.as_str());
         if let Some(position) = &position {
             event = event.attr("Position", position.as_str());
         }
@@ -1354,10 +1369,12 @@ impl YaSerialize for AxialShd {
         let end = self.end_point.to_string();
         let map_unit = self.map_unit.map(|value| value.to_string());
         let extend = (self.extend != 0).then(|| self.extend.to_string());
-        let mut event = ofdbox_yaserde::__xml::writer::XmlEvent::start_element("AxialShd")
-            .attr("MapType", map_type.as_str())
-            .attr("StartPoint", start.as_str())
-            .attr("EndPoint", end.as_str());
+        let element_name = crate::model_xml::ofd_name(writer, "AxialShd");
+        let mut event =
+            ofdbox_yaserde::__xml::writer::XmlEvent::start_element(element_name.as_str())
+                .attr("MapType", map_type.as_str())
+                .attr("StartPoint", start.as_str())
+                .attr("EndPoint", end.as_str());
         if let Some(value) = &extend {
             event = event.attr("Extend", value.as_str());
         }
@@ -1397,11 +1414,13 @@ impl YaSerialize for RadialShd {
         let eccentricity = (self.eccentricity != 0.0).then(|| self.eccentricity.to_string());
         let angle = (self.angle != 0.0).then(|| self.angle.to_string());
         let start_radius = (self.start_radius != 0.0).then(|| self.start_radius.to_string());
-        let mut event = ofdbox_yaserde::__xml::writer::XmlEvent::start_element("RadialShd")
-            .attr("MapType", map_type.as_str())
-            .attr("StartPoint", start.as_str())
-            .attr("EndPoint", end.as_str())
-            .attr("EndRadius", end_radius.as_str());
+        let element_name = crate::model_xml::ofd_name(writer, "RadialShd");
+        let mut event =
+            ofdbox_yaserde::__xml::writer::XmlEvent::start_element(element_name.as_str())
+                .attr("MapType", map_type.as_str())
+                .attr("StartPoint", start.as_str())
+                .attr("EndPoint", end.as_str())
+                .attr("EndRadius", end_radius.as_str());
         if let Some(value) = &extend {
             event = event.attr("Extend", value.as_str());
         }
@@ -1444,9 +1463,11 @@ impl YaSerialize for GouraudPoint {
         let x = self.x.to_string();
         let y = self.y.to_string();
         let edge = self.edge_flag.map(|value| value.to_string());
-        let mut event = ofdbox_yaserde::__xml::writer::XmlEvent::start_element("Point")
-            .attr("X", x.as_str())
-            .attr("Y", y.as_str());
+        let element_name = crate::model_xml::ofd_name(writer, "Point");
+        let mut event =
+            ofdbox_yaserde::__xml::writer::XmlEvent::start_element(element_name.as_str())
+                .attr("X", x.as_str())
+                .attr("Y", y.as_str());
         if let Some(value) = &edge {
             event = event.attr("EdgeFlag", value.as_str());
         }
@@ -1473,7 +1494,9 @@ impl YaSerialize for GouraudPoint {
 impl YaSerialize for GouraudShd {
     fn serialize<W: Write>(&self, writer: &mut Serializer<W>) -> ofdbox_yaserde::Result<()> {
         let extend = self.extend.map(|value| value.to_string());
-        let mut event = ofdbox_yaserde::__xml::writer::XmlEvent::start_element("GouraudShd");
+        let element_name = crate::model_xml::ofd_name(writer, "GouraudShd");
+        let mut event =
+            ofdbox_yaserde::__xml::writer::XmlEvent::start_element(element_name.as_str());
         if let Some(value) = &extend {
             event = event.attr("Extend", value.as_str());
         }
@@ -1506,7 +1529,9 @@ impl YaSerialize for LaGouraudPoint {
     fn serialize<W: Write>(&self, writer: &mut Serializer<W>) -> ofdbox_yaserde::Result<()> {
         let x = self.x.map(|value| value.to_string());
         let y = self.y.map(|value| value.to_string());
-        let mut event = ofdbox_yaserde::__xml::writer::XmlEvent::start_element("Point");
+        let element_name = crate::model_xml::ofd_name(writer, "Point");
+        let mut event =
+            ofdbox_yaserde::__xml::writer::XmlEvent::start_element(element_name.as_str());
         if let Some(value) = &x {
             event = event.attr("X", value.as_str());
         }
@@ -1537,8 +1562,10 @@ impl YaSerialize for LaGouraudShd {
     fn serialize<W: Write>(&self, writer: &mut Serializer<W>) -> ofdbox_yaserde::Result<()> {
         let vertices = self.vertices_per_row.to_string();
         let extend = self.extend.map(|value| value.to_string());
-        let mut event = ofdbox_yaserde::__xml::writer::XmlEvent::start_element("LaGourandShd")
-            .attr("VerticesPerRow", vertices.as_str());
+        let element_name = crate::model_xml::ofd_name(writer, "LaGourandShd");
+        let mut event =
+            ofdbox_yaserde::__xml::writer::XmlEvent::start_element(element_name.as_str())
+                .attr("VerticesPerRow", vertices.as_str());
         if let Some(value) = &extend {
             event = event.attr("Extend", value.as_str());
         }
@@ -1580,7 +1607,8 @@ fn write_color_named<W: Write>(
     let index = color.index.map(|value| value.to_string());
     let color_space = color.color_space.map(|value| value.to_string());
     let alpha = (color.alpha != 255).then(|| color.alpha.to_string());
-    let mut event = ofdbox_yaserde::__xml::writer::XmlEvent::start_element(name);
+    let element_name = crate::model_xml::ofd_name(writer, name);
+    let mut event = ofdbox_yaserde::__xml::writer::XmlEvent::start_element(element_name.as_str());
     if let Some(value) = &value {
         event = event.attr("Value", value.as_str());
     }

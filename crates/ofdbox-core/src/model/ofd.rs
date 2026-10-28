@@ -39,19 +39,32 @@ impl YaSerialize for Ofd {
         &self,
         writer: &mut ofdbox_yaserde::ser::Serializer<W>,
     ) -> ofdbox_yaserde::Result<()> {
+        let namespace = crate::model_xml::OFD_NAMESPACE;
+        let previous_namespace = writer
+            .current_namespace()
+            .map(std::string::ToString::to_string);
+        writer.push_namespaces(vec![("ofd".to_string(), namespace.to_string())]);
+        writer.set_current_namespace(Some(namespace.to_string()));
+        let element_name = writer.element_name(Some(namespace), "OFD", None);
         writer
             .write(
-                XmlEvent::start_element("OFD")
+                XmlEvent::start_element(element_name.as_str())
+                    .ns("ofd", namespace)
                     .attr("Version", &self.version)
                     .attr("DocType", &self.doc_type),
             )
             .map_err(ofdbox_yaserde::Error::custom)?;
         for body in &self.doc_bodies {
+            let body_name = writer.element_name(Some(namespace), "DocBody", None);
+            writer.set_start_event_name(Some(body_name));
+            writer.set_skip_start_end(false);
             body.serialize(writer)?;
         }
         writer
             .write(XmlEvent::end_element())
             .map_err(ofdbox_yaserde::Error::custom)?;
+        writer.pop_namespaces();
+        writer.set_current_namespace(previous_namespace);
         Ok(())
     }
 

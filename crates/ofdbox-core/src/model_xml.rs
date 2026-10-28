@@ -57,130 +57,18 @@ pub fn from_bytes<T: YaDeserialize>(bytes: &[u8]) -> XmlResult<T> {
 
 /// 序列化为 XML 文本。
 pub fn to_string<T: YaSerialize>(value: &T) -> XmlResult<String> {
-    let mut xml = ofdbox_yaserde::ser::to_string(value)?;
-    inject_prefixed_namespace(&mut xml);
-    Ok(xml)
+    Ok(ofdbox_yaserde::ser::to_string(value)?)
+}
+
+/// 解析 OFD 元素名，前缀由序列化上下文决定。
+pub(crate) fn ofd_name<W: std::io::Write>(
+    writer: &ofdbox_yaserde::ser::Serializer<W>,
+    local: &str,
+) -> String {
+    writer.element_name(Some(OFD_NAMESPACE), local, None)
 }
 
 /// 序列化为 XML 字节。
 pub fn to_bytes<T: YaSerialize>(value: &T) -> XmlResult<Vec<u8>> {
     Ok(to_string(value)?.into_bytes())
-}
-
-fn inject_prefixed_namespace(xml: &mut String) {
-    let Some(declaration_end) = xml.find("?>") else {
-        return;
-    };
-    let Some(relative_start) = xml[declaration_end + 2..].find('<') else {
-        return;
-    };
-    let root_start = declaration_end + 2 + relative_start;
-    let Some(relative_end) = xml[root_start..].find('>') else {
-        return;
-    };
-    let root_end = root_start + relative_end;
-
-    let namespace = format!("xmlns:ofd=\"{OFD_NAMESPACE}\"");
-    let root = xml[root_start..=root_end].to_owned();
-    if !root.contains("xmlns:ofd=") {
-        let insert_at = if root.ends_with("/>") {
-            root_end - 1
-        } else {
-            root_end
-        };
-        xml.insert_str(insert_at, &format!(" {namespace}"));
-    }
-
-    let input = xml.clone();
-    let mut output = String::with_capacity(input.len() + 64);
-    let bytes = input.as_bytes();
-    let mut index = 0;
-    let mut raw = false;
-    while index < bytes.len() {
-        if raw {
-            if let Some(relative) = input[index..].find("<!--ofdbox-raw-end-->") {
-                output.push_str(&input[index..index + relative]);
-                index += relative + "<!--ofdbox-raw-end-->".len();
-                raw = false;
-                continue;
-            }
-            output.push_str(&input[index..]);
-            break;
-        }
-        if input[index..].starts_with("<!--ofdbox-raw-start-->") {
-            index += "<!--ofdbox-raw-start-->".len();
-            raw = true;
-            continue;
-        }
-        if bytes[index] != b'<' {
-            let Some(next) = input[index..].find('<') else {
-                output.push_str(&input[index..]);
-                break;
-            };
-            output.push_str(&input[index..index + next]);
-            index += next;
-            continue;
-        }
-
-        if input[index..].starts_with("<!--") {
-            let Some(end) = input[index + 4..].find("-->") else {
-                output.push_str(&input[index..]);
-                break;
-            };
-            output.push_str(&input[index..index + 4 + end + 3]);
-            index += 4 + end + 3;
-            continue;
-        }
-        if input[index..].starts_with("<![CDATA[") {
-            let Some(end) = input[index + 9..].find("]]>") else {
-                output.push_str(&input[index..]);
-                break;
-            };
-            output.push_str(&input[index..index + 9 + end + 3]);
-            index += 9 + end + 3;
-            continue;
-        }
-        if input[index..].starts_with("<?") {
-            let Some(end) = input[index + 2..].find("?>") else {
-                output.push_str(&input[index..]);
-                break;
-            };
-            output.push_str(&input[index..index + 2 + end + 2]);
-            index += 2 + end + 2;
-            continue;
-        }
-        if input[index..].starts_with("<!") {
-            let Some(end) = input[index..].find('>') else {
-                output.push_str(&input[index..]);
-                break;
-            };
-            output.push_str(&input[index..=index + end]);
-            index += end + 1;
-            continue;
-        }
-
-        let closing = bytes.get(index + 1) == Some(&b'/');
-        let name_start = index + if closing { 2 } else { 1 };
-        let mut name_end = name_start;
-        while name_end < bytes.len()
-            && !matches!(bytes[name_end], b' ' | b'\t' | b'\r' | b'\n' | b'/' | b'>')
-        {
-            name_end += 1;
-        }
-        if name_end == name_start {
-            output.push('<');
-            index += 1;
-            continue;
-        }
-        let name = &input[name_start..name_end];
-        if name.contains(':') {
-            output.push_str(&input[index..name_end]);
-        } else {
-            output.push_str(&input[index..name_start]);
-            output.push_str("ofd:");
-            output.push_str(name);
-        }
-        index = name_end;
-    }
-    *xml = output;
 }

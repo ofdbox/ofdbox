@@ -48,9 +48,11 @@ pub struct Extension {
 impl YaSerialize for Extension {
     fn serialize<W: Write>(&self, writer: &mut Serializer<W>) -> ofdbox_yaserde::Result<()> {
         let ref_id = self.ref_id.to_string();
-        let mut event = ofdbox_yaserde::__xml::writer::XmlEvent::start_element("Extension")
-            .attr("AppName", self.app_name.as_str())
-            .attr("RefId", ref_id.as_str());
+        let element_name = crate::model_xml::ofd_name(writer, "Extension");
+        let mut event =
+            ofdbox_yaserde::__xml::writer::XmlEvent::start_element(element_name.as_str())
+                .attr("AppName", self.app_name.as_str())
+                .attr("RefId", ref_id.as_str());
         if let Some(value) = &self.company {
             event = event.attr("Company", value.as_str());
         }
@@ -314,20 +316,13 @@ fn write_raw_element<W: Write>(
     name: &str,
     value: &RawXml,
 ) -> ofdbox_yaserde::Result<()> {
+    let element_name = crate::model_xml::ofd_name(writer, name);
     writer
-        .write(ofdbox_yaserde::__xml::writer::XmlEvent::start_element(name))
-        .map_err(ofdbox_yaserde::Error::custom)?;
-    writer
-        .write(ofdbox_yaserde::__xml::writer::XmlEvent::comment(
-            "ofdbox-raw-start",
+        .write(ofdbox_yaserde::__xml::writer::XmlEvent::start_element(
+            element_name.as_str(),
         ))
         .map_err(ofdbox_yaserde::Error::custom)?;
     value.serialize(writer)?;
-    writer
-        .write(ofdbox_yaserde::__xml::writer::XmlEvent::comment(
-            "ofdbox-raw-end",
-        ))
-        .map_err(ofdbox_yaserde::Error::custom)?;
     writer
         .write(ofdbox_yaserde::__xml::writer::XmlEvent::end_element())
         .map_err(ofdbox_yaserde::Error::custom)?;
@@ -370,8 +365,11 @@ fn write_text_element<W: Write>(
     name: &str,
     value: &str,
 ) -> ofdbox_yaserde::Result<()> {
+    let element_name = crate::model_xml::ofd_name(writer, name);
     writer
-        .write(ofdbox_yaserde::__xml::writer::XmlEvent::start_element(name))
+        .write(ofdbox_yaserde::__xml::writer::XmlEvent::start_element(
+            element_name.as_str(),
+        ))
         .map_err(ofdbox_yaserde::Error::custom)?;
     writer
         .write(ofdbox_yaserde::__xml::writer::XmlEvent::characters(value))

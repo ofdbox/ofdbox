@@ -62,7 +62,8 @@ impl ofdbox_yaserde::YaSerialize for File {
         &self,
         writer: &mut ofdbox_yaserde::ser::Serializer<W>,
     ) -> ofdbox_yaserde::Result<()> {
-        let event = ofdbox_yaserde::__xml::writer::XmlEvent::start_element("File")
+        let element_name = crate::model_xml::ofd_name(writer, "File");
+        let event = ofdbox_yaserde::__xml::writer::XmlEvent::start_element(element_name.as_str())
             .attr("ID", self.id.as_str());
         writer.write(event).map_err(ofdbox_yaserde::Error::custom)?;
         writer

@@ -137,7 +137,9 @@ pub struct Appearance {
 impl YaSerialize for Appearance {
     fn serialize<W: Write>(&self, writer: &mut Serializer<W>) -> ofdbox_yaserde::Result<()> {
         let boundary = self.boundary.map(|value| value.to_string());
-        let mut event = ofdbox_yaserde::__xml::writer::XmlEvent::start_element("Appearance");
+        let element_name = crate::model_xml::ofd_name(writer, "Appearance");
+        let mut event =
+            ofdbox_yaserde::__xml::writer::XmlEvent::start_element(element_name.as_str());
         if let Some(boundary) = &boundary {
             event = event.attr("Boundary", boundary.as_str());
         }
