@@ -41,6 +41,25 @@ for entry in document.pages() {
 }
 ```
 
+加密包编辑：
+
+```rust
+use ofdbox::{EncryptOptions, PasswordBackend, edit_encrypted};
+
+let output = edit_encrypted(
+    &encrypted,
+    Box::new(PasswordBackend::new("secret")),
+    &EncryptOptions::password("alice", "new-secret"),
+    |file| {
+        let mut doc = file.document(0)?;
+        let mut page = doc.page("1")?;
+        page.save()?;
+        doc.save()?;
+        Ok(())
+    },
+)?;
+```
+
 签名与加密的完整流程见 `crates/ofdbox/examples/sign_and_verify.rs`：建包 → 签名（35275）→ 验签 → 口令加密 → 解密再验签。加密文档也可直接使用 `PasswordBackend` / `CertificateBackend` 与 `enable_decryption`；签章验签见 `ofdbox::SesSignatureVerifier`。
 
 ### Feature
