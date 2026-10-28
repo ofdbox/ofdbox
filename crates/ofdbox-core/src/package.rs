@@ -537,6 +537,61 @@ impl OfdPackage {
             .map(|operation| operation.default_key.clone())
     }
 
+    /// 所有加密操作的 EntriesMap 路径。
+    pub fn entries_map_locs(&mut self) -> Result<Vec<String>, OfdError> {
+        let encryptions = self.parse_encryptions()?;
+        Ok(encryptions
+            .encrypt_infos
+            .iter()
+            .filter_map(|info| {
+                info.entries_map_loc
+                    .as_ref()
+                    .map(|loc| loc.as_str().to_owned())
+            })
+            .collect())
+    }
+
+    /// 指定加密层的默认文件密钥。
+    pub fn default_encryption_key_at(&self, index: usize) -> Option<FileKey> {
+        self.decryption
+            .as_ref()
+            .and_then(|context| context.operations.get(index))
+            .map(|operation| operation.default_key.clone())
+    }
+
+    /// 多层加密时按层逆序加密新增 entry。
+    pub fn encrypt_new_entry_layers(&self, data: &[u8]) -> Result<Vec<u8>, OfdError> {
+        let context = self
+            .decryption
+            .as_ref()
+            .ok_or(OfdError::EncryptionRequired)?;
+        let mut bytes = data.to_vec();
+        for operation in context.operations.iter().rev() {
+            bytes = context.backend.encrypt(&operation.default_key, &bytes)?;
+        }
+        Ok(bytes)
+    }
+
+    /// 判断 EntriesMap 文件本身是否加密。
+    pub fn entries_map_is_encrypted(&mut self, loc: &str) -> Result<bool, OfdError> {
+        let entry = resolve_loc("", loc)?;
+        let raw = self.read_raw_entry(&entry)?;
+        Ok(!looks_like_xml(&raw))
+    }
+
+    /// 使用指定加密层的默认密钥加密 EntriesMap。
+    pub fn encrypt_with_layer_key(&self, index: usize, data: &[u8]) -> Result<Vec<u8>, OfdError> {
+        let context = self
+            .decryption
+            .as_ref()
+            .ok_or(OfdError::EncryptionRequired)?;
+        let operation = context
+            .operations
+            .get(index)
+            .ok_or_else(|| OfdError::InvalidStructure("加密层索引越界".to_owned()))?;
+        context.backend.encrypt(&operation.default_key, data)
+    }
+
     /// 使用默认文件密钥加密新增 entry。
     pub fn encrypt_new_entry(&self, data: &[u8]) -> Result<Vec<u8>, OfdError> {
         let context = self

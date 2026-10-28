@@ -3,7 +3,7 @@
 use std::collections::{HashMap, HashSet};
 use std::io::{Cursor, Read};
 
-use ofdbox_core::model::entries_map::EncryptEntry;
+use ofdbox_core::model::entries_map::{EncryptEntry, EncryptedEntries};
 use ofdbox_core::{
     CryptoBackend, OfdError, OfdFile, OfdPackage, OpenOptions, OpenStorage, PackageEdits,
     PackageWriteOptions, model_xml,
@@ -43,6 +43,14 @@ where
     let edited = file.to_bytes()?;
 
     crate::encrypt_package(&edited, options)
+}
+
+struct MapState {
+    index: usize,
+    entry: String,
+    encrypted: bool,
+    model: EncryptedEntries,
+    changed: bool,
 }
 
 struct OriginalEntry {
@@ -112,30 +120,32 @@ where
     }
 
     let mut edits = PackageEdits::new();
-    let encryptions = package.parse_encryptions()?;
-    let map_loc = encryptions
-        .encrypt_infos
-        .first()
-        .and_then(|info| info.entries_map_loc.as_ref())
-        .ok_or_else(|| OfdError::InvalidStructure("加密包缺少 EntriesMapLoc".to_owned()))?;
-    let map_entry = package.resolve_entry("", map_loc.as_str())?;
-    let mut entries_map = package.parse_entries_map_decrypted(map_loc.as_str())?;
-    let mut map_changed = false;
+    let map_locs = package.entries_map_locs()?;
+    let mut maps = Vec::new();
+    for (index, loc) in map_locs.iter().enumerate() {
+        let encrypted = package.entries_map_is_encrypted(loc)?;
+        let entry = package.resolve_entry("", loc)?;
+        let model = package.parse_entries_map_decrypted(loc)?;
+        maps.push(MapState {
+            index,
+            entry,
+            encrypted,
+            model,
+            changed: false,
+        });
+    }
 
     for (name, bytes) in &edited_entries {
         let Some(original) = originals.get(name) else {
-            if package.decryption_operation_count() > 1 {
-                return Err(OfdError::UnsupportedScheme(
-                    "多层加密暂不支持新增 entry".to_owned(),
-                ));
+            let encrypted = package.encrypt_new_entry_layers(bytes)?;
+            for map in &mut maps {
+                map.model.entries.push(EncryptEntry {
+                    path: name.clone(),
+                    epath: name.clone(),
+                    decrypt_seed_loc: None,
+                });
+                map.changed = true;
             }
-            let encrypted = package.encrypt_new_entry(bytes)?;
-            entries_map.entries.push(EncryptEntry {
-                path: name.clone(),
-                epath: name.clone(),
-                decrypt_seed_loc: None,
-            });
-            map_changed = true;
             edits.add(name, encrypted);
             continue;
         };
@@ -155,10 +165,12 @@ where
         if edited_names.contains(name) {
             continue;
         }
-        entries_map
-            .entries
-            .retain(|entry| entry.path != *name && entry.epath != original.physical);
-        map_changed = true;
+        for map in &mut maps {
+            map.model
+                .entries
+                .retain(|entry| entry.path != *name && entry.epath != original.physical);
+            map.changed = true;
+        }
         if original.physical != *name {
             edits.remove(&original.physical);
         } else {
@@ -166,14 +178,21 @@ where
         }
     }
 
-    if map_changed {
-        let map_plain = model_xml::to_bytes(&entries_map)
+    for map in maps {
+        if !map.changed {
+            continue;
+        }
+        let map_plain = model_xml::to_bytes(&map.model)
             .map_err(|error| OfdError::InvalidStructure(error.to_string()))?;
-        let map_bytes = package.encrypt_new_entry(&map_plain)?;
+        let map_bytes = if map.encrypted {
+            package.encrypt_with_layer_key(map.index, &map_plain)?
+        } else {
+            map_plain
+        };
         let physical = package
-            .encrypted_entry_info(&map_entry)?
+            .encrypted_entry_info(&map.entry)?
             .map(|(physical, _)| physical)
-            .unwrap_or_else(|| map_entry.clone());
+            .unwrap_or_else(|| map.entry.clone());
         edits.replace(physical, map_bytes);
     }
 
