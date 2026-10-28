@@ -2,14 +2,25 @@
 
 use std::io::{Read, Write};
 
-use yaserde::de::Deserializer;
-use yaserde::ser::Serializer;
-use yaserde::{YaDeserialize, YaSerialize};
+use ofdbox_yaserde::de::Deserializer;
+use ofdbox_yaserde::ser::Serializer;
+use ofdbox_yaserde::{YaDeserialize, YaSerialize};
 
 use super::definition::{Action, Actions, PageArea, StArray, StBox, StId, StLoc, StPos, StRefId};
 
 /// `Content.xml` 根对象。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(
+    Clone, Debug, Default, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize,
+)]
+#[yaserde(
+  namespace = "http://www.ofdspec.org/2016",
+  xmlns = {
+    "ofd" = "http://www.ofdspec.org/2016"
+  },
+  namespace_aliases = {
+    "http://www.ofdspec.org" = "http://www.ofdspec.org/2016"
+  }
+)]
 #[yaserde(rename = "Page")]
 pub struct Page {
     /// 模板引用。
@@ -30,7 +41,9 @@ pub struct Page {
 }
 
 /// 模板引用。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(
+    Clone, Debug, Default, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize,
+)]
 #[yaserde(rename = "Template")]
 pub struct Template {
     /// 模板 ID。
@@ -46,7 +59,7 @@ pub struct Template {
 }
 
 /// 模板显示层级。
-#[derive(Clone, Debug, Default, PartialEq, Eq, yaserde::DefaultYaSerde)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, ofdbox_yaserde::DefaultYaSerde)]
 pub enum TemplateZOrder {
     /// 背景。
     #[default]
@@ -63,7 +76,9 @@ crate::impl_xml_enum_codec!(TemplateZOrder, Other, {
 });
 
 /// 页面内容。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(
+    Clone, Debug, Default, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize,
+)]
 #[yaserde(rename = "Content")]
 pub struct PageContent {
     /// 图层列表。
@@ -154,46 +169,46 @@ pub struct Layer {
 }
 
 impl YaSerialize for Layer {
-    fn serialize<W: Write>(&self, writer: &mut Serializer<W>) -> yaserde::Result<()> {
+    fn serialize<W: Write>(&self, writer: &mut Serializer<W>) -> ofdbox_yaserde::Result<()> {
         let id = self.id.to_string();
         let layer_type = self.layer_type.to_string();
         let draw_param = self.draw_param.map(|value| value.to_string());
         let mut event =
-            yaserde::__xml::writer::XmlEvent::start_element("Layer").attr("ID", id.as_str());
+            ofdbox_yaserde::__xml::writer::XmlEvent::start_element("Layer").attr("ID", id.as_str());
         if self.layer_type != LayerType::Body {
             event = event.attr("Type", layer_type.as_str());
         }
         if let Some(draw_param) = &draw_param {
             event = event.attr("DrawParam", draw_param.as_str());
         }
-        writer.write(event).map_err(yaserde::Error::custom)?;
+        writer.write(event).map_err(ofdbox_yaserde::Error::custom)?;
         for object in &self.objects {
             writer.set_start_event_name(None);
             object.serialize(writer)?;
         }
         writer
-            .write(yaserde::__xml::writer::XmlEvent::end_element())
-            .map_err(yaserde::Error::custom)?;
+            .write(ofdbox_yaserde::__xml::writer::XmlEvent::end_element())
+            .map_err(ofdbox_yaserde::Error::custom)?;
         Ok(())
     }
 
     fn serialize_attributes(
         &self,
-        attributes: Vec<yaserde::__xml::attribute::OwnedAttribute>,
-        namespace: yaserde::__xml::namespace::Namespace,
-    ) -> yaserde::Result<(
-        Vec<yaserde::__xml::attribute::OwnedAttribute>,
-        yaserde::__xml::namespace::Namespace,
+        attributes: Vec<ofdbox_yaserde::__xml::attribute::OwnedAttribute>,
+        namespace: ofdbox_yaserde::__xml::namespace::Namespace,
+    ) -> ofdbox_yaserde::Result<(
+        Vec<ofdbox_yaserde::__xml::attribute::OwnedAttribute>,
+        ofdbox_yaserde::__xml::namespace::Namespace,
     )> {
         Ok((attributes, namespace))
     }
 }
 
 impl YaDeserialize for Layer {
-    fn deserialize<R: Read>(reader: &mut Deserializer<R>) -> yaserde::Result<Self> {
+    fn deserialize<R: Read>(reader: &mut Deserializer<R>) -> ofdbox_yaserde::Result<Self> {
         let event = reader.next_event()?;
-        let yaserde::__xml::reader::XmlEvent::StartElement { attributes, .. } = event else {
-            return Err(yaserde::Error::custom("Layer 缺少起始元素"));
+        let ofdbox_yaserde::__xml::reader::XmlEvent::StartElement { attributes, .. } = event else {
+            return Err(ofdbox_yaserde::Error::custom("Layer 缺少起始元素"));
         };
         let value = |key: &str| {
             attributes
@@ -202,15 +217,15 @@ impl YaDeserialize for Layer {
                 .map(|attribute| attribute.value.clone())
         };
         let id = value("ID")
-            .map(|value| value.parse().map_err(yaserde::Error::custom))
+            .map(|value| value.parse().map_err(ofdbox_yaserde::Error::custom))
             .transpose()?
             .unwrap_or_default();
         let layer_type = value("Type")
-            .map(|value| value.parse().map_err(yaserde::Error::custom))
+            .map(|value| value.parse().map_err(ofdbox_yaserde::Error::custom))
             .transpose()?
             .unwrap_or_default();
         let draw_param = value("DrawParam")
-            .map(|value| value.parse().map_err(yaserde::Error::custom))
+            .map(|value| value.parse().map_err(ofdbox_yaserde::Error::custom))
             .transpose()?;
         let objects = deserialize_objects(reader, "Layer")?;
         Ok(Self {
@@ -223,7 +238,7 @@ impl YaDeserialize for Layer {
 }
 
 /// 图层类型。
-#[derive(Clone, Debug, Default, PartialEq, Eq, yaserde::DefaultYaSerde)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, ofdbox_yaserde::DefaultYaSerde)]
 pub enum LayerType {
     /// 正文层。
     #[default]
@@ -261,7 +276,7 @@ pub enum GraphicObject {
 }
 
 impl YaSerialize for GraphicObject {
-    fn serialize<W: Write>(&self, writer: &mut Serializer<W>) -> yaserde::Result<()> {
+    fn serialize<W: Write>(&self, writer: &mut Serializer<W>) -> ofdbox_yaserde::Result<()> {
         let (name, result) = match self {
             Self::Text(value) => {
                 writer.set_start_event_name(Some("TextObject".to_owned()));
@@ -295,21 +310,21 @@ impl YaSerialize for GraphicObject {
 
     fn serialize_attributes(
         &self,
-        attributes: Vec<yaserde::__xml::attribute::OwnedAttribute>,
-        namespace: yaserde::__xml::namespace::Namespace,
-    ) -> yaserde::Result<(
-        Vec<yaserde::__xml::attribute::OwnedAttribute>,
-        yaserde::__xml::namespace::Namespace,
+        attributes: Vec<ofdbox_yaserde::__xml::attribute::OwnedAttribute>,
+        namespace: ofdbox_yaserde::__xml::namespace::Namespace,
+    ) -> ofdbox_yaserde::Result<(
+        Vec<ofdbox_yaserde::__xml::attribute::OwnedAttribute>,
+        ofdbox_yaserde::__xml::namespace::Namespace,
     )> {
         Ok((attributes, namespace))
     }
 }
 
 impl YaDeserialize for GraphicObject {
-    fn deserialize<R: Read>(reader: &mut Deserializer<R>) -> yaserde::Result<Self> {
+    fn deserialize<R: Read>(reader: &mut Deserializer<R>) -> ofdbox_yaserde::Result<Self> {
         let event = reader.peek()?.to_owned();
-        let yaserde::__xml::reader::XmlEvent::StartElement { name, .. } = event else {
-            return Err(yaserde::Error::custom("GraphicObject 缺少起始元素"));
+        let ofdbox_yaserde::__xml::reader::XmlEvent::StartElement { name, .. } = event else {
+            return Err(ofdbox_yaserde::Error::custom("GraphicObject 缺少起始元素"));
         };
         match name.local_name.as_str() {
             "TextObject" => Ok(Self::Text(TextObject::deserialize(reader)?)),
@@ -317,13 +332,15 @@ impl YaDeserialize for GraphicObject {
             "ImageObject" => Ok(Self::Image(ImageObject::deserialize(reader)?)),
             "CompositeObject" => Ok(Self::Composite(CompositeObject::deserialize(reader)?)),
             "PageBlock" => Ok(Self::PageBlock(PageBlockObject::deserialize(reader)?)),
-            other => Err(yaserde::Error::custom(format!("未知图元类型: {other}"))),
+            other => Err(ofdbox_yaserde::Error::custom(format!(
+                "未知图元类型: {other}"
+            ))),
         }
     }
 }
 
 /// 图元公共属性。
-#[derive(Clone, Debug, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(Clone, Debug, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize)]
 pub struct GraphicUnit {
     /// 图元 ID。
     #[yaserde(attribute = true, rename = "ID", default = "default_st_id")]
@@ -377,7 +394,7 @@ pub struct GraphicUnit {
 }
 
 /// 线端样式。
-#[derive(Clone, Debug, Default, PartialEq, Eq, yaserde::DefaultYaSerde)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, ofdbox_yaserde::DefaultYaSerde)]
 pub enum Cap {
     /// 平头。
     #[default]
@@ -397,7 +414,7 @@ crate::impl_xml_enum_codec!(Cap, Other, {
 });
 
 /// 线连接样式。
-#[derive(Clone, Debug, Default, PartialEq, Eq, yaserde::DefaultYaSerde)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, ofdbox_yaserde::DefaultYaSerde)]
 pub enum Join {
     /// 斜接。
     #[default]
@@ -417,7 +434,7 @@ crate::impl_xml_enum_codec!(Join, Other, {
 });
 
 /// 文字图元。
-#[derive(Clone, Debug, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(Clone, Debug, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize)]
 #[yaserde(rename = "TextObject")]
 pub struct TextObject {
     /// 公共图元属性。
@@ -473,7 +490,9 @@ pub struct TextObject {
 }
 
 /// 文字片段。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(
+    Clone, Debug, Default, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize,
+)]
 #[yaserde(rename = "TextCode")]
 pub struct TextCode {
     /// X 坐标。
@@ -494,7 +513,9 @@ pub struct TextCode {
 }
 
 /// 字形变换。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(
+    Clone, Debug, Default, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize,
+)]
 #[yaserde(rename = "CGTransform")]
 pub struct CgTransform {
     /// 字符起点。
@@ -516,7 +537,7 @@ pub struct CgTransform {
 }
 
 /// 路径图元。
-#[derive(Clone, Debug, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(Clone, Debug, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize)]
 #[yaserde(rename = "PathObject")]
 pub struct PathObject {
     /// 公共图元属性。
@@ -543,7 +564,7 @@ pub struct PathObject {
 }
 
 /// 路径填充规则。
-#[derive(Clone, Debug, Default, PartialEq, Eq, yaserde::DefaultYaSerde)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, ofdbox_yaserde::DefaultYaSerde)]
 pub enum PathRule {
     /// 非零环绕。
     #[default]
@@ -560,7 +581,9 @@ crate::impl_xml_enum_codec!(PathRule, Other, {
 });
 
 /// 图像图元。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(
+    Clone, Debug, Default, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize,
+)]
 #[yaserde(rename = "ImageObject")]
 pub struct ImageObject {
     /// 公共图元属性。
@@ -581,7 +604,7 @@ pub struct ImageObject {
 }
 
 /// 图像边框。
-#[derive(Clone, Debug, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(Clone, Debug, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize)]
 #[yaserde(rename = "Border")]
 pub struct Border {
     /// 边框颜色。
@@ -613,7 +636,9 @@ pub struct Border {
 }
 
 /// 复合图元。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(
+    Clone, Debug, Default, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize,
+)]
 #[yaserde(rename = "CompositeObject")]
 pub struct CompositeObject {
     /// 公共图元属性。
@@ -632,42 +657,42 @@ pub struct PageBlock {
 }
 
 impl YaSerialize for PageBlock {
-    fn serialize<W: Write>(&self, writer: &mut Serializer<W>) -> yaserde::Result<()> {
+    fn serialize<W: Write>(&self, writer: &mut Serializer<W>) -> ofdbox_yaserde::Result<()> {
         let name = writer
             .get_start_event_name()
             .unwrap_or_else(|| "PageBlock".to_owned());
         writer
-            .write(yaserde::__xml::writer::XmlEvent::start_element(
+            .write(ofdbox_yaserde::__xml::writer::XmlEvent::start_element(
                 name.as_str(),
             ))
-            .map_err(yaserde::Error::custom)?;
+            .map_err(ofdbox_yaserde::Error::custom)?;
         for object in &self.objects {
             writer.set_start_event_name(None);
             object.serialize(writer)?;
         }
         writer
-            .write(yaserde::__xml::writer::XmlEvent::end_element())
-            .map_err(yaserde::Error::custom)?;
+            .write(ofdbox_yaserde::__xml::writer::XmlEvent::end_element())
+            .map_err(ofdbox_yaserde::Error::custom)?;
         Ok(())
     }
 
     fn serialize_attributes(
         &self,
-        attributes: Vec<yaserde::__xml::attribute::OwnedAttribute>,
-        namespace: yaserde::__xml::namespace::Namespace,
-    ) -> yaserde::Result<(
-        Vec<yaserde::__xml::attribute::OwnedAttribute>,
-        yaserde::__xml::namespace::Namespace,
+        attributes: Vec<ofdbox_yaserde::__xml::attribute::OwnedAttribute>,
+        namespace: ofdbox_yaserde::__xml::namespace::Namespace,
+    ) -> ofdbox_yaserde::Result<(
+        Vec<ofdbox_yaserde::__xml::attribute::OwnedAttribute>,
+        ofdbox_yaserde::__xml::namespace::Namespace,
     )> {
         Ok((attributes, namespace))
     }
 }
 
 impl YaDeserialize for PageBlock {
-    fn deserialize<R: Read>(reader: &mut Deserializer<R>) -> yaserde::Result<Self> {
+    fn deserialize<R: Read>(reader: &mut Deserializer<R>) -> ofdbox_yaserde::Result<Self> {
         let event = reader.next_event()?;
-        let yaserde::__xml::reader::XmlEvent::StartElement { name, .. } = event else {
-            return Err(yaserde::Error::custom("PageBlock 缺少起始元素"));
+        let ofdbox_yaserde::__xml::reader::XmlEvent::StartElement { name, .. } = event else {
+            return Err(ofdbox_yaserde::Error::custom("PageBlock 缺少起始元素"));
         };
         let objects = deserialize_objects(reader, &name.local_name)?;
         Ok(Self { objects })
@@ -684,45 +709,50 @@ pub struct PageBlockObject {
 }
 
 impl YaSerialize for PageBlockObject {
-    fn serialize<W: Write>(&self, writer: &mut Serializer<W>) -> yaserde::Result<()> {
+    fn serialize<W: Write>(&self, writer: &mut Serializer<W>) -> ofdbox_yaserde::Result<()> {
         let id = self.id.to_string();
         writer
             .write(
-                yaserde::__xml::writer::XmlEvent::start_element("PageBlock")
+                ofdbox_yaserde::__xml::writer::XmlEvent::start_element("PageBlock")
                     .attr("ID", id.as_str()),
             )
-            .map_err(yaserde::Error::custom)?;
+            .map_err(ofdbox_yaserde::Error::custom)?;
         for object in &self.block.objects {
             object.serialize(writer)?;
         }
         writer
-            .write(yaserde::__xml::writer::XmlEvent::end_element())
-            .map_err(yaserde::Error::custom)?;
+            .write(ofdbox_yaserde::__xml::writer::XmlEvent::end_element())
+            .map_err(ofdbox_yaserde::Error::custom)?;
         Ok(())
     }
 
     fn serialize_attributes(
         &self,
-        attributes: Vec<yaserde::__xml::attribute::OwnedAttribute>,
-        namespace: yaserde::__xml::namespace::Namespace,
-    ) -> yaserde::Result<(
-        Vec<yaserde::__xml::attribute::OwnedAttribute>,
-        yaserde::__xml::namespace::Namespace,
+        attributes: Vec<ofdbox_yaserde::__xml::attribute::OwnedAttribute>,
+        namespace: ofdbox_yaserde::__xml::namespace::Namespace,
+    ) -> ofdbox_yaserde::Result<(
+        Vec<ofdbox_yaserde::__xml::attribute::OwnedAttribute>,
+        ofdbox_yaserde::__xml::namespace::Namespace,
     )> {
         Ok((attributes, namespace))
     }
 }
 
 impl YaDeserialize for PageBlockObject {
-    fn deserialize<R: Read>(reader: &mut Deserializer<R>) -> yaserde::Result<Self> {
+    fn deserialize<R: Read>(reader: &mut Deserializer<R>) -> ofdbox_yaserde::Result<Self> {
         let event = reader.next_event()?;
-        let yaserde::__xml::reader::XmlEvent::StartElement { attributes, .. } = event else {
-            return Err(yaserde::Error::custom("PageBlock 缺少起始元素"));
+        let ofdbox_yaserde::__xml::reader::XmlEvent::StartElement { attributes, .. } = event else {
+            return Err(ofdbox_yaserde::Error::custom("PageBlock 缺少起始元素"));
         };
         let id = attributes
             .iter()
             .find(|attribute| attribute.name.local_name == "ID")
-            .map(|attribute| attribute.value.parse().map_err(yaserde::Error::custom))
+            .map(|attribute| {
+                attribute
+                    .value
+                    .parse()
+                    .map_err(ofdbox_yaserde::Error::custom)
+            })
             .transpose()?
             .unwrap_or_default();
         let objects = deserialize_objects(reader, "PageBlock")?;
@@ -733,7 +763,7 @@ impl YaDeserialize for PageBlockObject {
     }
 }
 
-fn skip_current_element<R: Read>(reader: &mut Deserializer<R>) -> yaserde::Result<()> {
+fn skip_current_element<R: Read>(reader: &mut Deserializer<R>) -> ofdbox_yaserde::Result<()> {
     let depth = reader.depth();
     let _ = reader.next_event()?;
     while reader.depth() > depth {
@@ -745,12 +775,12 @@ fn skip_current_element<R: Read>(reader: &mut Deserializer<R>) -> yaserde::Resul
 fn deserialize_objects<R: Read>(
     reader: &mut Deserializer<R>,
     end_name: &str,
-) -> yaserde::Result<Vec<GraphicObject>> {
+) -> ofdbox_yaserde::Result<Vec<GraphicObject>> {
     let mut objects = Vec::new();
     loop {
         let event = reader.peek()?.to_owned();
         match event {
-            yaserde::__xml::reader::XmlEvent::StartElement { .. } => {
+            ofdbox_yaserde::__xml::reader::XmlEvent::StartElement { .. } => {
                 match GraphicObject::deserialize(reader) {
                     Ok(object) => objects.push(object),
                     Err(error) if error.to_string().contains("未知图元类型") => {
@@ -759,13 +789,13 @@ fn deserialize_objects<R: Read>(
                     Err(error) => return Err(error),
                 }
             }
-            yaserde::__xml::reader::XmlEvent::EndElement { name } => {
+            ofdbox_yaserde::__xml::reader::XmlEvent::EndElement { name } => {
                 if name.local_name == end_name {
                     break;
                 }
                 let _ = reader.next_event()?;
             }
-            yaserde::__xml::reader::XmlEvent::EndDocument => break,
+            ofdbox_yaserde::__xml::reader::XmlEvent::EndDocument => break,
             _ => {
                 let _ = reader.next_event()?;
             }
@@ -775,7 +805,9 @@ fn deserialize_objects<R: Read>(
 }
 
 /// 裁剪区域集合。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(
+    Clone, Debug, Default, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize,
+)]
 #[yaserde(rename = "Clips")]
 pub struct Clips {
     /// 裁剪区域。
@@ -784,7 +816,9 @@ pub struct Clips {
 }
 
 /// 裁剪区域。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(
+    Clone, Debug, Default, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize,
+)]
 #[yaserde(rename = "Clip")]
 pub struct Clip {
     /// 裁剪区域。
@@ -793,7 +827,9 @@ pub struct Clip {
 }
 
 /// 单个裁剪区域。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(
+    Clone, Debug, Default, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize,
+)]
 #[yaserde(rename = "Area")]
 pub struct ClipArea {
     /// 绘制参数引用。
@@ -808,7 +844,9 @@ pub struct ClipArea {
 }
 
 /// 裁剪内容。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(
+    Clone, Debug, Default, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize,
+)]
 pub enum ClipContent {
     /// 空内容。
     #[default]
@@ -822,7 +860,16 @@ pub enum ClipContent {
 }
 
 /// 颜色。
-#[derive(Clone, Debug, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(Clone, Debug, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize)]
+#[yaserde(
+  namespace = "http://www.ofdspec.org/2016",
+  xmlns = {
+    "ofd" = "http://www.ofdspec.org/2016"
+  },
+  namespace_aliases = {
+    "http://www.ofdspec.org" = "http://www.ofdspec.org/2016"
+  }
+)]
 #[yaserde(rename = "Color")]
 pub struct Color {
     /// 颜色值。
@@ -843,7 +890,7 @@ pub struct Color {
 }
 
 /// 颜色内容。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaDeserialize)]
+#[derive(Clone, Debug, Default, PartialEq, ofdbox_yaserde::YaDeserialize)]
 pub enum ColorKind {
     /// 底纹。
     #[yaserde(rename = "Pattern")]
@@ -866,7 +913,7 @@ pub enum ColorKind {
 }
 
 impl YaSerialize for ColorKind {
-    fn serialize<W: Write>(&self, writer: &mut Serializer<W>) -> yaserde::Result<()> {
+    fn serialize<W: Write>(&self, writer: &mut Serializer<W>) -> ofdbox_yaserde::Result<()> {
         match self {
             Self::Pattern(value) => value.serialize(writer),
             Self::AxialShd(value) => {
@@ -891,11 +938,11 @@ impl YaSerialize for ColorKind {
 
     fn serialize_attributes(
         &self,
-        attributes: Vec<yaserde::__xml::attribute::OwnedAttribute>,
-        namespace: yaserde::__xml::namespace::Namespace,
-    ) -> yaserde::Result<(
-        Vec<yaserde::__xml::attribute::OwnedAttribute>,
-        yaserde::__xml::namespace::Namespace,
+        attributes: Vec<ofdbox_yaserde::__xml::attribute::OwnedAttribute>,
+        namespace: ofdbox_yaserde::__xml::namespace::Namespace,
+    ) -> ofdbox_yaserde::Result<(
+        Vec<ofdbox_yaserde::__xml::attribute::OwnedAttribute>,
+        ofdbox_yaserde::__xml::namespace::Namespace,
     )> {
         Ok((attributes, namespace))
     }
@@ -932,45 +979,50 @@ pub struct CellContent {
 }
 
 impl YaSerialize for CellContent {
-    fn serialize<W: Write>(&self, writer: &mut Serializer<W>) -> yaserde::Result<()> {
+    fn serialize<W: Write>(&self, writer: &mut Serializer<W>) -> ofdbox_yaserde::Result<()> {
         let thumbnail = self.thumbnail.map(|value| value.to_string());
-        let mut event = yaserde::__xml::writer::XmlEvent::start_element("CellContent");
+        let mut event = ofdbox_yaserde::__xml::writer::XmlEvent::start_element("CellContent");
         if let Some(thumbnail) = &thumbnail {
             event = event.attr("Thumbnail", thumbnail.as_str());
         }
-        writer.write(event).map_err(yaserde::Error::custom)?;
+        writer.write(event).map_err(ofdbox_yaserde::Error::custom)?;
         for object in &self.objects {
             writer.set_start_event_name(None);
             object.serialize(writer)?;
         }
         writer
-            .write(yaserde::__xml::writer::XmlEvent::end_element())
-            .map_err(yaserde::Error::custom)?;
+            .write(ofdbox_yaserde::__xml::writer::XmlEvent::end_element())
+            .map_err(ofdbox_yaserde::Error::custom)?;
         Ok(())
     }
 
     fn serialize_attributes(
         &self,
-        attributes: Vec<yaserde::__xml::attribute::OwnedAttribute>,
-        namespace: yaserde::__xml::namespace::Namespace,
-    ) -> yaserde::Result<(
-        Vec<yaserde::__xml::attribute::OwnedAttribute>,
-        yaserde::__xml::namespace::Namespace,
+        attributes: Vec<ofdbox_yaserde::__xml::attribute::OwnedAttribute>,
+        namespace: ofdbox_yaserde::__xml::namespace::Namespace,
+    ) -> ofdbox_yaserde::Result<(
+        Vec<ofdbox_yaserde::__xml::attribute::OwnedAttribute>,
+        ofdbox_yaserde::__xml::namespace::Namespace,
     )> {
         Ok((attributes, namespace))
     }
 }
 
 impl YaDeserialize for CellContent {
-    fn deserialize<R: Read>(reader: &mut Deserializer<R>) -> yaserde::Result<Self> {
+    fn deserialize<R: Read>(reader: &mut Deserializer<R>) -> ofdbox_yaserde::Result<Self> {
         let event = reader.next_event()?;
-        let yaserde::__xml::reader::XmlEvent::StartElement { attributes, .. } = event else {
-            return Err(yaserde::Error::custom("CellContent 缺少起始元素"));
+        let ofdbox_yaserde::__xml::reader::XmlEvent::StartElement { attributes, .. } = event else {
+            return Err(ofdbox_yaserde::Error::custom("CellContent 缺少起始元素"));
         };
         let thumbnail = attributes
             .iter()
             .find(|attribute| attribute.name.local_name == "Thumbnail")
-            .map(|attribute| attribute.value.parse().map_err(yaserde::Error::custom))
+            .map(|attribute| {
+                attribute
+                    .value
+                    .parse()
+                    .map_err(ofdbox_yaserde::Error::custom)
+            })
             .transpose()?;
         let objects = deserialize_objects(reader, "CellContent")?;
         Ok(Self { thumbnail, objects })
@@ -978,7 +1030,7 @@ impl YaDeserialize for CellContent {
 }
 
 impl YaSerialize for Pattern {
-    fn serialize<W: Write>(&self, writer: &mut Serializer<W>) -> yaserde::Result<()> {
+    fn serialize<W: Write>(&self, writer: &mut Serializer<W>) -> ofdbox_yaserde::Result<()> {
         let width = self.width.to_string();
         let height = self.height.to_string();
         let x_step = self.x_step.map(|value| value.to_string());
@@ -986,7 +1038,7 @@ impl YaSerialize for Pattern {
         let reflect = self.reflect_method.to_string();
         let relative = self.relative_to.to_string();
         let ctm = self.ctm.as_ref().map(ToString::to_string);
-        let mut event = yaserde::__xml::writer::XmlEvent::start_element("Pattern")
+        let mut event = ofdbox_yaserde::__xml::writer::XmlEvent::start_element("Pattern")
             .attr("Width", width.as_str())
             .attr("Height", height.as_str());
         if self.reflect_method != PatternReflect::Normal {
@@ -1004,31 +1056,31 @@ impl YaSerialize for Pattern {
         if let Some(value) = &ctm {
             event = event.attr("CTM", value.as_str());
         }
-        writer.write(event).map_err(yaserde::Error::custom)?;
+        writer.write(event).map_err(ofdbox_yaserde::Error::custom)?;
         self.cell_content.serialize(writer)?;
         writer
-            .write(yaserde::__xml::writer::XmlEvent::end_element())
-            .map_err(yaserde::Error::custom)?;
+            .write(ofdbox_yaserde::__xml::writer::XmlEvent::end_element())
+            .map_err(ofdbox_yaserde::Error::custom)?;
         Ok(())
     }
 
     fn serialize_attributes(
         &self,
-        attributes: Vec<yaserde::__xml::attribute::OwnedAttribute>,
-        namespace: yaserde::__xml::namespace::Namespace,
-    ) -> yaserde::Result<(
-        Vec<yaserde::__xml::attribute::OwnedAttribute>,
-        yaserde::__xml::namespace::Namespace,
+        attributes: Vec<ofdbox_yaserde::__xml::attribute::OwnedAttribute>,
+        namespace: ofdbox_yaserde::__xml::namespace::Namespace,
+    ) -> ofdbox_yaserde::Result<(
+        Vec<ofdbox_yaserde::__xml::attribute::OwnedAttribute>,
+        ofdbox_yaserde::__xml::namespace::Namespace,
     )> {
         Ok((attributes, namespace))
     }
 }
 
 impl YaDeserialize for Pattern {
-    fn deserialize<R: Read>(reader: &mut Deserializer<R>) -> yaserde::Result<Self> {
+    fn deserialize<R: Read>(reader: &mut Deserializer<R>) -> ofdbox_yaserde::Result<Self> {
         let event = reader.next_event()?;
-        let yaserde::__xml::reader::XmlEvent::StartElement { attributes, .. } = event else {
-            return Err(yaserde::Error::custom("Pattern 缺少起始元素"));
+        let ofdbox_yaserde::__xml::reader::XmlEvent::StartElement { attributes, .. } = event else {
+            return Err(ofdbox_yaserde::Error::custom("Pattern 缺少起始元素"));
         };
         let value = |key: &str| {
             attributes
@@ -1036,9 +1088,9 @@ impl YaDeserialize for Pattern {
                 .find(|attribute| attribute.name.local_name == key)
                 .map(|attribute| attribute.value.clone())
         };
-        let number = |key: &str| -> yaserde::Result<Option<f64>> {
+        let number = |key: &str| -> ofdbox_yaserde::Result<Option<f64>> {
             value(key)
-                .map(|value| value.parse().map_err(yaserde::Error::custom))
+                .map(|value| value.parse().map_err(ofdbox_yaserde::Error::custom))
                 .transpose()
         };
         let width = number("Width")?.unwrap_or_default();
@@ -1052,22 +1104,22 @@ impl YaDeserialize for Pattern {
             x_step: number("XStep")?,
             y_step: number("YStep")?,
             reflect_method: value("ReflectMethod")
-                .map(|value| value.parse().map_err(yaserde::Error::custom))
+                .map(|value| value.parse().map_err(ofdbox_yaserde::Error::custom))
                 .transpose()?
                 .unwrap_or_default(),
             relative_to: value("RelativeTo")
-                .map(|value| value.parse().map_err(yaserde::Error::custom))
+                .map(|value| value.parse().map_err(ofdbox_yaserde::Error::custom))
                 .transpose()?
                 .unwrap_or_default(),
             ctm: value("CTM")
-                .map(|value| value.parse().map_err(yaserde::Error::custom))
+                .map(|value| value.parse().map_err(ofdbox_yaserde::Error::custom))
                 .transpose()?,
         })
     }
 }
 
 /// 底纹反射方式。
-#[derive(Clone, Debug, Default, PartialEq, Eq, yaserde::DefaultYaSerde)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, ofdbox_yaserde::DefaultYaSerde)]
 pub enum PatternReflect {
     /// 正常。
     #[default]
@@ -1090,7 +1142,7 @@ crate::impl_xml_enum_codec!(PatternReflect, Other, {
 });
 
 /// 底纹相对对象。
-#[derive(Clone, Debug, Default, PartialEq, Eq, yaserde::DefaultYaSerde)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, ofdbox_yaserde::DefaultYaSerde)]
 pub enum PatternRelativeTo {
     /// 页面。
     Page,
@@ -1107,7 +1159,7 @@ crate::impl_xml_enum_codec!(PatternRelativeTo, Other, {
 });
 
 /// 渐变映射方式。
-#[derive(Clone, Debug, Default, PartialEq, Eq, yaserde::DefaultYaSerde)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, ofdbox_yaserde::DefaultYaSerde)]
 pub enum MapType {
     /// 直接。
     #[default]
@@ -1127,7 +1179,7 @@ crate::impl_xml_enum_codec!(MapType, Other, {
 });
 
 /// 渐变色标。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaDeserialize)]
+#[derive(Clone, Debug, Default, PartialEq, ofdbox_yaserde::YaDeserialize)]
 #[yaserde(rename = "Segment")]
 pub struct ShdSegment {
     /// 位置。
@@ -1139,7 +1191,7 @@ pub struct ShdSegment {
 }
 
 /// 轴向渐变。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaDeserialize)]
+#[derive(Clone, Debug, Default, PartialEq, ofdbox_yaserde::YaDeserialize)]
 #[yaserde(rename = "AxialShd")]
 pub struct AxialShd {
     /// 色标。
@@ -1163,7 +1215,7 @@ pub struct AxialShd {
 }
 
 /// 径向渐变。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaDeserialize)]
+#[derive(Clone, Debug, Default, PartialEq, ofdbox_yaserde::YaDeserialize)]
 #[yaserde(rename = "RadialShd")]
 pub struct RadialShd {
     /// 色标。
@@ -1203,7 +1255,7 @@ pub struct RadialShd {
 }
 
 /// 高洛德渐变。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaDeserialize)]
+#[derive(Clone, Debug, Default, PartialEq, ofdbox_yaserde::YaDeserialize)]
 #[yaserde(rename = "GouraudShd")]
 pub struct GouraudShd {
     /// 点。
@@ -1218,7 +1270,7 @@ pub struct GouraudShd {
 }
 
 /// 高洛德渐变点。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaDeserialize)]
+#[derive(Clone, Debug, Default, PartialEq, ofdbox_yaserde::YaDeserialize)]
 #[yaserde(rename = "Point")]
 pub struct GouraudPoint {
     /// X 坐标。
@@ -1236,7 +1288,7 @@ pub struct GouraudPoint {
 }
 
 /// 格点高洛德渐变。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaDeserialize)]
+#[derive(Clone, Debug, Default, PartialEq, ofdbox_yaserde::YaDeserialize)]
 #[yaserde(rename = "LaGourandShd")]
 pub struct LaGouraudShd {
     /// 点。
@@ -1254,7 +1306,7 @@ pub struct LaGouraudShd {
 }
 
 /// 格点高洛德渐变点。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaDeserialize)]
+#[derive(Clone, Debug, Default, PartialEq, ofdbox_yaserde::YaDeserialize)]
 #[yaserde(rename = "Point")]
 pub struct LaGouraudPoint {
     /// X 坐标。
@@ -1269,40 +1321,40 @@ pub struct LaGouraudPoint {
 }
 
 impl YaSerialize for ShdSegment {
-    fn serialize<W: Write>(&self, writer: &mut Serializer<W>) -> yaserde::Result<()> {
+    fn serialize<W: Write>(&self, writer: &mut Serializer<W>) -> ofdbox_yaserde::Result<()> {
         let position = self.position.map(|value| value.to_string());
-        let mut event = yaserde::__xml::writer::XmlEvent::start_element("Segment");
+        let mut event = ofdbox_yaserde::__xml::writer::XmlEvent::start_element("Segment");
         if let Some(position) = &position {
             event = event.attr("Position", position.as_str());
         }
-        writer.write(event).map_err(yaserde::Error::custom)?;
+        writer.write(event).map_err(ofdbox_yaserde::Error::custom)?;
         write_color(writer, &self.color)?;
         writer
-            .write(yaserde::__xml::writer::XmlEvent::end_element())
-            .map_err(yaserde::Error::custom)?;
+            .write(ofdbox_yaserde::__xml::writer::XmlEvent::end_element())
+            .map_err(ofdbox_yaserde::Error::custom)?;
         Ok(())
     }
 
     fn serialize_attributes(
         &self,
-        attributes: Vec<yaserde::__xml::attribute::OwnedAttribute>,
-        namespace: yaserde::__xml::namespace::Namespace,
-    ) -> yaserde::Result<(
-        Vec<yaserde::__xml::attribute::OwnedAttribute>,
-        yaserde::__xml::namespace::Namespace,
+        attributes: Vec<ofdbox_yaserde::__xml::attribute::OwnedAttribute>,
+        namespace: ofdbox_yaserde::__xml::namespace::Namespace,
+    ) -> ofdbox_yaserde::Result<(
+        Vec<ofdbox_yaserde::__xml::attribute::OwnedAttribute>,
+        ofdbox_yaserde::__xml::namespace::Namespace,
     )> {
         Ok((attributes, namespace))
     }
 }
 
 impl YaSerialize for AxialShd {
-    fn serialize<W: Write>(&self, writer: &mut Serializer<W>) -> yaserde::Result<()> {
+    fn serialize<W: Write>(&self, writer: &mut Serializer<W>) -> ofdbox_yaserde::Result<()> {
         let map_type = self.map_type.to_string();
         let start = self.start_point.to_string();
         let end = self.end_point.to_string();
         let map_unit = self.map_unit.map(|value| value.to_string());
         let extend = (self.extend != 0).then(|| self.extend.to_string());
-        let mut event = yaserde::__xml::writer::XmlEvent::start_element("AxialShd")
+        let mut event = ofdbox_yaserde::__xml::writer::XmlEvent::start_element("AxialShd")
             .attr("MapType", map_type.as_str())
             .attr("StartPoint", start.as_str())
             .attr("EndPoint", end.as_str());
@@ -1312,30 +1364,30 @@ impl YaSerialize for AxialShd {
         if let Some(value) = &map_unit {
             event = event.attr("MapUnit", value.as_str());
         }
-        writer.write(event).map_err(yaserde::Error::custom)?;
+        writer.write(event).map_err(ofdbox_yaserde::Error::custom)?;
         for segment in &self.segments {
             segment.serialize(writer)?;
         }
         writer
-            .write(yaserde::__xml::writer::XmlEvent::end_element())
-            .map_err(yaserde::Error::custom)?;
+            .write(ofdbox_yaserde::__xml::writer::XmlEvent::end_element())
+            .map_err(ofdbox_yaserde::Error::custom)?;
         Ok(())
     }
 
     fn serialize_attributes(
         &self,
-        attributes: Vec<yaserde::__xml::attribute::OwnedAttribute>,
-        namespace: yaserde::__xml::namespace::Namespace,
-    ) -> yaserde::Result<(
-        Vec<yaserde::__xml::attribute::OwnedAttribute>,
-        yaserde::__xml::namespace::Namespace,
+        attributes: Vec<ofdbox_yaserde::__xml::attribute::OwnedAttribute>,
+        namespace: ofdbox_yaserde::__xml::namespace::Namespace,
+    ) -> ofdbox_yaserde::Result<(
+        Vec<ofdbox_yaserde::__xml::attribute::OwnedAttribute>,
+        ofdbox_yaserde::__xml::namespace::Namespace,
     )> {
         Ok((attributes, namespace))
     }
 }
 
 impl YaSerialize for RadialShd {
-    fn serialize<W: Write>(&self, writer: &mut Serializer<W>) -> yaserde::Result<()> {
+    fn serialize<W: Write>(&self, writer: &mut Serializer<W>) -> ofdbox_yaserde::Result<()> {
         let map_type = self.map_type.to_string();
         let start = self.start_point.to_string();
         let end = self.end_point.to_string();
@@ -1345,7 +1397,7 @@ impl YaSerialize for RadialShd {
         let eccentricity = (self.eccentricity != 0.0).then(|| self.eccentricity.to_string());
         let angle = (self.angle != 0.0).then(|| self.angle.to_string());
         let start_radius = (self.start_radius != 0.0).then(|| self.start_radius.to_string());
-        let mut event = yaserde::__xml::writer::XmlEvent::start_element("RadialShd")
+        let mut event = ofdbox_yaserde::__xml::writer::XmlEvent::start_element("RadialShd")
             .attr("MapType", map_type.as_str())
             .attr("StartPoint", start.as_str())
             .attr("EndPoint", end.as_str())
@@ -1365,67 +1417,67 @@ impl YaSerialize for RadialShd {
         if let Some(value) = &map_unit {
             event = event.attr("MapUnit", value.as_str());
         }
-        writer.write(event).map_err(yaserde::Error::custom)?;
+        writer.write(event).map_err(ofdbox_yaserde::Error::custom)?;
         for segment in &self.segments {
             segment.serialize(writer)?;
         }
         writer
-            .write(yaserde::__xml::writer::XmlEvent::end_element())
-            .map_err(yaserde::Error::custom)?;
+            .write(ofdbox_yaserde::__xml::writer::XmlEvent::end_element())
+            .map_err(ofdbox_yaserde::Error::custom)?;
         Ok(())
     }
 
     fn serialize_attributes(
         &self,
-        attributes: Vec<yaserde::__xml::attribute::OwnedAttribute>,
-        namespace: yaserde::__xml::namespace::Namespace,
-    ) -> yaserde::Result<(
-        Vec<yaserde::__xml::attribute::OwnedAttribute>,
-        yaserde::__xml::namespace::Namespace,
+        attributes: Vec<ofdbox_yaserde::__xml::attribute::OwnedAttribute>,
+        namespace: ofdbox_yaserde::__xml::namespace::Namespace,
+    ) -> ofdbox_yaserde::Result<(
+        Vec<ofdbox_yaserde::__xml::attribute::OwnedAttribute>,
+        ofdbox_yaserde::__xml::namespace::Namespace,
     )> {
         Ok((attributes, namespace))
     }
 }
 
 impl YaSerialize for GouraudPoint {
-    fn serialize<W: Write>(&self, writer: &mut Serializer<W>) -> yaserde::Result<()> {
+    fn serialize<W: Write>(&self, writer: &mut Serializer<W>) -> ofdbox_yaserde::Result<()> {
         let x = self.x.to_string();
         let y = self.y.to_string();
         let edge = self.edge_flag.map(|value| value.to_string());
-        let mut event = yaserde::__xml::writer::XmlEvent::start_element("Point")
+        let mut event = ofdbox_yaserde::__xml::writer::XmlEvent::start_element("Point")
             .attr("X", x.as_str())
             .attr("Y", y.as_str());
         if let Some(value) = &edge {
             event = event.attr("EdgeFlag", value.as_str());
         }
-        writer.write(event).map_err(yaserde::Error::custom)?;
+        writer.write(event).map_err(ofdbox_yaserde::Error::custom)?;
         write_color(writer, &self.color)?;
         writer
-            .write(yaserde::__xml::writer::XmlEvent::end_element())
-            .map_err(yaserde::Error::custom)?;
+            .write(ofdbox_yaserde::__xml::writer::XmlEvent::end_element())
+            .map_err(ofdbox_yaserde::Error::custom)?;
         Ok(())
     }
 
     fn serialize_attributes(
         &self,
-        attributes: Vec<yaserde::__xml::attribute::OwnedAttribute>,
-        namespace: yaserde::__xml::namespace::Namespace,
-    ) -> yaserde::Result<(
-        Vec<yaserde::__xml::attribute::OwnedAttribute>,
-        yaserde::__xml::namespace::Namespace,
+        attributes: Vec<ofdbox_yaserde::__xml::attribute::OwnedAttribute>,
+        namespace: ofdbox_yaserde::__xml::namespace::Namespace,
+    ) -> ofdbox_yaserde::Result<(
+        Vec<ofdbox_yaserde::__xml::attribute::OwnedAttribute>,
+        ofdbox_yaserde::__xml::namespace::Namespace,
     )> {
         Ok((attributes, namespace))
     }
 }
 
 impl YaSerialize for GouraudShd {
-    fn serialize<W: Write>(&self, writer: &mut Serializer<W>) -> yaserde::Result<()> {
+    fn serialize<W: Write>(&self, writer: &mut Serializer<W>) -> ofdbox_yaserde::Result<()> {
         let extend = self.extend.map(|value| value.to_string());
-        let mut event = yaserde::__xml::writer::XmlEvent::start_element("GouraudShd");
+        let mut event = ofdbox_yaserde::__xml::writer::XmlEvent::start_element("GouraudShd");
         if let Some(value) = &extend {
             event = event.attr("Extend", value.as_str());
         }
-        writer.write(event).map_err(yaserde::Error::custom)?;
+        writer.write(event).map_err(ofdbox_yaserde::Error::custom)?;
         for point in &self.points {
             point.serialize(writer)?;
         }
@@ -1433,64 +1485,64 @@ impl YaSerialize for GouraudShd {
             write_color_named(writer, "BackColor", color)?;
         }
         writer
-            .write(yaserde::__xml::writer::XmlEvent::end_element())
-            .map_err(yaserde::Error::custom)?;
+            .write(ofdbox_yaserde::__xml::writer::XmlEvent::end_element())
+            .map_err(ofdbox_yaserde::Error::custom)?;
         Ok(())
     }
 
     fn serialize_attributes(
         &self,
-        attributes: Vec<yaserde::__xml::attribute::OwnedAttribute>,
-        namespace: yaserde::__xml::namespace::Namespace,
-    ) -> yaserde::Result<(
-        Vec<yaserde::__xml::attribute::OwnedAttribute>,
-        yaserde::__xml::namespace::Namespace,
+        attributes: Vec<ofdbox_yaserde::__xml::attribute::OwnedAttribute>,
+        namespace: ofdbox_yaserde::__xml::namespace::Namespace,
+    ) -> ofdbox_yaserde::Result<(
+        Vec<ofdbox_yaserde::__xml::attribute::OwnedAttribute>,
+        ofdbox_yaserde::__xml::namespace::Namespace,
     )> {
         Ok((attributes, namespace))
     }
 }
 
 impl YaSerialize for LaGouraudPoint {
-    fn serialize<W: Write>(&self, writer: &mut Serializer<W>) -> yaserde::Result<()> {
+    fn serialize<W: Write>(&self, writer: &mut Serializer<W>) -> ofdbox_yaserde::Result<()> {
         let x = self.x.map(|value| value.to_string());
         let y = self.y.map(|value| value.to_string());
-        let mut event = yaserde::__xml::writer::XmlEvent::start_element("Point");
+        let mut event = ofdbox_yaserde::__xml::writer::XmlEvent::start_element("Point");
         if let Some(value) = &x {
             event = event.attr("X", value.as_str());
         }
         if let Some(value) = &y {
             event = event.attr("Y", value.as_str());
         }
-        writer.write(event).map_err(yaserde::Error::custom)?;
+        writer.write(event).map_err(ofdbox_yaserde::Error::custom)?;
         write_color(writer, &self.color)?;
         writer
-            .write(yaserde::__xml::writer::XmlEvent::end_element())
-            .map_err(yaserde::Error::custom)?;
+            .write(ofdbox_yaserde::__xml::writer::XmlEvent::end_element())
+            .map_err(ofdbox_yaserde::Error::custom)?;
         Ok(())
     }
 
     fn serialize_attributes(
         &self,
-        attributes: Vec<yaserde::__xml::attribute::OwnedAttribute>,
-        namespace: yaserde::__xml::namespace::Namespace,
-    ) -> yaserde::Result<(
-        Vec<yaserde::__xml::attribute::OwnedAttribute>,
-        yaserde::__xml::namespace::Namespace,
+        attributes: Vec<ofdbox_yaserde::__xml::attribute::OwnedAttribute>,
+        namespace: ofdbox_yaserde::__xml::namespace::Namespace,
+    ) -> ofdbox_yaserde::Result<(
+        Vec<ofdbox_yaserde::__xml::attribute::OwnedAttribute>,
+        ofdbox_yaserde::__xml::namespace::Namespace,
     )> {
         Ok((attributes, namespace))
     }
 }
 
 impl YaSerialize for LaGouraudShd {
-    fn serialize<W: Write>(&self, writer: &mut Serializer<W>) -> yaserde::Result<()> {
+    fn serialize<W: Write>(&self, writer: &mut Serializer<W>) -> ofdbox_yaserde::Result<()> {
         let vertices = self.vertices_per_row.to_string();
         let extend = self.extend.map(|value| value.to_string());
-        let mut event = yaserde::__xml::writer::XmlEvent::start_element("LaGourandShd")
+        let mut event = ofdbox_yaserde::__xml::writer::XmlEvent::start_element("LaGourandShd")
             .attr("VerticesPerRow", vertices.as_str());
         if let Some(value) = &extend {
             event = event.attr("Extend", value.as_str());
         }
-        writer.write(event).map_err(yaserde::Error::custom)?;
+        writer.write(event).map_err(ofdbox_yaserde::Error::custom)?;
         for point in &self.points {
             point.serialize(writer)?;
         }
@@ -1498,24 +1550,24 @@ impl YaSerialize for LaGouraudShd {
             write_color_named(writer, "BackColor", color)?;
         }
         writer
-            .write(yaserde::__xml::writer::XmlEvent::end_element())
-            .map_err(yaserde::Error::custom)?;
+            .write(ofdbox_yaserde::__xml::writer::XmlEvent::end_element())
+            .map_err(ofdbox_yaserde::Error::custom)?;
         Ok(())
     }
 
     fn serialize_attributes(
         &self,
-        attributes: Vec<yaserde::__xml::attribute::OwnedAttribute>,
-        namespace: yaserde::__xml::namespace::Namespace,
-    ) -> yaserde::Result<(
-        Vec<yaserde::__xml::attribute::OwnedAttribute>,
-        yaserde::__xml::namespace::Namespace,
+        attributes: Vec<ofdbox_yaserde::__xml::attribute::OwnedAttribute>,
+        namespace: ofdbox_yaserde::__xml::namespace::Namespace,
+    ) -> ofdbox_yaserde::Result<(
+        Vec<ofdbox_yaserde::__xml::attribute::OwnedAttribute>,
+        ofdbox_yaserde::__xml::namespace::Namespace,
     )> {
         Ok((attributes, namespace))
     }
 }
 
-fn write_color<W: Write>(writer: &mut Serializer<W>, color: &Color) -> yaserde::Result<()> {
+fn write_color<W: Write>(writer: &mut Serializer<W>, color: &Color) -> ofdbox_yaserde::Result<()> {
     write_color_named(writer, "Color", color)
 }
 
@@ -1523,12 +1575,12 @@ fn write_color_named<W: Write>(
     writer: &mut Serializer<W>,
     name: &str,
     color: &Color,
-) -> yaserde::Result<()> {
+) -> ofdbox_yaserde::Result<()> {
     let value = color.value.as_ref().map(ToString::to_string);
     let index = color.index.map(|value| value.to_string());
     let color_space = color.color_space.map(|value| value.to_string());
     let alpha = (color.alpha != 255).then(|| color.alpha.to_string());
-    let mut event = yaserde::__xml::writer::XmlEvent::start_element(name);
+    let mut event = ofdbox_yaserde::__xml::writer::XmlEvent::start_element(name);
     if let Some(value) = &value {
         event = event.attr("Value", value.as_str());
     }
@@ -1541,11 +1593,11 @@ fn write_color_named<W: Write>(
     if let Some(value) = &alpha {
         event = event.attr("Alpha", value.as_str());
     }
-    writer.write(event).map_err(yaserde::Error::custom)?;
+    writer.write(event).map_err(ofdbox_yaserde::Error::custom)?;
     color.kind.serialize(writer)?;
     writer
-        .write(yaserde::__xml::writer::XmlEvent::end_element())
-        .map_err(yaserde::Error::custom)?;
+        .write(ofdbox_yaserde::__xml::writer::XmlEvent::end_element())
+        .map_err(ofdbox_yaserde::Error::custom)?;
     Ok(())
 }
 
@@ -1556,24 +1608,24 @@ pub type PageActions = Actions;
 pub type PageAction = Action;
 
 impl YaSerialize for Box<Color> {
-    fn serialize<W: Write>(&self, writer: &mut Serializer<W>) -> yaserde::Result<()> {
+    fn serialize<W: Write>(&self, writer: &mut Serializer<W>) -> ofdbox_yaserde::Result<()> {
         (**self).serialize(writer)
     }
 
     fn serialize_attributes(
         &self,
-        attributes: Vec<yaserde::__xml::attribute::OwnedAttribute>,
-        namespace: yaserde::__xml::namespace::Namespace,
-    ) -> yaserde::Result<(
-        Vec<yaserde::__xml::attribute::OwnedAttribute>,
-        yaserde::__xml::namespace::Namespace,
+        attributes: Vec<ofdbox_yaserde::__xml::attribute::OwnedAttribute>,
+        namespace: ofdbox_yaserde::__xml::namespace::Namespace,
+    ) -> ofdbox_yaserde::Result<(
+        Vec<ofdbox_yaserde::__xml::attribute::OwnedAttribute>,
+        ofdbox_yaserde::__xml::namespace::Namespace,
     )> {
         (**self).serialize_attributes(attributes, namespace)
     }
 }
 
 impl YaDeserialize for Box<Color> {
-    fn deserialize<R: Read>(reader: &mut Deserializer<R>) -> yaserde::Result<Self> {
+    fn deserialize<R: Read>(reader: &mut Deserializer<R>) -> ofdbox_yaserde::Result<Self> {
         Ok(Box::new(Color::deserialize(reader)?))
     }
 }

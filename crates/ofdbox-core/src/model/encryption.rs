@@ -3,7 +3,18 @@
 use super::definition::StLoc;
 
 /// `Encryptions.xml` 根对象。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(
+    Clone, Debug, Default, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize,
+)]
+#[yaserde(
+  namespace = "http://www.ofdspec.org/2016",
+  xmlns = {
+    "ofd" = "http://www.ofdspec.org/2016"
+  },
+  namespace_aliases = {
+    "http://www.ofdspec.org" = "http://www.ofdspec.org/2016"
+  }
+)]
 #[yaserde(rename = "Encryptions")]
 pub struct Encryptions {
     /// 加密操作。
@@ -12,7 +23,9 @@ pub struct Encryptions {
 }
 
 /// 单次加密操作。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(
+    Clone, Debug, Default, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize,
+)]
 #[yaserde(rename = "EncryptInfo")]
 pub struct EncryptInfo {
     /// 加密操作标识。
@@ -42,7 +55,9 @@ pub struct EncryptInfo {
 }
 
 /// 加解密组件。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(
+    Clone, Debug, Default, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize,
+)]
 #[yaserde(rename = "Provider")]
 pub struct EncryptionProvider {
     /// 组件名称。
@@ -63,7 +78,9 @@ pub struct EncryptionProvider {
 }
 
 /// 加密参数集合。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(
+    Clone, Debug, Default, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize,
+)]
 #[yaserde(rename = "Parameters")]
 pub struct EncryptionParameters {
     /// 参数。
@@ -72,7 +89,9 @@ pub struct EncryptionParameters {
 }
 
 /// 加密参数。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(
+    Clone, Debug, Default, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize,
+)]
 #[yaserde(rename = "Parameter")]
 pub struct EncryptionParameter {
     /// 参数名。

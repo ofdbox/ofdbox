@@ -4,13 +4,22 @@
 
 use std::io::{Read, Write};
 
-use yaserde::de::Deserializer;
-use yaserde::ser::Serializer;
-use yaserde::{YaDeserialize, YaSerialize};
+use ofdbox_yaserde::de::Deserializer;
+use ofdbox_yaserde::ser::Serializer;
+use ofdbox_yaserde::{YaDeserialize, YaSerialize};
 
 /// 文档内对象 ID。
 #[derive(
-    Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, yaserde::DefaultYaSerde,
+    Clone,
+    Copy,
+    Debug,
+    Default,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    ofdbox_yaserde::DefaultYaSerde,
 )]
 pub struct StId(pub u32);
 
@@ -34,7 +43,16 @@ impl From<u32> for StId {
 
 /// 资源引用 ID。
 #[derive(
-    Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, yaserde::DefaultYaSerde,
+    Clone,
+    Copy,
+    Debug,
+    Default,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    ofdbox_yaserde::DefaultYaSerde,
 )]
 pub struct StRefId(pub u32);
 
@@ -81,7 +99,7 @@ impl From<u32> for StRefId {
 
 /// 包内相对路径。
 #[derive(
-    Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, yaserde::PrimitiveYaSerde,
+    Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, ofdbox_yaserde::PrimitiveYaSerde,
 )]
 pub struct StLoc(pub String);
 
@@ -104,7 +122,7 @@ impl From<&str> for StLoc {
 }
 
 /// 数值数组。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::DefaultYaSerde)]
+#[derive(Clone, Debug, Default, PartialEq, ofdbox_yaserde::DefaultYaSerde)]
 pub struct StArray(pub Vec<f64>);
 
 impl StArray {
@@ -115,7 +133,7 @@ impl StArray {
 }
 
 /// 坐标点。
-#[derive(Clone, Copy, Debug, Default, PartialEq, yaserde::DefaultYaSerde)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, ofdbox_yaserde::DefaultYaSerde)]
 pub struct StPos {
     /// X 坐标。
     pub x: f64,
@@ -124,7 +142,7 @@ pub struct StPos {
 }
 
 /// 矩形区域，对应 `x y width height`。
-#[derive(Clone, Copy, Debug, Default, PartialEq, yaserde::DefaultYaSerde)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, ofdbox_yaserde::DefaultYaSerde)]
 pub struct StBox {
     /// 左上角 X。
     pub x: f64,
@@ -233,7 +251,7 @@ impl std::str::FromStr for StPos {
 }
 
 /// 目标位置类型。
-#[derive(Clone, Debug, Default, PartialEq, Eq, yaserde::DefaultYaSerde)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, ofdbox_yaserde::DefaultYaSerde)]
 pub enum DestType {
     /// `XYZ`。
     #[default]
@@ -259,7 +277,9 @@ crate::impl_xml_enum_codec!(DestType, Other, {
 });
 
 /// 跳转目标。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(
+    Clone, Debug, Default, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize,
+)]
 #[yaserde(rename = "Dest")]
 pub struct Dest {
     /// 目标类型。
@@ -286,7 +306,9 @@ pub struct Dest {
 }
 
 /// 页面区域。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(
+    Clone, Debug, Default, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize,
+)]
 #[yaserde(rename = "PageArea")]
 pub struct PageArea {
     /// 物理区域。
@@ -304,7 +326,7 @@ pub struct PageArea {
 }
 
 /// 动作事件。
-#[derive(Clone, Debug, Default, PartialEq, Eq, yaserde::DefaultYaSerde)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, ofdbox_yaserde::DefaultYaSerde)]
 pub enum ActionEvent {
     /// 文档打开。
     #[default]
@@ -324,7 +346,9 @@ crate::impl_xml_enum_codec!(ActionEvent, Other, {
 });
 
 /// 动作集合。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(
+    Clone, Debug, Default, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize,
+)]
 #[yaserde(rename = "Actions")]
 pub struct Actions {
     /// 动作列表。
@@ -333,7 +357,7 @@ pub struct Actions {
 }
 
 /// 一个动作。
-#[derive(Clone, Debug, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(Clone, Debug, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize)]
 #[yaserde(rename = "Action")]
 pub struct Action {
     /// 触发事件。
@@ -348,7 +372,7 @@ pub struct Action {
 }
 
 /// 动作内容。
-#[derive(Clone, Debug, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(Clone, Debug, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize)]
 pub enum ActionKind {
     /// 跳转。
     #[yaserde(rename = "Goto")]
@@ -368,7 +392,9 @@ pub enum ActionKind {
 }
 
 /// 跳转动作。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(
+    Clone, Debug, Default, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize,
+)]
 #[yaserde(rename = "Goto")]
 pub struct Goto {
     /// 跳转目标。
@@ -377,7 +403,9 @@ pub struct Goto {
 }
 
 /// 书签引用。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(
+    Clone, Debug, Default, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize,
+)]
 #[yaserde(rename = "Bookmark")]
 pub struct GotoBookmark {
     /// 书签名。
@@ -386,7 +414,7 @@ pub struct GotoBookmark {
 }
 
 /// 跳转目标类型。
-#[derive(Clone, Debug, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(Clone, Debug, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize)]
 pub enum GotoKind {
     /// 目标位置。
     #[yaserde(rename = "Dest")]
@@ -409,7 +437,9 @@ impl Default for ActionKind {
 }
 
 /// URI 动作。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(
+    Clone, Debug, Default, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize,
+)]
 #[yaserde(rename = "URI")]
 pub struct Uri {
     /// URI。
@@ -424,7 +454,7 @@ pub struct Uri {
 }
 
 /// 附件跳转动作。
-#[derive(Clone, Debug, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(Clone, Debug, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize)]
 #[yaserde(rename = "GotoA")]
 pub struct GotoA {
     /// 附件 ID。
@@ -436,7 +466,7 @@ pub struct GotoA {
 }
 
 /// 声音动作。
-#[derive(Clone, Debug, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(Clone, Debug, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize)]
 #[yaserde(rename = "Sound")]
 pub struct Sound {
     /// 资源 ID。
@@ -454,7 +484,7 @@ pub struct Sound {
 }
 
 /// 影片操作类型。
-#[derive(Clone, Debug, Default, PartialEq, Eq, yaserde::DefaultYaSerde)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, ofdbox_yaserde::DefaultYaSerde)]
 pub enum MovieOperator {
     /// 播放。
     #[default]
@@ -477,7 +507,7 @@ crate::impl_xml_enum_codec!(MovieOperator, Other, {
 });
 
 /// 影片动作。
-#[derive(Clone, Debug, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(Clone, Debug, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize)]
 #[yaserde(rename = "Movie")]
 pub struct Movie {
     /// 资源 ID。
@@ -489,7 +519,9 @@ pub struct Movie {
 }
 
 /// 动作区域。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(
+    Clone, Debug, Default, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize,
+)]
 #[yaserde(rename = "Region")]
 pub struct Region {
     /// 区域列表。
@@ -507,62 +539,62 @@ pub struct RegionArea {
 }
 
 impl YaSerialize for RegionArea {
-    fn serialize<W: Write>(&self, writer: &mut Serializer<W>) -> yaserde::Result<()> {
+    fn serialize<W: Write>(&self, writer: &mut Serializer<W>) -> ofdbox_yaserde::Result<()> {
         writer
             .write(
-                yaserde::__xml::writer::XmlEvent::start_element("Area")
+                ofdbox_yaserde::__xml::writer::XmlEvent::start_element("Area")
                     .attr("Start", &self.start.to_string()),
             )
-            .map_err(yaserde::Error::custom)?;
+            .map_err(ofdbox_yaserde::Error::custom)?;
         for command in &self.commands {
             command.serialize(writer)?;
         }
         writer
-            .write(yaserde::__xml::writer::XmlEvent::end_element())
-            .map_err(yaserde::Error::custom)?;
+            .write(ofdbox_yaserde::__xml::writer::XmlEvent::end_element())
+            .map_err(ofdbox_yaserde::Error::custom)?;
         Ok(())
     }
 
     fn serialize_attributes(
         &self,
-        attributes: Vec<yaserde::__xml::attribute::OwnedAttribute>,
-        namespace: yaserde::__xml::namespace::Namespace,
-    ) -> yaserde::Result<(
-        Vec<yaserde::__xml::attribute::OwnedAttribute>,
-        yaserde::__xml::namespace::Namespace,
+        attributes: Vec<ofdbox_yaserde::__xml::attribute::OwnedAttribute>,
+        namespace: ofdbox_yaserde::__xml::namespace::Namespace,
+    ) -> ofdbox_yaserde::Result<(
+        Vec<ofdbox_yaserde::__xml::attribute::OwnedAttribute>,
+        ofdbox_yaserde::__xml::namespace::Namespace,
     )> {
         Ok((attributes, namespace))
     }
 }
 
 impl YaDeserialize for RegionArea {
-    fn deserialize<R: Read>(reader: &mut Deserializer<R>) -> yaserde::Result<Self> {
+    fn deserialize<R: Read>(reader: &mut Deserializer<R>) -> ofdbox_yaserde::Result<Self> {
         let event = reader.next_event()?;
-        let yaserde::__xml::reader::XmlEvent::StartElement { attributes, .. } = event else {
-            return Err(yaserde::Error::custom("Region Area 缺少起始元素"));
+        let ofdbox_yaserde::__xml::reader::XmlEvent::StartElement { attributes, .. } = event else {
+            return Err(ofdbox_yaserde::Error::custom("Region Area 缺少起始元素"));
         };
         let start = attributes
             .iter()
             .find(|attribute| attribute.name.local_name == "Start")
             .map(|attribute| attribute.value.parse::<StPos>())
             .transpose()
-            .map_err(yaserde::Error::custom)?
+            .map_err(ofdbox_yaserde::Error::custom)?
             .unwrap_or_default();
 
         let mut commands = Vec::new();
         loop {
             let event = reader.peek()?.to_owned();
             match event {
-                yaserde::__xml::reader::XmlEvent::StartElement { .. } => {
+                ofdbox_yaserde::__xml::reader::XmlEvent::StartElement { .. } => {
                     commands.push(RegionCommand::deserialize(reader)?);
                 }
-                yaserde::__xml::reader::XmlEvent::EndElement { name } => {
+                ofdbox_yaserde::__xml::reader::XmlEvent::EndElement { name } => {
                     if name.local_name == "Area" {
                         break;
                     }
                     let _ = reader.next_event()?;
                 }
-                yaserde::__xml::reader::XmlEvent::EndDocument => break,
+                ofdbox_yaserde::__xml::reader::XmlEvent::EndDocument => break,
                 _ => {
                     let _ = reader.next_event()?;
                 }
@@ -619,7 +651,7 @@ pub enum RegionCommand {
 }
 
 impl YaSerialize for RegionCommand {
-    fn serialize<W: Write>(&self, writer: &mut Serializer<W>) -> yaserde::Result<()> {
+    fn serialize<W: Write>(&self, writer: &mut Serializer<W>) -> ofdbox_yaserde::Result<()> {
         let (tag, attrs): (&str, Vec<(String, String)>) = match self {
             Self::Move { point1 } => ("Move", vec![("Point1".into(), point1.to_string())]),
             Self::Line { point1 } => ("Line", vec![("Point1".into(), point1.to_string())]),
@@ -664,37 +696,37 @@ impl YaSerialize for RegionCommand {
             Self::Close => ("Close", Vec::new()),
         };
 
-        let mut event = yaserde::__xml::writer::XmlEvent::start_element(tag);
+        let mut event = ofdbox_yaserde::__xml::writer::XmlEvent::start_element(tag);
         for (key, value) in &attrs {
             event = event.attr(key.as_str(), value.as_str());
         }
-        writer.write(event).map_err(yaserde::Error::custom)?;
+        writer.write(event).map_err(ofdbox_yaserde::Error::custom)?;
         writer
-            .write(yaserde::__xml::writer::XmlEvent::end_element())
-            .map_err(yaserde::Error::custom)?;
+            .write(ofdbox_yaserde::__xml::writer::XmlEvent::end_element())
+            .map_err(ofdbox_yaserde::Error::custom)?;
         Ok(())
     }
 
     fn serialize_attributes(
         &self,
-        attributes: Vec<yaserde::__xml::attribute::OwnedAttribute>,
-        namespace: yaserde::__xml::namespace::Namespace,
-    ) -> yaserde::Result<(
-        Vec<yaserde::__xml::attribute::OwnedAttribute>,
-        yaserde::__xml::namespace::Namespace,
+        attributes: Vec<ofdbox_yaserde::__xml::attribute::OwnedAttribute>,
+        namespace: ofdbox_yaserde::__xml::namespace::Namespace,
+    ) -> ofdbox_yaserde::Result<(
+        Vec<ofdbox_yaserde::__xml::attribute::OwnedAttribute>,
+        ofdbox_yaserde::__xml::namespace::Namespace,
     )> {
         Ok((attributes, namespace))
     }
 }
 
 impl YaDeserialize for RegionCommand {
-    fn deserialize<R: Read>(reader: &mut Deserializer<R>) -> yaserde::Result<Self> {
+    fn deserialize<R: Read>(reader: &mut Deserializer<R>) -> ofdbox_yaserde::Result<Self> {
         let event = reader.next_event()?;
-        let yaserde::__xml::reader::XmlEvent::StartElement {
+        let ofdbox_yaserde::__xml::reader::XmlEvent::StartElement {
             name, attributes, ..
         } = event
         else {
-            return Err(yaserde::Error::custom("RegionCommand 缺少起始元素"));
+            return Err(ofdbox_yaserde::Error::custom("RegionCommand 缺少起始元素"));
         };
         let value = |key: &str| {
             attributes
@@ -702,9 +734,13 @@ impl YaDeserialize for RegionCommand {
                 .find(|attribute| attribute.name.local_name == key)
                 .map(|attribute| attribute.value.clone())
         };
-        let position = |key: &str| -> yaserde::Result<Option<StPos>> {
+        let position = |key: &str| -> ofdbox_yaserde::Result<Option<StPos>> {
             value(key)
-                .map(|value| value.parse::<StPos>().map_err(yaserde::Error::custom))
+                .map(|value| {
+                    value
+                        .parse::<StPos>()
+                        .map_err(ofdbox_yaserde::Error::custom)
+                })
                 .transpose()
         };
         let command = match name.local_name.as_str() {
@@ -734,14 +770,14 @@ impl YaDeserialize for RegionCommand {
                     .and_then(|value| value.parse().ok())
                     .unwrap_or_default(),
                 ellipse_size: value("EllipseSize")
-                    .map(|value| value.parse().map_err(yaserde::Error::custom))
+                    .map(|value| value.parse().map_err(ofdbox_yaserde::Error::custom))
                     .transpose()?
                     .unwrap_or_default(),
                 end_point: position("EndPoint")?.unwrap_or_default(),
             },
             "Close" => Self::Close,
             other => {
-                return Err(yaserde::Error::custom(format!(
+                return Err(ofdbox_yaserde::Error::custom(format!(
                     "未知 RegionCommand: {other}"
                 )));
             }

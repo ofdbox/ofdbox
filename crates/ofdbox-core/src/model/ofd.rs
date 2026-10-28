@@ -2,7 +2,7 @@
 
 use std::io::Write;
 
-use yaserde::{
+use ofdbox_yaserde::{
     __xml::attribute::OwnedAttribute, __xml::namespace::Namespace, __xml::writer::XmlEvent,
     YaSerialize,
 };
@@ -10,7 +10,16 @@ use yaserde::{
 use super::definition::StLoc;
 
 /// `OFD.xml` 根对象。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaDeserialize)]
+#[derive(Clone, Debug, Default, PartialEq, ofdbox_yaserde::YaDeserialize)]
+#[yaserde(
+  namespace = "http://www.ofdspec.org/2016",
+  xmlns = {
+    "ofd" = "http://www.ofdspec.org/2016"
+  },
+  namespace_aliases = {
+    "http://www.ofdspec.org" = "http://www.ofdspec.org/2016"
+  }
+)]
 #[yaserde(rename = "OFD")]
 pub struct Ofd {
     /// 文件格式版本。
@@ -26,20 +35,23 @@ pub struct Ofd {
 
 /// 文档入口。
 impl YaSerialize for Ofd {
-    fn serialize<W: Write>(&self, writer: &mut yaserde::ser::Serializer<W>) -> yaserde::Result<()> {
+    fn serialize<W: Write>(
+        &self,
+        writer: &mut ofdbox_yaserde::ser::Serializer<W>,
+    ) -> ofdbox_yaserde::Result<()> {
         writer
             .write(
                 XmlEvent::start_element("OFD")
                     .attr("Version", &self.version)
                     .attr("DocType", &self.doc_type),
             )
-            .map_err(yaserde::Error::custom)?;
+            .map_err(ofdbox_yaserde::Error::custom)?;
         for body in &self.doc_bodies {
             body.serialize(writer)?;
         }
         writer
             .write(XmlEvent::end_element())
-            .map_err(yaserde::Error::custom)?;
+            .map_err(ofdbox_yaserde::Error::custom)?;
         Ok(())
     }
 
@@ -47,12 +59,12 @@ impl YaSerialize for Ofd {
         &self,
         attributes: Vec<OwnedAttribute>,
         namespace: Namespace,
-    ) -> yaserde::Result<(Vec<OwnedAttribute>, Namespace)> {
+    ) -> ofdbox_yaserde::Result<(Vec<OwnedAttribute>, Namespace)> {
         Ok((attributes, namespace))
     }
 }
 
-#[derive(Clone, Debug, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(Clone, Debug, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize)]
 #[yaserde(rename = "DocBody")]
 pub struct DocBody {
     /// 文档元数据。
@@ -70,7 +82,9 @@ pub struct DocBody {
 }
 
 /// 文档元数据。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(
+    Clone, Debug, Default, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize,
+)]
 #[yaserde(rename = "DocInfo")]
 pub struct DocInfo {
     /// 文档 ID。
@@ -115,7 +129,9 @@ pub struct DocInfo {
 }
 
 /// 关键词列表。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(
+    Clone, Debug, Default, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize,
+)]
 #[yaserde(rename = "Keywords")]
 pub struct Keywords {
     /// 关键词。
@@ -124,7 +140,9 @@ pub struct Keywords {
 }
 
 /// 自定义数据列表。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(
+    Clone, Debug, Default, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize,
+)]
 #[yaserde(rename = "CustomDatas")]
 pub struct CustomDatas {
     /// 自定义数据。
@@ -133,7 +151,9 @@ pub struct CustomDatas {
 }
 
 /// 一条自定义数据。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(
+    Clone, Debug, Default, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize,
+)]
 #[yaserde(rename = "CustomData")]
 pub struct CustomData {
     /// 名称。
@@ -145,7 +165,9 @@ pub struct CustomData {
 }
 
 /// 版本索引。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(
+    Clone, Debug, Default, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize,
+)]
 #[yaserde(rename = "Versions")]
 pub struct Versions {
     /// 版本。
@@ -154,7 +176,9 @@ pub struct Versions {
 }
 
 /// 版本索引条目。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(
+    Clone, Debug, Default, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize,
+)]
 #[yaserde(rename = "Version")]
 pub struct VersionRef {
     /// 版本 ID。

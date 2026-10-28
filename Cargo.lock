@@ -436,10 +436,10 @@ version = "0.0.1"
 dependencies = [
  "base64",
  "ofdbox-algo",
+ "ofdbox-yaserde",
  "quick-xml",
  "tempfile",
  "thiserror",
- "yaserde",
  "zeroize",
  "zip",
 ]
@@ -480,6 +480,30 @@ dependencies = [
  "x509-cert",
  "zeroize",
  "zip",
+]
+
+[[package]]
+name = "ofdbox-yaserde"
+version = "0.13.1"
+source = "git+https://github.com/ofdbox/yaserde.git?rev=2bd1f5d#2bd1f5d8c45c72683436b6605f277858a90ab160"
+dependencies = [
+ "log",
+ "ofdbox-yaserde-derive",
+ "xml",
+]
+
+[[package]]
+name = "ofdbox-yaserde-derive"
+version = "0.13.1"
+source = "git+https://github.com/ofdbox/yaserde.git?rev=2bd1f5d#2bd1f5d8c45c72683436b6605f277858a90ab160"
+dependencies = [
+ "heck",
+ "log",
+ "proc-macro2",
+ "quote",
+ "serde",
+ "serde_tokenstream",
+ "syn 3.0.9",
 ]
 
 [[package]]
@@ -864,30 +888,6 @@ name = "xml"
 version = "1.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2f45bb2c13fec6a6cb4c0f76a7e94839e110a14ec803ec2940777a94c347bc52"
-
-[[package]]
-name = "yaserde"
-version = "0.13.1"
-source = "git+https://github.com/ofdbox/yaserde.git?rev=f79e6c5#f79e6c5d58dd18c4419dfe7bb1c807954f0fa8e3"
-dependencies = [
- "log",
- "xml",
- "yaserde_derive",
-]
-
-[[package]]
-name = "yaserde_derive"
-version = "0.13.1"
-source = "git+https://github.com/ofdbox/yaserde.git?rev=f79e6c5#f79e6c5d58dd18c4419dfe7bb1c807954f0fa8e3"
-dependencies = [
- "heck",
- "log",
- "proc-macro2",
- "quote",
- "serde",
- "serde_tokenstream",
- "syn 3.0.9",
-]
 
 [[package]]
 name = "zeroize"

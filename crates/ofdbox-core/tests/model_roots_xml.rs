@@ -12,7 +12,7 @@ use ofdbox_core::model_xml as xml;
 
 fn roundtrip<T>(xml_text: &str)
 where
-    T: yaserde::YaDeserialize + yaserde::YaSerialize + PartialEq + std::fmt::Debug,
+    T: ofdbox_yaserde::YaDeserialize + ofdbox_yaserde::YaSerialize + PartialEq + std::fmt::Debug,
 {
     let parsed: T = xml::from_str(xml_text).expect("parse");
     let written = xml::to_string(&parsed).expect("write");

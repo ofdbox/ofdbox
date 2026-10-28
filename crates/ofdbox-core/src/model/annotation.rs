@@ -2,15 +2,26 @@
 
 use std::io::{Read, Write};
 
-use yaserde::de::Deserializer;
-use yaserde::ser::Serializer;
-use yaserde::{YaDeserialize, YaSerialize};
+use ofdbox_yaserde::de::Deserializer;
+use ofdbox_yaserde::ser::Serializer;
+use ofdbox_yaserde::{YaDeserialize, YaSerialize};
 
 use super::definition::{StBox, StId};
 use super::page::{GraphicObject, PageBlock};
 
 /// `PageAnnot` 根对象。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(
+    Clone, Debug, Default, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize,
+)]
+#[yaserde(
+  namespace = "http://www.ofdspec.org/2016",
+  xmlns = {
+    "ofd" = "http://www.ofdspec.org/2016"
+  },
+  namespace_aliases = {
+    "http://www.ofdspec.org" = "http://www.ofdspec.org/2016"
+  }
+)]
 #[yaserde(rename = "PageAnnot")]
 pub struct PageAnnot {
     /// 注释。
@@ -19,7 +30,7 @@ pub struct PageAnnot {
 }
 
 /// 注释。
-#[derive(Clone, Debug, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(Clone, Debug, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize)]
 #[yaserde(rename = "Annot")]
 pub struct Annot {
     /// 注释 ID。
@@ -64,7 +75,7 @@ pub struct Annot {
 }
 
 /// 注释类型。
-#[derive(Clone, Debug, Default, PartialEq, Eq, yaserde::DefaultYaSerde)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, ofdbox_yaserde::DefaultYaSerde)]
 pub enum AnnotationType {
     /// 链接。
     #[default]
@@ -90,7 +101,9 @@ crate::impl_xml_enum_codec!(AnnotationType, Other, {
 });
 
 /// 注释参数集合。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(
+    Clone, Debug, Default, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize,
+)]
 #[yaserde(rename = "Parameters")]
 pub struct Parameters {
     /// 参数。
@@ -99,7 +112,9 @@ pub struct Parameters {
 }
 
 /// 注释参数。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(
+    Clone, Debug, Default, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize,
+)]
 #[yaserde(rename = "Parameter")]
 pub struct Parameter {
     /// 参数名。
@@ -120,60 +135,65 @@ pub struct Appearance {
 }
 
 impl YaSerialize for Appearance {
-    fn serialize<W: Write>(&self, writer: &mut Serializer<W>) -> yaserde::Result<()> {
+    fn serialize<W: Write>(&self, writer: &mut Serializer<W>) -> ofdbox_yaserde::Result<()> {
         let boundary = self.boundary.map(|value| value.to_string());
-        let mut event = yaserde::__xml::writer::XmlEvent::start_element("Appearance");
+        let mut event = ofdbox_yaserde::__xml::writer::XmlEvent::start_element("Appearance");
         if let Some(boundary) = &boundary {
             event = event.attr("Boundary", boundary.as_str());
         }
-        writer.write(event).map_err(yaserde::Error::custom)?;
+        writer.write(event).map_err(ofdbox_yaserde::Error::custom)?;
         for object in &self.page_block.objects {
             writer.set_start_event_name(None);
             object.serialize(writer)?;
         }
         writer
-            .write(yaserde::__xml::writer::XmlEvent::end_element())
-            .map_err(yaserde::Error::custom)?;
+            .write(ofdbox_yaserde::__xml::writer::XmlEvent::end_element())
+            .map_err(ofdbox_yaserde::Error::custom)?;
         Ok(())
     }
 
     fn serialize_attributes(
         &self,
-        attributes: Vec<yaserde::__xml::attribute::OwnedAttribute>,
-        namespace: yaserde::__xml::namespace::Namespace,
-    ) -> yaserde::Result<(
-        Vec<yaserde::__xml::attribute::OwnedAttribute>,
-        yaserde::__xml::namespace::Namespace,
+        attributes: Vec<ofdbox_yaserde::__xml::attribute::OwnedAttribute>,
+        namespace: ofdbox_yaserde::__xml::namespace::Namespace,
+    ) -> ofdbox_yaserde::Result<(
+        Vec<ofdbox_yaserde::__xml::attribute::OwnedAttribute>,
+        ofdbox_yaserde::__xml::namespace::Namespace,
     )> {
         Ok((attributes, namespace))
     }
 }
 
 impl YaDeserialize for Appearance {
-    fn deserialize<R: Read>(reader: &mut Deserializer<R>) -> yaserde::Result<Self> {
+    fn deserialize<R: Read>(reader: &mut Deserializer<R>) -> ofdbox_yaserde::Result<Self> {
         let event = reader.next_event()?;
-        let yaserde::__xml::reader::XmlEvent::StartElement { attributes, .. } = event else {
-            return Err(yaserde::Error::custom("Appearance 缺少起始元素"));
+        let ofdbox_yaserde::__xml::reader::XmlEvent::StartElement { attributes, .. } = event else {
+            return Err(ofdbox_yaserde::Error::custom("Appearance 缺少起始元素"));
         };
         let boundary = attributes
             .iter()
             .find(|attribute| attribute.name.local_name == "Boundary")
-            .map(|attribute| attribute.value.parse().map_err(yaserde::Error::custom))
+            .map(|attribute| {
+                attribute
+                    .value
+                    .parse()
+                    .map_err(ofdbox_yaserde::Error::custom)
+            })
             .transpose()?;
         let mut objects = Vec::new();
         loop {
             let event = reader.peek()?.to_owned();
             match event {
-                yaserde::__xml::reader::XmlEvent::StartElement { .. } => {
+                ofdbox_yaserde::__xml::reader::XmlEvent::StartElement { .. } => {
                     objects.push(GraphicObject::deserialize(reader)?);
                 }
-                yaserde::__xml::reader::XmlEvent::EndElement { name } => {
+                ofdbox_yaserde::__xml::reader::XmlEvent::EndElement { name } => {
                     if name.local_name == "Appearance" {
                         break;
                     }
                     let _ = reader.next_event()?;
                 }
-                yaserde::__xml::reader::XmlEvent::EndDocument => break,
+                ofdbox_yaserde::__xml::reader::XmlEvent::EndDocument => break,
                 _ => {
                     let _ = reader.next_event()?;
                 }

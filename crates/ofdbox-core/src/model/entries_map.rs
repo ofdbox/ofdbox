@@ -3,7 +3,18 @@
 use super::definition::StLoc;
 
 /// `Entries.xml` 根对象。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(
+    Clone, Debug, Default, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize,
+)]
+#[yaserde(
+  namespace = "http://www.ofdspec.org/2016",
+  xmlns = {
+    "ofd" = "http://www.ofdspec.org/2016"
+  },
+  namespace_aliases = {
+    "http://www.ofdspec.org" = "http://www.ofdspec.org/2016"
+  }
+)]
 #[yaserde(rename = "EncryptedEntries")]
 pub struct EncryptedEntries {
     /// 加密操作标识。
@@ -15,7 +26,9 @@ pub struct EncryptedEntries {
 }
 
 /// 明密文条目。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(
+    Clone, Debug, Default, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize,
+)]
 #[yaserde(rename = "EncryptEntry")]
 pub struct EncryptEntry {
     /// 加密前路径。

@@ -4,7 +4,16 @@ use super::definition::{StArray, StId, StLoc, StRefId};
 use super::page::{Color, PageBlock};
 
 /// 资源文件根对象。
-#[derive(Clone, Debug, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(Clone, Debug, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize)]
+#[yaserde(
+  namespace = "http://www.ofdspec.org/2016",
+  xmlns = {
+    "ofd" = "http://www.ofdspec.org/2016"
+  },
+  namespace_aliases = {
+    "http://www.ofdspec.org" = "http://www.ofdspec.org/2016"
+  }
+)]
 #[yaserde(rename = "Res")]
 pub struct Res {
     /// 资源基准路径。
@@ -28,7 +37,9 @@ pub struct Res {
 }
 
 /// 颜色空间集合。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(
+    Clone, Debug, Default, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize,
+)]
 #[yaserde(rename = "ColorSpaces")]
 pub struct ColorSpaces {
     /// 颜色空间。
@@ -37,7 +48,7 @@ pub struct ColorSpaces {
 }
 
 /// 颜色空间。
-#[derive(Clone, Debug, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(Clone, Debug, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize)]
 #[yaserde(rename = "ColorSpace")]
 pub struct ColorSpace {
     /// 资源 ID。
@@ -66,7 +77,7 @@ pub struct ColorSpace {
 }
 
 /// 颜色空间类型。
-#[derive(Clone, Debug, Default, PartialEq, Eq, yaserde::DefaultYaSerde)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, ofdbox_yaserde::DefaultYaSerde)]
 pub enum ColorSpaceType {
     /// 灰度。
     Gray,
@@ -86,7 +97,9 @@ crate::impl_xml_enum_codec!(ColorSpaceType, Other, {
 });
 
 /// 调色板。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(
+    Clone, Debug, Default, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize,
+)]
 #[yaserde(rename = "Palette")]
 pub struct Palette {
     /// 颜色值。
@@ -95,7 +108,9 @@ pub struct Palette {
 }
 
 /// 绘制参数集合。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(
+    Clone, Debug, Default, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize,
+)]
 #[yaserde(rename = "DrawParams")]
 pub struct DrawParams {
     /// 绘制参数。
@@ -104,7 +119,7 @@ pub struct DrawParams {
 }
 
 /// 绘制参数。
-#[derive(Clone, Debug, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(Clone, Debug, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize)]
 #[yaserde(rename = "DrawParam")]
 pub struct DrawParam {
     /// 资源 ID。
@@ -140,7 +155,9 @@ pub struct DrawParam {
 }
 
 /// 字体集合。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(
+    Clone, Debug, Default, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize,
+)]
 #[yaserde(rename = "Fonts")]
 pub struct Fonts {
     /// 字体。
@@ -149,7 +166,9 @@ pub struct Fonts {
 }
 
 /// 字体资源。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(
+    Clone, Debug, Default, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize,
+)]
 #[yaserde(rename = "Font")]
 pub struct Font {
     /// 资源 ID。
@@ -182,7 +201,7 @@ pub struct Font {
 }
 
 /// 字体字符集。
-#[derive(Clone, Debug, Default, PartialEq, Eq, yaserde::DefaultYaSerde)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, ofdbox_yaserde::DefaultYaSerde)]
 pub enum Charset {
     /// 符号。
     Symbol,
@@ -214,7 +233,9 @@ crate::impl_xml_enum_codec!(Charset, Other, {
 });
 
 /// 多媒体集合。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(
+    Clone, Debug, Default, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize,
+)]
 #[yaserde(rename = "MultiMedias")]
 pub struct MultiMedias {
     /// 多媒体资源。
@@ -223,7 +244,9 @@ pub struct MultiMedias {
 }
 
 /// 多媒体资源。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(
+    Clone, Debug, Default, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize,
+)]
 #[yaserde(rename = "MultiMedia")]
 pub struct MultiMedia {
     /// 资源 ID。
@@ -241,7 +264,7 @@ pub struct MultiMedia {
 }
 
 /// 多媒体类型。
-#[derive(Clone, Debug, Default, PartialEq, Eq, yaserde::DefaultYaSerde)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, ofdbox_yaserde::DefaultYaSerde)]
 pub enum MultiMediaType {
     /// 图像。
     #[default]
@@ -261,7 +284,9 @@ crate::impl_xml_enum_codec!(MultiMediaType, Other, {
 });
 
 /// 复合图元集合。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(
+    Clone, Debug, Default, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize,
+)]
 #[yaserde(rename = "CompositeGraphicUnits")]
 pub struct CompositeGraphicUnits {
     /// 复合图元。
@@ -270,7 +295,9 @@ pub struct CompositeGraphicUnits {
 }
 
 /// 复合图元。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(
+    Clone, Debug, Default, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize,
+)]
 #[yaserde(rename = "CompositeGraphicUnit")]
 pub struct CompositeGraphicUnit {
     /// 资源 ID。

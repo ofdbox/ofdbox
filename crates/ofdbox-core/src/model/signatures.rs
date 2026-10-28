@@ -3,7 +3,18 @@
 use super::definition::StLoc;
 
 /// `Signatures.xml` 根对象。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(
+    Clone, Debug, Default, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize,
+)]
+#[yaserde(
+  namespace = "http://www.ofdspec.org/2016",
+  xmlns = {
+    "ofd" = "http://www.ofdspec.org/2016"
+  },
+  namespace_aliases = {
+    "http://www.ofdspec.org" = "http://www.ofdspec.org/2016"
+  }
+)]
 #[yaserde(rename = "Signatures")]
 pub struct Signatures {
     /// 最大签名 ID。
@@ -15,7 +26,9 @@ pub struct Signatures {
 }
 
 /// 签名索引条目。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(
+    Clone, Debug, Default, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize,
+)]
 #[yaserde(rename = "Signature")]
 pub struct SignatureRef {
     /// 签名 ID。
@@ -30,7 +43,7 @@ pub struct SignatureRef {
 }
 
 /// 签名类型。
-#[derive(Clone, Debug, Default, PartialEq, Eq, yaserde::DefaultYaSerde)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, ofdbox_yaserde::DefaultYaSerde)]
 pub enum SignatureType {
     /// 印章。
     #[default]

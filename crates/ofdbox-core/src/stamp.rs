@@ -235,11 +235,11 @@ pub(crate) fn prepare(
     })
 }
 
-fn parse_schema<T: yaserde::YaDeserialize>(bytes: &[u8]) -> Result<T, OfdError> {
+fn parse_schema<T: ofdbox_yaserde::YaDeserialize>(bytes: &[u8]) -> Result<T, OfdError> {
     model_xml::from_bytes(bytes).map_err(|error| OfdError::InvalidStructure(error.to_string()))
 }
 
-fn serialize_schema<T: yaserde::YaSerialize>(value: &T) -> Result<Vec<u8>, OfdError> {
+fn serialize_schema<T: ofdbox_yaserde::YaSerialize>(value: &T) -> Result<Vec<u8>, OfdError> {
     model_xml::to_bytes(value).map_err(|error| OfdError::InvalidStructure(error.to_string()))
 }
 

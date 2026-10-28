@@ -1,7 +1,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use yaserde::{YaDeserialize, YaSerialize};
+use ofdbox_yaserde::{YaDeserialize, YaSerialize};
 
 use crate::error::OfdError;
 use crate::model::definition::StLoc;

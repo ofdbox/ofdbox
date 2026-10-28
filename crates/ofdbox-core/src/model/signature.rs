@@ -3,7 +3,18 @@
 use super::definition::{StBox, StLoc};
 
 /// `Signature.xml` 根对象。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(
+    Clone, Debug, Default, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize,
+)]
+#[yaserde(
+  namespace = "http://www.ofdspec.org/2016",
+  xmlns = {
+    "ofd" = "http://www.ofdspec.org/2016"
+  },
+  namespace_aliases = {
+    "http://www.ofdspec.org" = "http://www.ofdspec.org/2016"
+  }
+)]
 #[yaserde(rename = "Signature")]
 pub struct Signature {
     /// 签名信息。
@@ -15,7 +26,9 @@ pub struct Signature {
 }
 
 /// 签名信息。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(
+    Clone, Debug, Default, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize,
+)]
 #[yaserde(rename = "SignedInfo")]
 pub struct SignedInfo {
     /// 签名提供者。
@@ -39,7 +52,9 @@ pub struct SignedInfo {
 }
 
 /// 签名提供者。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(
+    Clone, Debug, Default, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize,
+)]
 #[yaserde(rename = "Provider")]
 pub struct Provider {
     /// 提供者名称。
@@ -60,7 +75,9 @@ pub struct Provider {
 }
 
 /// 引用集合。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(
+    Clone, Debug, Default, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize,
+)]
 #[yaserde(rename = "References")]
 pub struct References {
     /// 引用。
@@ -76,7 +93,7 @@ pub struct References {
 }
 
 /// 校验方法。
-#[derive(Clone, Debug, Default, PartialEq, Eq, yaserde::DefaultYaSerde)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, ofdbox_yaserde::DefaultYaSerde)]
 pub enum CheckMethod {
     /// MD5。
     #[default]
@@ -93,7 +110,9 @@ crate::impl_xml_enum_codec!(CheckMethod, Other, {
 });
 
 /// 引用。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(
+    Clone, Debug, Default, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize,
+)]
 #[yaserde(rename = "Reference")]
 pub struct Reference {
     /// 文件路径。
@@ -105,7 +124,9 @@ pub struct Reference {
 }
 
 /// 签章注释。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(
+    Clone, Debug, Default, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize,
+)]
 #[yaserde(rename = "StampAnnot")]
 pub struct StampAnnot {
     /// 签名 ID。
@@ -123,7 +144,9 @@ pub struct StampAnnot {
 }
 
 /// 印章。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(
+    Clone, Debug, Default, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize,
+)]
 #[yaserde(rename = "Seal")]
 pub struct Seal {
     /// 印章基准路径。

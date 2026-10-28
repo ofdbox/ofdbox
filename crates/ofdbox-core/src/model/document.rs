@@ -3,7 +3,16 @@
 use super::definition::{Actions, Dest, PageArea, StId, StLoc, StRefId};
 
 /// `Document.xml` 根对象。
-#[derive(Clone, Debug, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(Clone, Debug, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize)]
+#[yaserde(
+  namespace = "http://www.ofdspec.org/2016",
+  xmlns = {
+    "ofd" = "http://www.ofdspec.org/2016"
+  },
+  namespace_aliases = {
+    "http://www.ofdspec.org" = "http://www.ofdspec.org/2016"
+  }
+)]
 #[yaserde(rename = "Document")]
 pub struct Document {
     /// 公共数据。
@@ -42,7 +51,7 @@ pub struct Document {
 }
 
 /// 文档公共数据。
-#[derive(Clone, Debug, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(Clone, Debug, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize)]
 #[yaserde(rename = "CommonData")]
 pub struct CommonData {
     /// 文档内最大对象 ID。
@@ -66,7 +75,9 @@ pub struct CommonData {
 }
 
 /// 模板页。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(
+    Clone, Debug, Default, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize,
+)]
 #[yaserde(rename = "TemplatePage")]
 pub struct TemplatePage {
     /// 模板 ID。
@@ -84,7 +95,7 @@ pub struct TemplatePage {
 }
 
 /// 模板显示层级。
-#[derive(Clone, Debug, Default, PartialEq, Eq, yaserde::DefaultYaSerde)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, ofdbox_yaserde::DefaultYaSerde)]
 pub enum PageZOrder {
     /// 背景。
     #[default]
@@ -101,7 +112,9 @@ crate::impl_xml_enum_codec!(PageZOrder, Other, {
 });
 
 /// 页树。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(
+    Clone, Debug, Default, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize,
+)]
 #[yaserde(rename = "Pages")]
 pub struct Pages {
     /// 页面索引。
@@ -110,7 +123,9 @@ pub struct Pages {
 }
 
 /// 页面索引条目。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(
+    Clone, Debug, Default, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize,
+)]
 #[yaserde(rename = "Page")]
 pub struct PageEntry {
     /// 页面 ID。
@@ -122,7 +137,9 @@ pub struct PageEntry {
 }
 
 /// 大纲。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(
+    Clone, Debug, Default, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize,
+)]
 #[yaserde(rename = "Outlines")]
 pub struct Outlines {
     /// 大纲元素。
@@ -131,7 +148,7 @@ pub struct Outlines {
 }
 
 /// 大纲元素。
-#[derive(Clone, Debug, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(Clone, Debug, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize)]
 #[yaserde(rename = "OutlineElem")]
 pub struct OutlineElem {
     /// 标题。
@@ -152,7 +169,9 @@ pub struct OutlineElem {
 }
 
 /// 权限声明。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(
+    Clone, Debug, Default, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize,
+)]
 #[yaserde(rename = "Permissions")]
 pub struct Permissions {
     /// 是否允许编辑。
@@ -182,7 +201,7 @@ pub struct Permissions {
 }
 
 /// 打印权限。
-#[derive(Clone, Debug, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(Clone, Debug, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize)]
 #[yaserde(rename = "Print")]
 pub struct PrintPermission {
     /// 是否可打印。
@@ -194,7 +213,9 @@ pub struct PrintPermission {
 }
 
 /// 有效期。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(
+    Clone, Debug, Default, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize,
+)]
 #[yaserde(rename = "ValidPeriod")]
 pub struct ValidPeriod {
     /// 开始时间。
@@ -206,7 +227,9 @@ pub struct ValidPeriod {
 }
 
 /// 视图偏好。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(
+    Clone, Debug, Default, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize,
+)]
 #[yaserde(rename = "VPreferences")]
 pub struct VPreferences {
     /// 页面模式。
@@ -236,7 +259,7 @@ pub struct VPreferences {
 }
 
 /// 页面模式。
-#[derive(Clone, Debug, Default, PartialEq, Eq, yaserde::DefaultYaSerde)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, ofdbox_yaserde::DefaultYaSerde)]
 pub enum PageMode {
     /// 无。
     #[default]
@@ -271,7 +294,7 @@ crate::impl_xml_enum_codec!(PageMode, Other, {
 });
 
 /// 页面布局。
-#[derive(Clone, Debug, Default, PartialEq, Eq, yaserde::DefaultYaSerde)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, ofdbox_yaserde::DefaultYaSerde)]
 pub enum PageLayout {
     /// 单页。
     OnePage,
@@ -300,7 +323,7 @@ crate::impl_xml_enum_codec!(PageLayout, Other, {
 });
 
 /// 标签显示方式。
-#[derive(Clone, Debug, Default, PartialEq, Eq, yaserde::DefaultYaSerde)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, ofdbox_yaserde::DefaultYaSerde)]
 pub enum TabDisplay {
     /// 文档标题。
     #[default]
@@ -317,7 +340,7 @@ crate::impl_xml_enum_codec!(TabDisplay, Other, {
 });
 
 /// 缩放模式。
-#[derive(Clone, Debug, Default, PartialEq, Eq, yaserde::DefaultYaSerde)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, ofdbox_yaserde::DefaultYaSerde)]
 pub enum ZoomMode {
     /// 默认。
     #[default]
@@ -340,7 +363,9 @@ crate::impl_xml_enum_codec!(ZoomMode, Other, {
 });
 
 /// 书签集合。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(
+    Clone, Debug, Default, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize,
+)]
 #[yaserde(rename = "Bookmarks")]
 pub struct Bookmarks {
     /// 书签。
@@ -349,7 +374,7 @@ pub struct Bookmarks {
 }
 
 /// 书签。
-#[derive(Clone, Debug, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(Clone, Debug, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize)]
 #[yaserde(rename = "Bookmark")]
 pub struct Bookmark {
     /// 名称。

@@ -1,7 +1,18 @@
 //! 0099 密钥描述模型。
 
 /// `DecryptSeed.xml` 根对象。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(
+    Clone, Debug, Default, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize,
+)]
+#[yaserde(
+  namespace = "http://www.ofdspec.org/2016",
+  xmlns = {
+    "ofd" = "http://www.ofdspec.org/2016"
+  },
+  namespace_aliases = {
+    "http://www.ofdspec.org" = "http://www.ofdspec.org/2016"
+  }
+)]
 #[yaserde(rename = "DecryptSeed")]
 pub struct DecryptSeed {
     /// 加密操作标识。
@@ -19,7 +30,9 @@ pub struct DecryptSeed {
 }
 
 /// 可解密用户。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(
+    Clone, Debug, Default, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize,
+)]
 #[yaserde(rename = "UserInfo")]
 pub struct DecryptUser {
     /// 用户名称。
@@ -40,7 +53,9 @@ pub struct DecryptUser {
 }
 
 /// 扩展参数。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(
+    Clone, Debug, Default, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize,
+)]
 #[yaserde(rename = "ExtendParams")]
 pub struct ExtendParams {
     /// 参数。
@@ -49,7 +64,9 @@ pub struct ExtendParams {
 }
 
 /// 扩展参数项。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(
+    Clone, Debug, Default, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize,
+)]
 #[yaserde(rename = "Parameter")]
 pub struct ExtendParameter {
     /// 参数名称。

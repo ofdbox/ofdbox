@@ -236,7 +236,7 @@ fn root_name(bytes: &[u8]) -> Option<String> {
     }
 }
 
-fn parse<T: yaserde::YaDeserialize>(bytes: &[u8]) -> Result<T, OfdError> {
+fn parse<T: ofdbox_yaserde::YaDeserialize>(bytes: &[u8]) -> Result<T, OfdError> {
     model_xml::from_bytes(bytes).map_err(|error| OfdError::InvalidStructure(error.to_string()))
 }
 

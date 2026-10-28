@@ -16,7 +16,7 @@ use ofdbox_core::model::signature::Signature;
 use ofdbox_core::model::signatures::Signatures;
 use ofdbox_core::model::version::DocVersion;
 use ofdbox_core::model_xml as xml;
-use yaserde::{YaDeserialize, YaSerialize};
+use ofdbox_yaserde::{YaDeserialize, YaSerialize};
 
 #[derive(Default)]
 struct Report {

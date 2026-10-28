@@ -12,7 +12,7 @@ use crate::model::ofd::{DocBody, Ofd};
 use crate::model::page::Page;
 use crate::model::res::Res;
 use crate::store::{ObjectContext, Stored};
-use yaserde::YaDeserialize;
+use ofdbox_yaserde::YaDeserialize;
 
 impl Stored<Ofd> {
     /// 按 DocBody 序号加载文档。

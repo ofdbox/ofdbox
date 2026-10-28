@@ -3,7 +3,7 @@ use ofdbox_core::model_xml;
 
 fn roundtrip<T>(xml: &str) -> T
 where
-    T: yaserde::YaSerialize + yaserde::YaDeserialize + PartialEq + std::fmt::Debug,
+    T: ofdbox_yaserde::YaSerialize + ofdbox_yaserde::YaDeserialize + PartialEq + std::fmt::Debug,
 {
     let parsed: T = model_xml::from_bytes(xml.as_bytes()).expect("parse");
     let written = model_xml::to_bytes(&parsed).expect("serialize");
@@ -14,7 +14,7 @@ where
 
 #[test]
 fn res_with_colors_fonts_and_media() {
-    let xml = r#"<Res BaseLoc="Res">
+    let xml = r#"<Res xmlns="http://www.ofdspec.org/2016" BaseLoc="Res">
   <ColorSpaces>
     <ColorSpace ID="1" Type="RGB" BitsPerComponent="8">
       <Palette>0 0 0 255 255 255</Palette>
@@ -38,7 +38,7 @@ fn res_with_colors_fonts_and_media() {
 
 #[test]
 fn page_with_path_color_and_gradient() {
-    let xml = r#"<Page>
+    let xml = r#"<Page xmlns="http://www.ofdspec.org/2016">
   <Area><PhysicalBox>0 0 210 297</PhysicalBox></Area>
   <Content>
     <Layer ID="1" Type="Body">
@@ -61,17 +61,17 @@ fn page_with_path_color_and_gradient() {
 
 #[test]
 fn annotations_attachments_extensions_roundtrip() {
-    let annotations = r#"<Annotations>
+    let annotations = r#"<Annotations xmlns="http://www.ofdspec.org/2016">
   <Page PageID="1"><FileLoc>Annots/Page_1.xml</FileLoc></Page>
 </Annotations>"#;
     roundtrip::<model::annotations::Annotations>(annotations);
 
-    let attachments = r#"<Attachments>
+    let attachments = r#"<Attachments xmlns="http://www.ofdspec.org/2016">
   <Attachment ID="1" Name="a.txt" Visible="true" Usage="none"><FileLoc>Attach/a.txt</FileLoc></Attachment>
 </Attachments>"#;
     roundtrip::<model::attachments::Attachments>(attachments);
 
-    let extensions = r#"<Extensions>
+    let extensions = r#"<Extensions xmlns="http://www.ofdspec.org/2016">
   <Extension AppName="demo" RefId="1">
     <Property Name="k" Type="String">v</Property>
     <Data><vendor:Foo xmlns:vendor="urn:foo" a="1">bar</vendor:Foo></Data>
@@ -83,7 +83,7 @@ fn annotations_attachments_extensions_roundtrip() {
 
 #[test]
 fn signature_roundtrip() {
-    let xml = r#"<Signature>
+    let xml = r#"<Signature xmlns="http://www.ofdspec.org/2016">
   <SignedInfo>
     <Provider ProviderName="demo" Version="1.0"/>
     <SignatureMethod>1.2.156.10197.1.501</SignatureMethod>
@@ -103,7 +103,7 @@ fn signature_roundtrip() {
 
 #[test]
 fn doc_entries_roundtrip() {
-    let xml = r#"<DocEntries ID="1" CreatorName="ofdbox" Version="1.0" CreationDate="20261028">
+    let xml = r#"<DocEntries xmlns="http://www.ofdspec.org/2016" ID="1" CreatorName="ofdbox" Version="1.0" CreationDate="20261028">
   <FileList>
     <File ID="f1" FileLoc="/OFD.xml"/>
     <File ID="f2" FileLoc="/Doc_0/Document.xml"/>
@@ -116,7 +116,7 @@ fn doc_entries_roundtrip() {
 
 #[test]
 fn page_annot_text_roundtrip() {
-    let xml = r#"<PageAnnot>
+    let xml = r#"<PageAnnot xmlns="http://www.ofdspec.org/2016">
   <Annot ID="1" Type="Highlight" Creator="tester" LastModDate="20261028">
     <Appearance Boundary="10 10 100 30">
       <TextObject ID="2" Boundary="10 10 100 30" Font="1" Size="12">
@@ -134,7 +134,7 @@ fn page_annot_text_roundtrip() {
 
 #[test]
 fn signatures_index_roundtrip() {
-    let xml = r#"<Signatures>
+    let xml = r#"<Signatures xmlns="http://www.ofdspec.org/2016">
   <MaxSignId>2</MaxSignId>
   <Signature ID="1" Type="Sign" BaseLoc="Signs/Sign_0/Signature.xml"/>
   <Signature ID="2" Type="Seal" BaseLoc="Signs/Sign_1/Signature.xml"/>
@@ -148,7 +148,7 @@ fn signatures_index_roundtrip() {
 
 #[test]
 fn page_with_axial_gradient() {
-    let xml = r#"<Page>
+    let xml = r#"<Page xmlns="http://www.ofdspec.org/2016">
   <Content>
     <Layer ID="1">
       <PathObject ID="2" Boundary="0 0 100 100" Fill="true">
@@ -171,7 +171,7 @@ fn page_with_axial_gradient() {
 
 #[test]
 fn page_with_radial_gradient() {
-    let xml = r#"<Page><Content><Layer ID="1"><PathObject ID="2" Boundary="0 0 100 100" Fill="true">
+    let xml = r#"<Page xmlns="http://www.ofdspec.org/2016"><Content><Layer ID="1"><PathObject ID="2" Boundary="0 0 100 100" Fill="true">
       <FillColor><RadialShd StartPoint="50 50" EndPoint="50 50" EndRadius="50">
         <Segment Position="0"><Color Value="255 0 0"/></Segment>
         <Segment Position="1"><Color Value="0 0 255"/></Segment>
@@ -186,7 +186,7 @@ fn page_with_radial_gradient() {
 
 #[test]
 fn page_with_gouraud_gradient() {
-    let xml = r#"<Page><Content><Layer ID="1"><PathObject ID="2" Boundary="0 0 100 100" Fill="true">
+    let xml = r#"<Page xmlns="http://www.ofdspec.org/2016"><Content><Layer ID="1"><PathObject ID="2" Boundary="0 0 100 100" Fill="true">
       <FillColor><GouraudShd>
         <Point X="0" Y="0"><Color Value="255 0 0"/></Point>
         <Point X="100" Y="0"><Color Value="0 0 255"/></Point>
@@ -201,7 +201,7 @@ fn page_with_gouraud_gradient() {
 
 #[test]
 fn page_with_la_gouraud_gradient() {
-    let xml = r#"<Page><Content><Layer ID="1"><PathObject ID="2" Boundary="0 0 100 100" Fill="true">
+    let xml = r#"<Page xmlns="http://www.ofdspec.org/2016"><Content><Layer ID="1"><PathObject ID="2" Boundary="0 0 100 100" Fill="true">
       <FillColor><LaGourandShd VerticesPerRow="2">
         <Point X="0" Y="0"><Color Value="255 0 0"/></Point>
         <Point X="100" Y="0"><Color Value="0 0 255"/></Point>
@@ -216,7 +216,7 @@ fn page_with_la_gouraud_gradient() {
 
 #[test]
 fn document_outlines_permissions_preferences() {
-    let xml = r#"<Document>
+    let xml = r#"<Document xmlns="http://www.ofdspec.org/2016">
   <CommonData>
     <MaxUnitID>1</MaxUnitID>
     <PageArea><PhysicalBox>0 0 210 297</PhysicalBox></PageArea>
@@ -244,7 +244,7 @@ fn document_outlines_permissions_preferences() {
 
 #[test]
 fn page_with_clip_and_composite() {
-    let xml = r#"<Page>
+    let xml = r#"<Page xmlns="http://www.ofdspec.org/2016">
   <Content>
     <Layer ID="1">
       <CompositeObject ID="2" Boundary="0 0 100 100" ResourceID="10"/>
@@ -267,7 +267,7 @@ fn page_with_clip_and_composite() {
 
 #[test]
 fn gouraud_gradient_back_color() {
-    let xml = r#"<Page><Content><Layer ID="1"><PathObject ID="2" Boundary="0 0 100 100" Fill="true">
+    let xml = r#"<Page xmlns="http://www.ofdspec.org/2016"><Content><Layer ID="1"><PathObject ID="2" Boundary="0 0 100 100" Fill="true">
       <FillColor><GouraudShd>
         <BackColor Value="255 255 255"/>
         <Point X="0" Y="0"><Color Value="255 0 0"/></Point>
@@ -284,7 +284,8 @@ fn gouraud_gradient_back_color() {
 #[test]
 fn solid_color_has_no_kind() {
     let parsed: model::page::Color =
-        model_xml::from_str(r#"<Color Value="255 0 0"/>"#).expect("parse");
+        model_xml::from_str(r#"<Color xmlns="http://www.ofdspec.org/2016" Value="255 0 0"/>"#)
+            .expect("parse");
     assert!(matches!(parsed.kind, model::page::ColorKind::None));
     let written = model_xml::to_string(&parsed).expect("serialize");
     assert!(!written.contains("Pattern"), "{written}");

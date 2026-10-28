@@ -5,7 +5,7 @@
 
 use std::fmt;
 
-use yaserde::{YaDeserialize, YaSerialize};
+use ofdbox_yaserde::{YaDeserialize, YaSerialize};
 
 /// OFD 标准命名空间。
 pub const OFD_NAMESPACE: &str = "http://www.ofdspec.org/2016";
@@ -37,15 +37,15 @@ impl std::error::Error for XmlError {}
 /// XML 处理结果。
 pub type XmlResult<T> = Result<T, XmlError>;
 
-impl From<yaserde::Error> for XmlError {
-    fn from(error: yaserde::Error) -> Self {
+impl From<ofdbox_yaserde::Error> for XmlError {
+    fn from(error: ofdbox_yaserde::Error) -> Self {
         Self(error.to_string())
     }
 }
 
 /// 从 XML 文本反序列化。
 pub fn from_str<T: YaDeserialize>(xml: &str) -> XmlResult<T> {
-    Ok(yaserde::de::from_str(xml)?)
+    Ok(ofdbox_yaserde::de::from_str(xml)?)
 }
 
 /// 从 XML 字节反序列化。
@@ -57,7 +57,7 @@ pub fn from_bytes<T: YaDeserialize>(bytes: &[u8]) -> XmlResult<T> {
 
 /// 序列化为 XML 文本。
 pub fn to_string<T: YaSerialize>(value: &T) -> XmlResult<String> {
-    let mut xml = yaserde::ser::to_string(value)?;
+    let mut xml = ofdbox_yaserde::ser::to_string(value)?;
     inject_prefixed_namespace(&mut xml);
     Ok(xml)
 }

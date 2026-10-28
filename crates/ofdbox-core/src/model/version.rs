@@ -3,7 +3,18 @@
 use super::definition::StLoc;
 
 /// `DocVersion` 根对象。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(
+    Clone, Debug, Default, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize,
+)]
+#[yaserde(
+  namespace = "http://www.ofdspec.org/2016",
+  xmlns = {
+    "ofd" = "http://www.ofdspec.org/2016"
+  },
+  namespace_aliases = {
+    "http://www.ofdspec.org" = "http://www.ofdspec.org/2016"
+  }
+)]
 #[yaserde(rename = "DocVersion")]
 pub struct DocVersion {
     /// 版本 ID。
@@ -27,7 +38,9 @@ pub struct DocVersion {
 }
 
 /// 版本文件列表。
-#[derive(Clone, Debug, Default, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(
+    Clone, Debug, Default, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize,
+)]
 #[yaserde(rename = "FileList")]
 pub struct FileList {
     /// 文件。
@@ -44,44 +57,44 @@ pub struct File {
     pub file_loc: StLoc,
 }
 
-impl yaserde::YaSerialize for File {
+impl ofdbox_yaserde::YaSerialize for File {
     fn serialize<W: std::io::Write>(
         &self,
-        writer: &mut yaserde::ser::Serializer<W>,
-    ) -> yaserde::Result<()> {
-        let event =
-            yaserde::__xml::writer::XmlEvent::start_element("File").attr("ID", self.id.as_str());
-        writer.write(event).map_err(yaserde::Error::custom)?;
+        writer: &mut ofdbox_yaserde::ser::Serializer<W>,
+    ) -> ofdbox_yaserde::Result<()> {
+        let event = ofdbox_yaserde::__xml::writer::XmlEvent::start_element("File")
+            .attr("ID", self.id.as_str());
+        writer.write(event).map_err(ofdbox_yaserde::Error::custom)?;
         writer
-            .write(yaserde::__xml::writer::XmlEvent::characters(
+            .write(ofdbox_yaserde::__xml::writer::XmlEvent::characters(
                 self.file_loc.as_str(),
             ))
-            .map_err(yaserde::Error::custom)?;
+            .map_err(ofdbox_yaserde::Error::custom)?;
         writer
-            .write(yaserde::__xml::writer::XmlEvent::end_element())
-            .map_err(yaserde::Error::custom)?;
+            .write(ofdbox_yaserde::__xml::writer::XmlEvent::end_element())
+            .map_err(ofdbox_yaserde::Error::custom)?;
         Ok(())
     }
 
     fn serialize_attributes(
         &self,
-        attributes: Vec<yaserde::__xml::attribute::OwnedAttribute>,
-        namespace: yaserde::__xml::namespace::Namespace,
-    ) -> yaserde::Result<(
-        Vec<yaserde::__xml::attribute::OwnedAttribute>,
-        yaserde::__xml::namespace::Namespace,
+        attributes: Vec<ofdbox_yaserde::__xml::attribute::OwnedAttribute>,
+        namespace: ofdbox_yaserde::__xml::namespace::Namespace,
+    ) -> ofdbox_yaserde::Result<(
+        Vec<ofdbox_yaserde::__xml::attribute::OwnedAttribute>,
+        ofdbox_yaserde::__xml::namespace::Namespace,
     )> {
         Ok((attributes, namespace))
     }
 }
 
-impl yaserde::YaDeserialize for File {
+impl ofdbox_yaserde::YaDeserialize for File {
     fn deserialize<R: std::io::Read>(
-        reader: &mut yaserde::de::Deserializer<R>,
-    ) -> yaserde::Result<Self> {
+        reader: &mut ofdbox_yaserde::de::Deserializer<R>,
+    ) -> ofdbox_yaserde::Result<Self> {
         let event = reader.next_event()?;
-        let yaserde::__xml::reader::XmlEvent::StartElement { attributes, .. } = event else {
-            return Err(yaserde::Error::custom("File 缺少起始元素"));
+        let ofdbox_yaserde::__xml::reader::XmlEvent::StartElement { attributes, .. } = event else {
+            return Err(ofdbox_yaserde::Error::custom("File 缺少起始元素"));
         };
         let id = attributes
             .iter()
@@ -92,11 +105,11 @@ impl yaserde::YaDeserialize for File {
         loop {
             let event = reader.peek()?.to_owned();
             match event {
-                yaserde::__xml::reader::XmlEvent::Characters(value) => {
+                ofdbox_yaserde::__xml::reader::XmlEvent::Characters(value) => {
                     text.push_str(&value);
                     let _ = reader.next_event()?;
                 }
-                yaserde::__xml::reader::XmlEvent::EndElement { .. } => break,
+                ofdbox_yaserde::__xml::reader::XmlEvent::EndElement { .. } => break,
                 _ => {
                     let _ = reader.next_event()?;
                 }
