@@ -172,3 +172,19 @@ fn caches_page_document() {
     let second = page.document().expect("document");
     assert!(std::rc::Rc::ptr_eq(&first, &second));
 }
+
+#[test]
+fn removes_page_entry() {
+    let file = OfdFile::create().expect("create");
+    let mut doc = file.document(0).expect("document");
+    doc.add_page(ofdbox_core::model::page::Page::default())
+        .expect("add page");
+    assert!(doc.remove_page("1").expect("remove"));
+    assert!(!doc.remove_page("1").expect("remove again"));
+    assert!(doc.data.pages.pages.is_empty());
+
+    let bytes = file.to_bytes().expect("pack");
+    let reopened = OfdFile::open_bytes(bytes).expect("reopen");
+    let doc = reopened.document(0).expect("document");
+    assert!(doc.data.pages.pages.is_empty());
+}

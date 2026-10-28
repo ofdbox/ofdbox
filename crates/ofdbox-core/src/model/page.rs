@@ -901,7 +901,6 @@ impl YaSerialize for ColorKind {
     }
 }
 
-
 /// 底纹。
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Pattern {

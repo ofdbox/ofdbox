@@ -108,6 +108,24 @@ impl Stored<Document> {
         Ok(stored)
     }
 
+    /// 删除页面并写回 Document.xml。
+    pub fn remove_page(&mut self, id: &str) -> Result<bool, OfdError> {
+        let Some(index) = self
+            .data
+            .pages
+            .pages
+            .iter()
+            .position(|entry| entry.id == id)
+        else {
+            return Ok(false);
+        };
+        let entry = self.data.pages.pages.remove(index);
+        let location = self.context().resolve(&entry.base_loc)?;
+        self.context().delete_entry(&location)?;
+        self.save()?;
+        Ok(true)
+    }
+
     /// 页面索引迭代器。
     pub fn pages(&self) -> impl Iterator<Item = PageEntryRef<'_>> {
         self.data.pages.pages.iter().map(|entry| PageEntryRef {
