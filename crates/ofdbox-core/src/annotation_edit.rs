@@ -7,16 +7,20 @@ use std::collections::{HashMap, HashSet};
 use std::io::{Seek, Write};
 
 use crate::error::OfdError;
-use crate::options::ReadOptions;
 use crate::package::{OfdPackage, parent_dir, resolve_loc};
 use crate::package_write::{PackageEdits, PackageWriteOptions};
-use crate::schema::annotations::Annotations;
+use crate::schema::annotation::{Annot, AnnotationType, Appearance, PageAnnot};
+use crate::schema::annotations::{Annotations, AnnotationsPage};
+use crate::schema::definition::{StArray, StBox, StId, StLoc, StRefId};
 use crate::schema::document::Document;
 use crate::schema::ofd::Ofd;
+use crate::schema::page::{
+    CgTransform, CompositeObject, GraphicObject, GraphicUnit, ImageObject, PageBlock, PathObject,
+    TextCode, TextObject,
+};
+use crate::schema::res::{MultiMedia, MultiMediaType, MultiMedias, Res};
 use crate::schema::signatures::Signatures;
 use crate::schema_xml;
-use crate::xml::parser::parse_xml;
-use crate::xml::tree::{NodeId, XmlDocument};
 
 /// 单条注释的描述。
 #[derive(Clone, Debug)]
@@ -261,7 +265,6 @@ pub struct AnnotationEditor<'a> {
     document_entry: String,
     annotations_entry: String,
     annotations_dir: String,
-    pages: Vec<(String, String)>,
     page_ids: HashSet<String>,
     pending: HashMap<String, Vec<PendingAnnotation>>,
     updates: HashMap<String, AnnotationPatch>,
@@ -301,11 +304,6 @@ impl<'a> AnnotationEditor<'a> {
             ));
         }
 
-        let index = parse_schema::<Annotations>(&package.read_entry(&annotations_entry)?)?;
-        let mut pages = Vec::new();
-        for page in index.pages {
-            pages.push((page.page_id.to_string(), page.file_loc.to_string()));
-        }
         let page_ids: HashSet<String> = document
             .pages
             .pages
@@ -320,7 +318,6 @@ impl<'a> AnnotationEditor<'a> {
             document_entry,
             annotations_entry,
             annotations_dir,
-            pages,
             page_ids,
             pending: HashMap::new(),
             updates: HashMap::new(),
@@ -413,11 +410,17 @@ impl<'a> AnnotationEditor<'a> {
         mut writer: impl Write + Seek,
     ) -> Result<AnnotationEditReport, OfdError> {
         let mut edits = PackageEdits::new();
-        let mut pages = self.pages.clone();
         let mut added = 0usize;
         let mut removed = 0usize;
         let mut updated = 0usize;
 
+        let mut annotations: Annotations =
+            parse_schema(&self.package.read_entry(&self.annotations_entry)?)?;
+        let mut pages: Vec<(String, String)> = annotations
+            .pages
+            .iter()
+            .map(|page| (page.page_id.clone(), page.file_loc.to_string()))
+            .collect();
         let needs_image = self
             .pending
             .values()
@@ -438,23 +441,27 @@ impl<'a> AnnotationEditor<'a> {
 
         for page_id in page_ids {
             let existing = pages.iter().find(|(id, _)| id == &page_id).cloned();
-            let (mut annots, entry) = if let Some((_, file_loc)) = &existing {
+            let (mut page_annot, entry) = if let Some((_, file_loc)) = &existing {
                 let entry = resolve_loc(&self.annotations_dir, file_loc)?;
                 let bytes = self.package.read_entry(&entry)?;
-                (parse_existing_annots(&bytes)?, Some(entry))
+                (parse_schema::<PageAnnot>(&bytes)?, Some(entry))
             } else {
-                (Vec::new(), None)
+                (PageAnnot::default(), None)
             };
 
-            let before = annots.len();
-            annots.retain(|(id, _)| !self.removed.contains(id));
-            removed += before - annots.len();
-            for (id, raw) in &mut annots {
-                if let Some(patch) = self.updates.get(id) {
-                    *raw = rewrite_annotation(raw, patch)?;
+            let before = page_annot.annots.len();
+            page_annot
+                .annots
+                .retain(|annot| !self.removed.contains(&annot.id.to_string()));
+            removed += before - page_annot.annots.len();
+
+            for annot in &mut page_annot.annots {
+                if let Some(patch) = self.updates.get(&annot.id.to_string()) {
+                    apply_patch(annot, patch)?;
                     updated += 1;
                 }
             }
+
             if let Some(pending) = self.pending.remove(&page_id) {
                 added += pending.len();
                 for pending in pending {
@@ -468,13 +475,18 @@ impl<'a> AnnotationEditor<'a> {
                             &format!("annotation_{}.{extension}", pending.id),
                         );
                         let entry = format!("{}/{}", state.dir, name);
-                        state.media.push_str(&format!(
-                            "<{prefix}MultiMedia ID=\"{}\" Type=\"Image\" Format=\"{}\"><{prefix}MediaFile>{}</{prefix}MediaFile></{prefix}MultiMedia>",
-                            pending.multimedia_id.unwrap_or(0),
-                            escape(&image.format),
-                            escape(&name),
-                            prefix = state.prefix
-                        ));
+                        let media = MultiMedia {
+                            id: StId(pending.multimedia_id.unwrap_or(0) as u32),
+                            media_type: MultiMediaType::Image,
+                            format: Some(image.format.clone()),
+                            media_file: StLoc::new(name),
+                        };
+                        state
+                            .res
+                            .multi_medias
+                            .get_or_insert_with(MultiMedias::default)
+                            .multi_medias
+                            .push(media);
                         state.images.push((entry, image.data));
                         image_ref = Some((
                             pending.image_object_id.unwrap_or(0),
@@ -483,55 +495,68 @@ impl<'a> AnnotationEditor<'a> {
                             image.height,
                         ));
                     }
-                    let raw = build_annotation(&pending.id, &spec, image_ref, pending.object_id);
-                    annots.push((pending.id, raw));
+                    page_annot.annots.push(build_annotation(
+                        &pending.id,
+                        &spec,
+                        image_ref,
+                        pending.object_id,
+                    )?);
                 }
             }
 
-            if annots.is_empty() {
+            if page_annot.annots.is_empty() {
                 if let Some(entry) = entry {
                     edits.remove(entry);
                     pages.retain(|(id, _)| id != &page_id);
+                    annotations.pages.retain(|page| page.page_id != page_id);
                 }
                 continue;
             }
 
-            let xml = build_page_annot(&annots);
+            let bytes = serialize_schema(&page_annot)?;
             let entry = match entry {
                 Some(entry) => entry,
                 None => {
                     let file_loc = self.unique_page_file(&page_id);
+                    annotations.pages.push(AnnotationsPage {
+                        page_id: page_id.clone(),
+                        file_loc: StLoc::new(file_loc.clone()),
+                    });
                     pages.push((page_id.clone(), file_loc.clone()));
                     resolve_loc(&self.annotations_dir, &file_loc)?
                 }
             };
             if self.package.contains(&entry) {
-                edits.replace(entry, xml.into_bytes());
+                edits.replace(entry, bytes);
             } else {
-                edits.add(entry, xml.into_bytes());
+                edits.add(entry, bytes);
             }
         }
 
         if let Some(state) = res_state {
-            let updated = append_media(&state.source, &state.media)?;
-            if self.package.contains(&state.entry) {
-                edits.replace(&state.entry, updated.into_bytes());
-            } else {
-                edits.add(&state.entry, updated.into_bytes());
-            }
+            edits.replace(state.entry.clone(), serialize_schema(&state.res)?);
             for (entry, data) in state.images {
                 edits.add(entry, data);
             }
         }
 
-        let index = build_annotations_index(&pages);
-        edits.replace(&self.annotations_entry, index.into_bytes());
+        annotations.pages = pages
+            .iter()
+            .map(|(page_id, file_loc)| AnnotationsPage {
+                page_id: page_id.clone(),
+                file_loc: StLoc::new(file_loc.clone()),
+            })
+            .collect();
+        edits.replace(
+            self.annotations_entry.clone(),
+            serialize_schema(&annotations)?,
+        );
 
-        if self.next_id - 1 > self.max_unit_id
-            && let Some(updated) =
-                bump_max_unit_id(self.package, &self.document_entry, self.next_id - 1)?
-        {
-            edits.replace(&self.document_entry, updated);
+        if self.next_id - 1 > self.max_unit_id {
+            let mut document: Document =
+                parse_schema(&self.package.read_entry(&self.document_entry)?)?;
+            document.common_data.max_unit_id = StId((self.next_id - 1) as u32);
+            edits.replace(self.document_entry.clone(), serialize_schema(&document)?);
         }
 
         self.package
@@ -576,18 +601,23 @@ fn has_signatures(
     Ok(!index.signatures.is_empty())
 }
 
-fn parse_existing_annots(bytes: &[u8]) -> Result<Vec<(String, String)>, OfdError> {
-    let doc = parse_xml(bytes, ReadOptions::LENIENT)?;
-    let root = doc.root();
-    let mut annots = Vec::new();
-    for node in doc.children_named(root, "Annot") {
-        let id = doc.attribute(node, "ID").unwrap_or("").to_owned();
-        let span = doc.span(node);
-        let raw = std::str::from_utf8(&bytes[span.start..span.end])
-            .map_err(|_| OfdError::InvalidStructure("注释不是 UTF-8".to_owned()))?;
-        annots.push((id, raw.to_owned()));
+fn apply_patch(annot: &mut Annot, patch: &AnnotationPatch) -> Result<(), OfdError> {
+    if let Some(creator) = &patch.creator {
+        annot.creator = creator.clone();
     }
-    Ok(annots)
+    if let Some(date) = &patch.last_mod_date {
+        annot.last_mod_date = date.clone();
+    }
+    if let Some(visible) = patch.visible {
+        annot.visible = visible;
+    }
+    if let Some(print) = patch.print {
+        annot.print = print;
+    }
+    if let Some(boundary) = &patch.boundary {
+        annot.appearance.boundary = Some(parse_boundary(boundary)?);
+    }
+    Ok(())
 }
 
 fn build_annotation(
@@ -595,319 +625,158 @@ fn build_annotation(
     spec: &AnnotationSpec,
     image: Option<(i64, i64, i64, i64)>,
     object_id: Option<i64>,
-) -> String {
-    let boundary = escape(&spec.boundary);
-    let appearance = if let Some((image_object_id, multimedia_id, width, height)) = image {
-        format!(
-            "<ofd:Appearance Boundary=\"{boundary}\"><ofd:ImageObject ID=\"{image_object_id}\" ResourceID=\"{multimedia_id}\" Boundary=\"0 0 {width} {height}\" CTM=\"{width} 0 0 {height} 0 0\"/></ofd:Appearance>"
-        )
+) -> Result<Annot, OfdError> {
+    let boundary = parse_boundary(&spec.boundary)?;
+    let objects = if let Some((image_object_id, multimedia_id, width, height)) = image {
+        vec![GraphicObject::Image(ImageObject {
+            common: GraphicUnit {
+                id: StId(image_object_id as u32),
+                boundary: StBox::new(0.0, 0.0, width as f64, height as f64),
+                ctm: Some(StArray(vec![
+                    width as f64,
+                    0.0,
+                    0.0,
+                    height as f64,
+                    0.0,
+                    0.0,
+                ])),
+                ..GraphicUnit::default()
+            },
+            resource_id: StRefId(multimedia_id as u32),
+            substitution: None,
+            image_mask: None,
+            border: None,
+        })]
     } else if let (Some(text), Some(object_id)) = (&spec.text, object_id) {
-        let mut cg = String::new();
+        let mut cg_transforms = Vec::new();
         if let Some(transform) = &spec.cg_transform {
-            cg.push_str(&format!(
-                "<ofd:CGTransform CodePosition=\"{}\"",
-                transform.code_position
-            ));
-            if let Some(count) = transform.code_count {
-                cg.push_str(&format!(" CodeCount=\"{count}\""));
-            }
-            if let Some(count) = transform.glyph_count {
-                cg.push_str(&format!(" GlyphCount=\"{count}\""));
-            }
-            if let Some(glyphs) = &transform.glyphs {
-                cg.push_str(&format!(
-                    "><ofd:Glyphs>{}</ofd:Glyphs></ofd:CGTransform>",
-                    escape(glyphs)
-                ));
-            } else {
-                cg.push_str("/>");
-            }
+            cg_transforms.push(CgTransform {
+                code_position: transform.code_position as i32,
+                code_count: transform.code_count.unwrap_or(1) as i32,
+                glyph_count: transform.glyph_count.unwrap_or(1) as i32,
+                glyphs: transform.glyphs.clone(),
+            });
         }
-        format!(
-            "<ofd:Appearance Boundary=\"{boundary}\"><ofd:TextObject ID=\"{object_id}\" Boundary=\"{boundary}\" Font=\"{}\" Size=\"{}\">{cg}<ofd:TextCode X=\"0\" Y=\"0\">{}</ofd:TextCode></ofd:TextObject></ofd:Appearance>",
-            escape(&text.font),
-            text.size,
-            escape(&text.text)
-        )
+        vec![GraphicObject::Text(TextObject {
+            common: GraphicUnit {
+                id: StId(object_id as u32),
+                boundary,
+                ..GraphicUnit::default()
+            },
+            font: StRefId(text.font.parse::<u32>().unwrap_or(0)),
+            size: text.size,
+            text_codes: vec![TextCode {
+                x: Some(0.0),
+                y: Some(0.0),
+                text: text.text.clone(),
+                ..TextCode::default()
+            }],
+            cg_transforms,
+            ..TextObject::default()
+        })]
     } else if let (Some(path), Some(object_id)) = (&spec.path, object_id) {
-        format!(
-            "<ofd:Appearance Boundary=\"{boundary}\"><ofd:PathObject ID=\"{object_id}\" Boundary=\"{boundary}\"><ofd:AbbreviatedData>{}</ofd:AbbreviatedData></ofd:PathObject></ofd:Appearance>",
-            escape(&path.data)
-        )
+        vec![GraphicObject::Path(PathObject {
+            common: GraphicUnit {
+                id: StId(object_id as u32),
+                boundary,
+                ..GraphicUnit::default()
+            },
+            abbreviated_data: path.data.clone(),
+            ..PathObject::default()
+        })]
     } else if let (Some(composite), Some(object_id)) = (&spec.composite, object_id) {
-        format!(
-            "<ofd:Appearance Boundary=\"{boundary}\"><ofd:CompositeObject ID=\"{object_id}\" Boundary=\"{boundary}\" ResourceID=\"{}\"/></ofd:Appearance>",
-            escape(&composite.resource_id)
-        )
+        vec![GraphicObject::Composite(CompositeObject {
+            common: GraphicUnit {
+                id: StId(object_id as u32),
+                boundary,
+                ..GraphicUnit::default()
+            },
+            resource_id: StRefId(composite.resource_id.parse::<u32>().unwrap_or(0)),
+        })]
     } else {
-        format!("<ofd:Appearance Boundary=\"{boundary}\"/>")
+        Vec::new()
     };
-    format!(
-        "<ofd:Annot ID=\"{}\" Type=\"{}\" Creator=\"{}\" LastModDate=\"{}\">{appearance}</ofd:Annot>",
-        escape(id),
-        escape(&spec.annot_type),
-        escape(&spec.creator),
-        escape(&spec.last_mod_date)
-    )
+
+    Ok(Annot {
+        id: StId(id.parse::<u32>().unwrap_or(0)),
+        annot_type: spec
+            .annot_type
+            .parse::<AnnotationType>()
+            .unwrap_or_else(|_| AnnotationType::Other(spec.annot_type.clone())),
+        creator: spec.creator.clone(),
+        last_mod_date: spec.last_mod_date.clone(),
+        visible: true,
+        subtype: None,
+        print: true,
+        no_zoom: false,
+        no_rotate: false,
+        read_only: true,
+        remark: None,
+        parameters: None,
+        appearance: Appearance {
+            boundary: Some(boundary),
+            page_block: PageBlock { objects },
+        },
+    })
 }
 
-fn build_page_annot(annots: &[(String, String)]) -> String {
-    let mut xml = String::from(
-        "<?xml version=\"1.0\" encoding=\"UTF-8\"?><ofd:PageAnnot xmlns:ofd=\"http://www.ofdspec.org/2016\">",
-    );
-    for (_, raw) in annots {
-        xml.push_str(raw);
-    }
-    xml.push_str("</ofd:PageAnnot>");
-    xml
-}
-
-fn build_annotations_index(pages: &[(String, String)]) -> String {
-    let mut xml = String::from(
-        "<?xml version=\"1.0\" encoding=\"UTF-8\"?><ofd:Annotations xmlns:ofd=\"http://www.ofdspec.org/2016\">",
-    );
-    for (page_id, file_loc) in pages {
-        xml.push_str(&format!(
-            "<ofd:Page PageID=\"{}\"><ofd:FileLoc>{}</ofd:FileLoc></ofd:Page>",
-            escape(page_id),
-            escape(file_loc)
-        ));
-    }
-    xml.push_str("</ofd:Annotations>");
-    xml
-}
-
-fn bump_max_unit_id(
-    package: &mut OfdPackage,
-    document_entry: &str,
-    value: i64,
-) -> Result<Option<Vec<u8>>, OfdError> {
-    let bytes = package.read_entry(document_entry)?;
-    let doc = parse_xml(&bytes, ReadOptions::LENIENT)?;
-    let root = doc.root();
-    let Some(common) = doc.find_child(root, "CommonData") else {
-        return Ok(None);
-    };
-    let Some(node) = doc.find_child(common, "MaxUnitID") else {
-        return Ok(None);
-    };
-    let span = doc.span(node);
-    let text = format!("{value}");
-    let mut output = Vec::with_capacity(bytes.len() + text.len());
-    output.extend_from_slice(&bytes[..span.start]);
-    output.extend_from_slice(text.as_bytes());
-    output.extend_from_slice(&bytes[span.end..]);
-    Ok(Some(output))
-}
-
-fn escape(value: &str) -> String {
-    value
-        .replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
-}
-
-fn rewrite_annotation(raw: &str, patch: &AnnotationPatch) -> Result<String, OfdError> {
-    let doc = parse_xml(raw.as_bytes(), ReadOptions::LENIENT)?;
-    let root = doc.root();
-    let mut overrides = Vec::new();
-    if let Some(creator) = &patch.creator {
-        overrides.push(("Creator", creator.as_str()));
-    }
-    if let Some(date) = &patch.last_mod_date {
-        overrides.push(("LastModDate", date.as_str()));
-    }
-    if let Some(visible) = patch.visible {
-        overrides.push(("Visible", if visible { "true" } else { "false" }));
-    }
-    if let Some(print) = patch.print {
-        overrides.push(("Print", if print { "true" } else { "false" }));
-    }
-    let (start_tag, open_start, open_end) = rewrite_start_tag(raw, &doc, root, &overrides, 0)?;
-    let mut output = String::new();
-    output.push_str(&raw[..open_start]);
-    output.push_str(&start_tag);
-    if raw[..=open_end].ends_with("/>") {
-        output.push_str(&raw[open_end + 1..]);
-        return Ok(output);
-    }
-
-    let close_start = raw[open_start..]
-        .rfind("</")
-        .map(|offset| open_start + offset)
-        .ok_or_else(|| OfdError::InvalidStructure("注释缺少结束标签".to_owned()))?;
-    let body_start = open_end + 1;
-    let mut body = raw[body_start..close_start].to_owned();
-    if let Some(boundary) = &patch.boundary
-        && let Some(appearance) = doc.find_child(root, "Appearance")
-    {
-        let (tag, appearance_start, appearance_end) = rewrite_start_tag(
-            &body,
-            &doc,
-            appearance,
-            &[("Boundary", boundary.as_str())],
-            body_start,
-        )?;
-        let mut updated_body = String::new();
-        updated_body.push_str(&body[..appearance_start]);
-        updated_body.push_str(&tag);
-        updated_body.push_str(&body[appearance_end + 1..]);
-        body = updated_body;
-    }
-    output.push_str(&body);
-    output.push_str(&raw[close_start..]);
-    Ok(output)
-}
-
-/// 重写元素开始标签，返回 `(新开始标签, 在 raw 中的起点, `>` 的位置)`。
-fn rewrite_start_tag(
-    raw: &str,
-    doc: &XmlDocument,
-    node: NodeId,
-    overrides: &[(&str, &str)],
-    base: usize,
-) -> Result<(String, usize, usize), OfdError> {
-    let span = doc.span(node);
-    let span_start = span.start - base;
-    let span_end = span.end - base;
-    let open_start = span_start;
-    let open_end = raw[span_start..span_end]
-        .find('>')
-        .map(|offset| span_start + offset)
-        .ok_or_else(|| OfdError::InvalidStructure("元素开始标签不完整".to_owned()))?;
-    let self_closing = raw[..=open_end].ends_with("/>");
-    let name = doc.name(node);
-    let tag_name = match &name.prefix {
-        Some(prefix) => format!("{prefix}:{}", name.local),
-        None => name.local.clone(),
-    };
-    let mut attributes: Vec<(String, String)> = doc
-        .node(node)
-        .attributes
-        .iter()
-        .map(|attribute| {
-            let key = match &attribute.name.prefix {
-                Some(prefix) => format!("{prefix}:{}", attribute.name.local),
-                None => attribute.name.local.clone(),
-            };
-            (key, attribute.value.clone())
+fn parse_boundary(value: &str) -> Result<StBox, OfdError> {
+    let values: Vec<f64> = value
+        .split_whitespace()
+        .map(|item| {
+            item.parse::<f64>()
+                .map_err(|_| OfdError::InvalidStructure(format!("无效边界: {value}")))
         })
-        .collect();
-    for (key, value) in overrides {
-        if let Some(entry) = attributes
-            .iter_mut()
-            .find(|(name, _)| name == key || name.ends_with(&format!(":{key}")))
-        {
-            entry.1 = (*value).to_owned();
-        } else {
-            attributes.push(((*key).to_owned(), (*value).to_owned()));
-        }
+        .collect::<Result<_, _>>()?;
+    if values.len() != 4 {
+        return Err(OfdError::InvalidStructure(format!(
+            "边界需要 4 个数: {value}"
+        )));
     }
-    let mut tag = format!("<{tag_name}");
-    for (key, value) in attributes {
-        tag.push_str(&format!(" {key}=\"{}\"", escape(&value)));
-    }
-    tag.push_str(if self_closing { "/>" } else { ">" });
-    Ok((tag, open_start, open_end))
+    Ok(StBox::new(values[0], values[1], values[2], values[3]))
 }
 
 struct ResState {
     entry: String,
-    source: String,
-    prefix: String,
     dir: String,
-    media: String,
+    res: Res,
     images: Vec<(String, Vec<u8>)>,
 }
 
 fn load_document_res(package: &mut OfdPackage, document_entry: &str) -> Result<ResState, OfdError> {
-    let doc_dir = parent_dir(document_entry).unwrap_or("").to_owned();
-    let document = package.read_entry(document_entry)?;
-    let doc = parse_xml(&document, ReadOptions::LENIENT)?;
-    let root = doc.root();
-    let common = doc
-        .find_child(root, "CommonData")
-        .ok_or_else(|| OfdError::InvalidStructure("Document.xml 缺少 CommonData".to_owned()))?;
-    let loc = doc
-        .find_child(common, "DocumentRes")
-        .map(|node| doc.text(node).trim().to_owned())
+    let document: Document = parse_schema(&package.read_entry(document_entry)?)?;
+    let doc_dir = parent_dir(document_entry).unwrap_or("");
+    let loc = document
+        .common_data
+        .document_res
+        .first()
         .ok_or_else(|| {
             OfdError::InvalidStructure("图片注释需要 Document.xml 声明 DocumentRes".to_owned())
-        })?;
-    let entry = resolve_loc(&doc_dir, &loc)?;
-    let source = match package.read_entry(&entry) {
-        Ok(bytes) => std::str::from_utf8(&bytes)
-            .map_err(|_| OfdError::InvalidStructure("DocumentRes 不是 UTF-8".to_owned()))?
-            .to_owned(),
-        Err(_) => r#"<?xml version="1.0" encoding="UTF-8"?><ofd:Res xmlns:ofd="http://www.ofdspec.org/2016" BaseLoc="Res"><ofd:MultiMedias></ofd:MultiMedias></ofd:Res>"#.to_owned(),
+        })?
+        .clone();
+    let entry = resolve_loc(doc_dir, loc.as_str())?;
+    let res: Res = if package.contains(&entry) {
+        parse_schema(&package.read_entry(&entry)?)?
+    } else {
+        Res {
+            base_loc: StLoc::new("Res"),
+            ..Res::default()
+        }
     };
-    let res_doc = parse_xml(source.as_bytes(), ReadOptions::LENIENT)?;
-    let prefix = match &res_doc.name(res_doc.root()).prefix {
-        Some(prefix) => format!("{prefix}:"),
-        None => String::new(),
-    };
-    let base_loc = res_doc
-        .attribute(res_doc.root(), "BaseLoc")
-        .unwrap_or("Res");
-    let dir = resolve_loc(&doc_dir, base_loc)?;
+    let dir = resolve_loc(doc_dir, res.base_loc.as_str())?;
     Ok(ResState {
         entry,
-        source,
-        prefix,
         dir,
-        media: String::new(),
+        res,
         images: Vec::new(),
     })
 }
 
-fn append_media(source: &str, media: &str) -> Result<String, OfdError> {
-    if media.is_empty() {
-        return Ok(source.to_owned());
-    }
-    let doc = parse_xml(source.as_bytes(), ReadOptions::LENIENT)?;
-    let root = doc.root();
-    let prefix = match &doc.name(root).prefix {
-        Some(prefix) => format!("{prefix}:"),
-        None => String::new(),
-    };
-    let fragment = format!("<{prefix}MultiMedias>{media}</{prefix}MultiMedias>");
-    if let Some(multimedias) = doc.find_child(root, "MultiMedias") {
-        let span = doc.span(multimedias);
-        let open_end = source[span.start..span.end]
-            .find('>')
-            .map(|offset| span.start + offset)
-            .ok_or_else(|| OfdError::InvalidStructure("MultiMedias 开始标签不完整".to_owned()))?;
-        if source[..=open_end].ends_with("/>") {
-            let mut output = String::new();
-            output.push_str(&source[..span.start]);
-            output.push_str(&fragment);
-            output.push_str(&source[span.end..]);
-            return Ok(output);
-        }
-        let close_start = source[span.start..span.end]
-            .rfind("</")
-            .map(|offset| span.start + offset)
-            .ok_or_else(|| OfdError::InvalidStructure("MultiMedias 缺少结束标签".to_owned()))?;
-        let mut output = String::new();
-        output.push_str(&source[..close_start]);
-        output.push_str(media);
-        output.push_str(&source[close_start..]);
-        return Ok(output);
-    }
-    let span = doc.span(root);
-    let close_start = source[span.start..span.end]
-        .rfind("</")
-        .map(|offset| span.start + offset)
-        .ok_or_else(|| OfdError::InvalidStructure("DocumentRes 缺少结束标签".to_owned()))?;
-    let mut output = String::new();
-    output.push_str(&source[..close_start]);
-    output.push_str(&fragment);
-    output.push_str(&source[close_start..]);
-    Ok(output)
+fn serialize_schema<T: yaserde::YaSerialize>(value: &T) -> Result<Vec<u8>, OfdError> {
+    schema_xml::to_bytes(value).map_err(|error| OfdError::InvalidStructure(error.to_string()))
 }
 
-fn image_extension(format: &str) -> String {
+fn image_extension(format: &str) -> &'static str {
     match format.to_ascii_uppercase().as_str() {
         "PNG" => "png",
         "JPG" | "JPEG" => "jpg",
@@ -916,7 +785,6 @@ fn image_extension(format: &str) -> String {
         "SVG" => "svg",
         _ => "bin",
     }
-    .to_owned()
 }
 
 fn unique_name(package: &OfdPackage, dir: &str, name: &str) -> String {

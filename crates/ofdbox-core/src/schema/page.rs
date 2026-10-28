@@ -512,7 +512,7 @@ pub struct CgTransform {
     pub glyph_count: i32,
     /// 字形索引。
     #[yaserde(rename = "Glyphs")]
-    pub glyphs: Option<StArray>,
+    pub glyphs: Option<String>,
 }
 
 /// 路径图元。
