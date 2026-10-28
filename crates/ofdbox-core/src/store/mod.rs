@@ -5,10 +5,14 @@
 
 mod context;
 mod entries;
+mod file;
 mod object;
 mod package_store;
+mod storage;
 
 pub use context::ObjectContext;
-pub use entries::{OfdReader, PageEntryRef};
+pub use entries::PageEntryRef;
+pub use file::OfdFile;
 pub use object::{Stored, StoredObject};
 pub use package_store::PackageStore;
+pub use storage::{CreateOptions, OpenOptions, OpenStorage, Storage};

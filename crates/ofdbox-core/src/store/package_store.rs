@@ -1,78 +1,142 @@
-use std::collections::{HashMap, HashSet};
-use std::io::Cursor;
+use std::cell::RefCell;
+use std::collections::BTreeMap;
+use std::io::{Cursor, Write};
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use crate::error::OfdError;
 use crate::package::{OfdPackage, normalize_entry_name};
-use crate::package_write::{PackageEdits, PackageWriteOptions};
+use crate::store::storage::Storage;
 
-struct StoreState {
-    package: OfdPackage,
-    files: HashMap<String, Vec<u8>>,
-    removed: HashSet<String>,
+enum Backend {
+    ZipReadOnly(Mutex<Box<OfdPackage>>),
+    Memory(RefCell<BTreeMap<String, Vec<u8>>>),
+    Directory(PathBuf),
 }
 
-/// 共享的 OFD 容器与暂存修改。
+/// OFD entry 的存储后端。
 ///
-/// `OfdPackage` 继续负责 ZIP、缓存、解密和底层读取；
-/// `PackageStore` 负责共享访问、暂存写入、暂存删除和最终写回。
+/// - ZIP 后端只读；
+/// - 内存后端直接读写 `BTreeMap`；
+/// - 目录后端直接读写磁盘文件。
 pub struct PackageStore {
-    state: Mutex<StoreState>,
+    backend: Backend,
 }
 
 impl PackageStore {
-    /// 用已有包创建存储。
-    pub fn new(package: OfdPackage) -> Self {
-        Self {
-            state: Mutex::new(StoreState {
-                package,
-                files: HashMap::new(),
-                removed: HashSet::new(),
+    /// 打开只读 ZIP。
+    pub fn open_zip(path: impl AsRef<Path>) -> Result<Self, OfdError> {
+        Ok(Self {
+            backend: Backend::ZipReadOnly(Mutex::new(Box::new(OfdPackage::open(path)?))),
+        })
+    }
+
+    /// 打开只读 ZIP 字节。
+    pub fn open_zip_bytes(bytes: Vec<u8>) -> Result<Self, OfdError> {
+        Ok(Self {
+            backend: Backend::ZipReadOnly(Mutex::new(Box::new(OfdPackage::from_bytes(bytes)?))),
+        })
+    }
+
+    /// 创建空存储。
+    pub fn create(storage: Storage) -> Result<Self, OfdError> {
+        match storage {
+            Storage::Memory => Ok(Self {
+                backend: Backend::Memory(RefCell::new(BTreeMap::new())),
             }),
+            Storage::Directory(path) => {
+                std::fs::create_dir_all(&path)?;
+                Ok(Self {
+                    backend: Backend::Directory(path),
+                })
+            }
         }
     }
 
-    /// 从文件打开存储。
-    pub fn open(path: impl AsRef<std::path::Path>) -> Result<Self, OfdError> {
-        Ok(Self::new(OfdPackage::open(path)?))
+    /// 从已有 ZIP 解压到指定后端。
+    ///
+    /// 当前使用 `OfdPackage::read_entry`，得到的是已解密 entry。
+    /// 加密包编辑暂未支持重新加密。
+    pub fn extract_from_zip(path: impl AsRef<Path>, storage: Storage) -> Result<Self, OfdError> {
+        let mut package = OfdPackage::open(path)?;
+        Self::extract(&mut package, storage)
     }
 
-    /// 从内存字节打开存储。
-    pub fn from_bytes(bytes: Vec<u8>) -> Result<Self, OfdError> {
-        Ok(Self::new(OfdPackage::from_bytes(bytes)?))
+    /// 从已有 ZIP 字节解压到指定后端。
+    pub fn extract_from_bytes(bytes: Vec<u8>, storage: Storage) -> Result<Self, OfdError> {
+        let mut package = OfdPackage::from_bytes(bytes)?;
+        Self::extract(&mut package, storage)
+    }
+
+    fn extract(package: &mut OfdPackage, storage: Storage) -> Result<Self, OfdError> {
+        let store = Self::create(storage)?;
+        let names = package.entry_names()?;
+        for name in names {
+            if name.ends_with('/') {
+                continue;
+            }
+            let bytes = package.read_entry(&name)?.to_vec();
+            store.write_entry(&name, bytes)?;
+        }
+        Ok(store)
     }
 
     /// 读取 entry。
     pub fn read_entry(&self, entry: &str) -> Result<Vec<u8>, OfdError> {
         let entry = normalize_entry_name(entry)?;
-        let mut state = self.lock()?;
-        if state.removed.contains(&entry) {
-            return Err(OfdError::InvalidStructure(format!("entry 已删除: {entry}")));
+        match &self.backend {
+            Backend::ZipReadOnly(package) => {
+                let mut package = package
+                    .lock()
+                    .map_err(|_| OfdError::InvalidStructure("ZIP 锁已损坏".to_owned()))?;
+                Ok(package.read_entry(&entry)?.to_vec())
+            }
+            Backend::Memory(files) => files
+                .borrow()
+                .get(&entry)
+                .cloned()
+                .ok_or_else(|| OfdError::InvalidStructure(format!("entry 不存在: {entry}"))),
+            Backend::Directory(root) => Ok(std::fs::read(directory_path(root, &entry)?)?),
         }
-        if let Some(bytes) = state.files.get(&entry) {
-            return Ok(bytes.clone());
-        }
-        Ok(state.package.read_entry(&entry)?.to_vec())
     }
 
-    /// 暂存 entry 内容。
+    /// 写入 entry。
     pub fn write_entry(&self, entry: &str, bytes: Vec<u8>) -> Result<(), OfdError> {
         let entry = normalize_entry_name(entry)?;
-        let mut state = self.lock()?;
-        state.removed.remove(&entry);
-        state.files.insert(entry, bytes);
-        Ok(())
+        match &self.backend {
+            Backend::ZipReadOnly(_) => Err(OfdError::ReadOnly),
+            Backend::Memory(files) => {
+                files.borrow_mut().insert(entry, bytes);
+                Ok(())
+            }
+            Backend::Directory(root) => {
+                let path = directory_path(root, &entry)?;
+                if let Some(parent) = path.parent() {
+                    std::fs::create_dir_all(parent)?;
+                }
+                std::fs::write(path, bytes)?;
+                Ok(())
+            }
+        }
     }
 
-    /// 暂存删除 entry。
+    /// 删除 entry。
     pub fn delete_entry(&self, entry: &str) -> Result<(), OfdError> {
         let entry = normalize_entry_name(entry)?;
-        let mut state = self.lock()?;
-        state.files.remove(&entry);
-        if state.package.contains(&entry) {
-            state.removed.insert(entry);
+        match &self.backend {
+            Backend::ZipReadOnly(_) => Err(OfdError::ReadOnly),
+            Backend::Memory(files) => {
+                files.borrow_mut().remove(&entry);
+                Ok(())
+            }
+            Backend::Directory(root) => {
+                let path = directory_path(root, &entry)?;
+                if path.exists() {
+                    std::fs::remove_file(path)?;
+                }
+                Ok(())
+            }
         }
-        Ok(())
     }
 
     /// entry 是否存在。
@@ -80,79 +144,65 @@ impl PackageStore {
         let Ok(entry) = normalize_entry_name(entry) else {
             return false;
         };
-        let Ok(state) = self.lock() else {
-            return false;
-        };
-        if state.removed.contains(&entry) {
-            return false;
+        match &self.backend {
+            Backend::ZipReadOnly(package) => package
+                .lock()
+                .map(|package| package.contains(&entry))
+                .unwrap_or(false),
+            Backend::Memory(files) => files.borrow().contains_key(&entry),
+            Backend::Directory(root) => directory_path(root, &entry)
+                .map(|path| path.is_file())
+                .unwrap_or(false),
         }
-        state.files.contains_key(&entry) || state.package.contains(&entry)
     }
 
-    /// 生成写回后的完整 OFD 字节。
+    /// 列出所有 entry。
+    pub fn entry_names(&self) -> Result<Vec<String>, OfdError> {
+        match &self.backend {
+            Backend::ZipReadOnly(package) => {
+                let package = package
+                    .lock()
+                    .map_err(|_| OfdError::InvalidStructure("ZIP 锁已损坏".to_owned()))?;
+                package.entry_names()
+            }
+            Backend::Memory(files) => Ok(files.borrow().keys().cloned().collect()),
+            Backend::Directory(root) => {
+                let mut entries = Vec::new();
+                collect_directory(root, root, &mut entries)?;
+                entries.sort();
+                Ok(entries)
+            }
+        }
+    }
+
+    /// 把当前后端打包成 OFD 字节。
     pub fn to_bytes(&self) -> Result<Vec<u8>, OfdError> {
-        let mut state = self.lock()?;
-        let mut edits = PackageEdits::new();
-
-        for (entry, bytes) in &state.files {
-            if state.package.contains(entry) {
-                edits.replace(entry, bytes.clone());
-            } else {
-                edits.add(entry, bytes.clone());
-            }
-        }
-        for entry in &state.removed {
-            if state.package.contains(entry) {
-                edits.remove(entry);
-            }
+        if matches!(self.backend, Backend::ZipReadOnly(_)) {
+            return Err(OfdError::ReadOnly);
         }
 
-        let mut cursor = Cursor::new(Vec::new());
-        state
-            .package
-            .write_with(&mut cursor, &edits, &PackageWriteOptions::default())?;
+        let names = self.entry_names()?;
+        let mut zip = zip::ZipWriter::new(Cursor::new(Vec::new()));
+        let options = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Deflated);
+
+        for name in names {
+            if name.ends_with('/') {
+                continue;
+            }
+            let bytes = self.read_entry(&name)?;
+            zip.start_file(name, options)?;
+            zip.write_all(&bytes)?;
+        }
+
+        let cursor = zip.finish()?;
         Ok(cursor.into_inner())
     }
 
-    /// 写回文件。
-    ///
-    /// 先写同目录临时文件，再替换目标文件，避免中途失败留下半包。
-    pub fn save(&self, path: impl AsRef<std::path::Path>) -> Result<(), OfdError> {
-        let path = path.as_ref();
+    /// 打包并写回文件。
+    pub fn save(&self, path: impl AsRef<Path>) -> Result<(), OfdError> {
         let bytes = self.to_bytes()?;
-        let parent = path
-            .parent()
-            .filter(|parent| !parent.as_os_str().is_empty());
-        let parent = parent.unwrap_or_else(|| std::path::Path::new("."));
-        let file_name = path
-            .file_name()
-            .and_then(|name| name.to_str())
-            .unwrap_or("output.ofd");
-        let unique = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|duration| duration.as_nanos())
-            .unwrap_or_default();
-        let temporary = parent.join(format!(".{file_name}.{}.{unique}.tmp", std::process::id()));
-
-        let result = (|| {
-            std::fs::write(&temporary, bytes)?;
-            if path.exists() {
-                std::fs::remove_file(path)?;
-            }
-            std::fs::rename(&temporary, path)?;
-            Ok(())
-        })();
-
-        if result.is_err() {
-            let _ = std::fs::remove_file(&temporary);
-        }
-        result
-    }
-
-    fn lock(&self) -> Result<std::sync::MutexGuard<'_, StoreState>, OfdError> {
-        self.state
-            .lock()
-            .map_err(|_| OfdError::InvalidStructure("package store 锁已损坏".to_owned()))
+        write_atomic(path.as_ref(), &bytes)
     }
 }
 
@@ -162,4 +212,67 @@ impl std::fmt::Debug for PackageStore {
             .debug_struct("PackageStore")
             .finish_non_exhaustive()
     }
+}
+
+fn directory_path(root: &Path, entry: &str) -> Result<PathBuf, OfdError> {
+    let mut path = root.to_path_buf();
+    for component in entry.split('/') {
+        if component.is_empty() || component == "." || component == ".." {
+            return Err(OfdError::InvalidStructure(format!(
+                "非法 entry 路径: {entry}"
+            )));
+        }
+        path.push(component);
+    }
+    Ok(path)
+}
+
+fn collect_directory(
+    root: &Path,
+    current: &Path,
+    entries: &mut Vec<String>,
+) -> Result<(), OfdError> {
+    for item in std::fs::read_dir(current)? {
+        let item = item?;
+        let path = item.path();
+        if path.is_dir() {
+            collect_directory(root, &path, entries)?;
+        } else if path.is_file() {
+            let relative = path
+                .strip_prefix(root)
+                .map_err(|error| OfdError::InvalidStructure(error.to_string()))?;
+            entries.push(relative.to_string_lossy().replace('\\', "/"));
+        }
+    }
+    Ok(())
+}
+
+fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), OfdError> {
+    let parent = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    let file_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("output.ofd");
+    let unique = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or_default();
+    let temporary = parent.join(format!(".{file_name}.{}.{unique}.tmp", std::process::id()));
+
+    let result = (|| {
+        std::fs::write(&temporary, bytes)?;
+        if path.exists() {
+            std::fs::remove_file(path)?;
+        }
+        std::fs::rename(&temporary, path)?;
+        Ok(())
+    })();
+
+    if result.is_err() {
+        let _ = std::fs::remove_file(&temporary);
+    }
+    result
 }

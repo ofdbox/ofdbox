@@ -1,6 +1,6 @@
 mod fixtures;
 
-use ofdbox_core::store::OfdReader;
+use ofdbox_core::store::{CreateOptions, OfdFile, OpenOptions, OpenStorage, Storage};
 
 const OFD: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
 <ofd:OFD xmlns:ofd="http://www.ofdspec.org/2016" Version="1.0" DocType="OFD">
@@ -39,7 +39,14 @@ fn loads_saves_and_reloads_page_through_store() {
         ("Doc_0/Pages/Page_0/Content.xml", PAGE.as_bytes()),
     ]);
 
-    let reader = OfdReader::from_bytes(bytes).expect("open reader");
+    let reader = OfdFile::open_bytes_with(
+        bytes,
+        OpenOptions {
+            storage: OpenStorage::Memory,
+            ..Default::default()
+        },
+    )
+    .expect("open reader");
     let ofd = reader.ofd().expect("ofd");
     let doc = ofd.document(0).expect("document");
 
@@ -58,7 +65,7 @@ fn loads_saves_and_reloads_page_through_store() {
     let output = dir.path().join("output.ofd");
     reader.save(&output).expect("save package");
 
-    let reopened = OfdReader::open(&output).expect("reopen");
+    let reopened = OfdFile::open(&output).expect("reopen");
     let ofd = reopened.ofd().expect("ofd");
     let doc = ofd.document(0).expect("document");
     let page = doc.page("1").expect("page by id");
@@ -76,7 +83,14 @@ fn page_entry_ref_loads_page() {
         ("Doc_0/Document.xml", DOCUMENT.as_bytes()),
         ("Doc_0/Pages/Page_0/Content.xml", PAGE.as_bytes()),
     ]);
-    let reader = OfdReader::from_bytes(bytes).expect("open");
+    let reader = OfdFile::open_bytes_with(
+        bytes,
+        OpenOptions {
+            storage: OpenStorage::Memory,
+            ..Default::default()
+        },
+    )
+    .expect("open");
     let ofd = reader.ofd().expect("ofd");
     let doc = ofd.document(0).expect("document");
     let entry = doc.pages().next().expect("entry");
@@ -95,10 +109,50 @@ fn loads_real_ofd_through_store() {
         .find(|path| path.extension().is_some_and(|ext| ext == "ofd"))
         .expect("ofd file");
 
-    let reader = OfdReader::open(&path).expect("open");
+    let reader = OfdFile::open(&path).expect("open");
     let ofd = reader.ofd().expect("ofd");
     let doc = ofd.document(0).expect("document");
     let entry = doc.pages().next().expect("page entry");
     let page = entry.load().expect("page");
     assert!(page.data.area.is_some() || page.data.content.is_some());
+}
+
+#[test]
+fn creates_memory_ofd() {
+    let file = OfdFile::create().expect("create");
+    let mut doc = file.document(0).expect("document");
+    let page = doc
+        .add_page(ofdbox_core::schema::page::Page::default())
+        .expect("add page");
+    assert_eq!(page.location().as_str(), "Doc_0/Pages/Page_1/Content.xml");
+
+    let dir = tempfile::tempdir().expect("tempdir");
+    let output = dir.path().join("created.ofd");
+    file.save(&output).expect("save");
+
+    let reopened = OfdFile::open(&output).expect("reopen");
+    let doc = reopened.document(0).expect("document");
+    assert_eq!(doc.data.pages.pages.len(), 1);
+    let page = doc.page("1").expect("page");
+    assert!(page.data.area.is_none());
+}
+
+#[test]
+fn creates_directory_ofd() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let source = dir.path().join("source");
+    let file = OfdFile::create_with(CreateOptions {
+        storage: Storage::Directory(source.clone()),
+        ..Default::default()
+    })
+    .expect("create");
+    let mut doc = file.document(0).expect("document");
+    doc.add_page(ofdbox_core::schema::page::Page::default())
+        .expect("add page");
+    assert!(source.join("OFD.xml").is_file());
+    assert!(source.join("Doc_0/Pages/Page_1/Content.xml").is_file());
+
+    let output = dir.path().join("created.ofd");
+    file.save(&output).expect("save");
+    assert!(output.is_file());
 }

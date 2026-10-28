@@ -74,6 +74,10 @@ pub enum OfdError {
     #[error("OFD 结构无效: {0}")]
     InvalidStructure(String),
 
+    /// 当前包以只读方式打开。
+    #[error("当前 OFD 以只读方式打开")]
+    ReadOnly,
+
     /// 严格模式下发现一处或多处不符合标准。
     #[error("OFD 不符合标准: {0:?}")]
     Conformance(Vec<Diagnostic>),

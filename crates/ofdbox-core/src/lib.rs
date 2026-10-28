@@ -83,7 +83,10 @@ pub use sign::{
     SignedValueProducer, SigningContext, SigningReport, SigningRequest,
 };
 pub use stamp::StampAppearance;
-pub use store::{ObjectContext, OfdReader, PackageStore, Stored, StoredObject};
+pub use store::{
+    CreateOptions, ObjectContext, OfdFile, OpenOptions, OpenStorage, PackageStore, Storage, Stored,
+    StoredObject,
+};
 pub use writer::{OfdWriter, PageSize};
 pub use xml::namespace::OFD_NAMESPACE;
 pub use xml::parser::parse_xml;

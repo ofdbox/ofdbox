@@ -18,6 +18,15 @@ pub struct Stored<T> {
 }
 
 impl<T> Stored<T> {
+    /// 创建一个尚未从容器读取、但已绑定位置的对象。
+    pub fn new(data: T, context: Rc<ObjectContext>, location: StLoc) -> Self {
+        Self {
+            data,
+            context,
+            location,
+        }
+    }
+
     /// 当前对象的上下文。
     pub fn context(&self) -> &Rc<ObjectContext> {
         &self.context

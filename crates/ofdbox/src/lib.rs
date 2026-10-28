@@ -15,12 +15,13 @@ pub use ofdbox_core::model;
 pub use ofdbox_core::model::document::{Document, PageEntry};
 pub use ofdbox_core::schema;
 pub use ofdbox_core::{
-    AnnotationEditReport, AnnotationEditor, AnnotationSpec, CacheOptions, DEFAULT_SIGNATURE_METHOD,
-    EntriesVerification, EntriesWriteOptions, EntriesWriteReport, ObjectContext, OfdError,
-    OfdPackage, OfdReader, OfdWriter, PackageDateTime, PackageEdits, PackageStore,
-    PackageWriteOptions, PageSize, ProtectScope, ProviderInfo, ReadOptions, ReferenceGraphOptions,
-    SignatureVerifiers, SignedValueFormat, SignedValueProducer, SigningReport, SigningRequest,
-    StampAppearance, Stored, StoredObject,
+    AnnotationEditReport, AnnotationEditor, AnnotationSpec, CacheOptions, CreateOptions,
+    DEFAULT_SIGNATURE_METHOD, EntriesVerification, EntriesWriteOptions, EntriesWriteReport,
+    ObjectContext, OfdError, OfdFile, OfdPackage, OfdWriter, OpenOptions, OpenStorage,
+    PackageDateTime, PackageEdits, PackageStore, PackageWriteOptions, PageSize, ProtectScope,
+    ProviderInfo, ReadOptions, ReferenceGraphOptions, SignatureVerifiers, SignedValueFormat,
+    SignedValueProducer, SigningReport, SigningRequest, StampAppearance, Storage, Stored,
+    StoredObject,
 };
 
 #[cfg(feature = "crypto")]
@@ -64,7 +65,8 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// 常用类型预导入。
 pub mod prelude {
     pub use crate::{
-        CacheOptions, Document, Error, OfdPackage, OfdReader, PackageEdits, PackageWriteOptions,
-        PageEntry, ReadOptions, Result, Stored,
+        CacheOptions, CreateOptions, Document, Error, OfdFile, OfdPackage, OpenOptions,
+        OpenStorage, PackageEdits, PackageWriteOptions, PageEntry, ReadOptions, Result, Storage,
+        Stored,
     };
 }

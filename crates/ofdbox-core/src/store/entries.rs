@@ -5,7 +5,7 @@ use crate::schema::annotation::PageAnnot;
 use crate::schema::annotations::Annotations;
 use crate::schema::attachments::Attachments;
 use crate::schema::custom_tags::CustomTags;
-use crate::schema::definition::StLoc;
+use crate::schema::definition::{StId, StLoc};
 use crate::schema::document::{Document, PageEntry};
 use crate::schema::extensions::Extensions;
 use crate::schema::ofd::{DocBody, Ofd};
@@ -83,6 +83,29 @@ impl Stored<Document> {
     /// 加载扩展索引。
     pub fn extensions(&self) -> Result<Option<Stored<Extensions>>, OfdError> {
         load_optional(self.context(), self.data.extensions.as_ref())
+    }
+
+    /// 新建页面并立即写入存储。
+    pub fn add_page(&mut self, page: Page) -> Result<Stored<Page>, OfdError> {
+        let next_id = self
+            .data
+            .pages
+            .pages
+            .iter()
+            .map(|entry| entry.id.0)
+            .max()
+            .unwrap_or(0)
+            + 1;
+        let id = StId(next_id);
+        let base_loc = StLoc::new(format!("Pages/Page_{next_id}/Content.xml"));
+        let location = self.context().resolve(&base_loc)?;
+        let page_context = ObjectContext::child(self.context(), location.clone())?;
+        let stored = Stored::new(page, page_context, location);
+        stored.save()?;
+
+        self.data.pages.pages.push(PageEntry { id, base_loc });
+        self.save()?;
+        Ok(stored)
     }
 
     /// 页面索引迭代器。
@@ -187,42 +210,5 @@ impl<'a> PageEntryRef<'a> {
     /// 加载页面。
     pub fn load(&self) -> Result<Stored<Page>, OfdError> {
         self.entry.load(self.document)
-    }
-}
-
-/// 一个便于从根上下文加载 OFD 的入口。
-pub struct OfdReader {
-    store: Rc<crate::store::PackageStore>,
-    root: Rc<ObjectContext>,
-}
-
-impl OfdReader {
-    /// 打开 OFD 文件。
-    pub fn open(path: impl AsRef<std::path::Path>) -> Result<Self, OfdError> {
-        let store = Rc::new(crate::store::PackageStore::open(path)?);
-        let root = ObjectContext::root(Rc::clone(&store));
-        Ok(Self { store, root })
-    }
-
-    /// 从内存字节打开。
-    pub fn from_bytes(bytes: Vec<u8>) -> Result<Self, OfdError> {
-        let store = Rc::new(crate::store::PackageStore::from_bytes(bytes)?);
-        let root = ObjectContext::root(Rc::clone(&store));
-        Ok(Self { store, root })
-    }
-
-    /// 加载 OFD.xml。
-    pub fn ofd(&self) -> Result<Stored<Ofd>, OfdError> {
-        Stored::<Ofd>::load(Rc::clone(&self.root), StLoc::new("OFD.xml"))
-    }
-
-    /// 生成写回后的完整 OFD 字节。
-    pub fn to_bytes(&self) -> Result<Vec<u8>, OfdError> {
-        self.store.to_bytes()
-    }
-
-    /// 写回文件。
-    pub fn save(&self, path: impl AsRef<std::path::Path>) -> Result<(), OfdError> {
-        self.store.save(path)
     }
 }
