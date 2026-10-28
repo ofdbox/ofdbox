@@ -21,13 +21,14 @@ use crate::model::integrity::DocEntries;
 use crate::model::ofd::OfdRoot;
 use crate::model::page::Page;
 use crate::model::res::Res;
-use crate::model::signature::{ReferenceDigest, Signature, Signatures};
+use crate::model::signature::{Signature, Signatures};
 use crate::model::version::Version;
 use crate::options::{CacheOptions, ReadOptions};
 use crate::package_write::{
     DecryptedWriteReport, ExistingEntry, PackageEdits, PackageWriteOptions, PlanItem, copy_raw,
     write_plain_entry,
 };
+use crate::sign::ReferenceDigest;
 use crate::sign::{
     DEFAULT_SIGNATURE_METHOD, ProtectScope, SignedValueProducer, SigningContext, SigningReport,
     SigningRequest,

@@ -9,10 +9,29 @@ use quick_xml::Writer;
 use quick_xml::events::{BytesDecl, BytesEnd, BytesText, Event};
 
 use crate::error::OfdError;
-use crate::model::signature::ReferenceDigest;
 use crate::stamp::{StampAnnot, StampAppearance};
 use crate::write::ofd::write_start;
 use crate::xml::namespace::OFD_NAMESPACE;
+
+/// 单个 `Reference` 的摘要校验结果。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReferenceDigest {
+    /// 被保护文件路径。
+    pub file_ref: String,
+    /// 摘要方法。
+    pub check_method: String,
+    /// XML 中记录的摘要值。
+    pub expected: Vec<u8>,
+    /// 实际计算出的摘要值。
+    pub actual: Vec<u8>,
+}
+
+impl ReferenceDigest {
+    /// 摘要是否一致。
+    pub fn matches(&self) -> bool {
+        self.expected == self.actual
+    }
+}
 
 /// 默认签名算法标识（SM2 with SM3）。
 pub const DEFAULT_SIGNATURE_METHOD: &str = "1.2.156.10197.1.501";

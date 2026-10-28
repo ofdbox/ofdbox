@@ -157,7 +157,6 @@ fn creates_directory_ofd() {
     assert!(output.is_file());
 }
 
-
 #[test]
 fn caches_page_document() {
     let bytes = fixtures::zip_with_entries(&[
