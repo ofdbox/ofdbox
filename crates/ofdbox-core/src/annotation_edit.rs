@@ -9,18 +9,18 @@ use std::io::{Seek, Write};
 use crate::error::OfdError;
 use crate::package::{OfdPackage, parent_dir, resolve_loc};
 use crate::package_write::{PackageEdits, PackageWriteOptions};
-use crate::schema::annotation::{Annot, AnnotationType, Appearance, PageAnnot};
-use crate::schema::annotations::{Annotations, AnnotationsPage};
-use crate::schema::definition::{StArray, StBox, StId, StLoc, StRefId};
-use crate::schema::document::Document;
-use crate::schema::ofd::Ofd;
-use crate::schema::page::{
+use crate::model::annotation::{Annot, AnnotationType, Appearance, PageAnnot};
+use crate::model::annotations::{Annotations, AnnotationsPage};
+use crate::model::definition::{StArray, StBox, StId, StLoc, StRefId};
+use crate::model::document::Document;
+use crate::model::ofd::Ofd;
+use crate::model::page::{
     CgTransform, CompositeObject, GraphicObject, GraphicUnit, ImageObject, PageBlock, PathObject,
     TextCode, TextObject,
 };
-use crate::schema::res::{MultiMedia, MultiMediaType, MultiMedias, Res};
-use crate::schema::signatures::Signatures;
-use crate::schema_xml;
+use crate::model::res::{MultiMedia, MultiMediaType, MultiMedias, Res};
+use crate::model::signatures::Signatures;
+use crate::model_xml;
 
 /// 单条注释的描述。
 #[derive(Clone, Debug)]
@@ -583,12 +583,12 @@ impl<'a> AnnotationEditor<'a> {
 }
 
 fn parse_schema<T: yaserde::YaDeserialize>(bytes: &[u8]) -> Result<T, OfdError> {
-    schema_xml::from_bytes(bytes).map_err(|error| OfdError::InvalidStructure(error.to_string()))
+    model_xml::from_bytes(bytes).map_err(|error| OfdError::InvalidStructure(error.to_string()))
 }
 
 fn has_signatures(
     package: &mut OfdPackage,
-    signatures: &Option<crate::schema::definition::StLoc>,
+    signatures: &Option<crate::model::definition::StLoc>,
 ) -> Result<bool, OfdError> {
     let Some(location) = signatures else {
         return Ok(false);
@@ -773,7 +773,7 @@ fn load_document_res(package: &mut OfdPackage, document_entry: &str) -> Result<R
 }
 
 fn serialize_schema<T: yaserde::YaSerialize>(value: &T) -> Result<Vec<u8>, OfdError> {
-    schema_xml::to_bytes(value).map_err(|error| OfdError::InvalidStructure(error.to_string()))
+    model_xml::to_bytes(value).map_err(|error| OfdError::InvalidStructure(error.to_string()))
 }
 
 fn image_extension(format: &str) -> &'static str {

@@ -7,13 +7,13 @@ use std::collections::{HashMap, HashSet};
 
 use crate::error::OfdError;
 use crate::package::{OfdPackage, parent_dir, resolve_loc};
-use crate::schema::annotation::{Annot, AnnotationType, Appearance, PageAnnot};
-use crate::schema::annotations::{Annotations, AnnotationsPage};
-use crate::schema::definition::{StBox, StId, StLoc, StRefId};
-use crate::schema::document::Document;
-use crate::schema::page::{GraphicObject, GraphicUnit, ImageObject, PageBlock};
-use crate::schema::res::{MultiMedia, MultiMediaType, MultiMedias, Res};
-use crate::schema_xml;
+use crate::model::annotation::{Annot, AnnotationType, Appearance, PageAnnot};
+use crate::model::annotations::{Annotations, AnnotationsPage};
+use crate::model::definition::{StBox, StId, StLoc, StRefId};
+use crate::model::document::Document;
+use crate::model::page::{GraphicObject, GraphicUnit, ImageObject, PageBlock};
+use crate::model::res::{MultiMedia, MultiMediaType, MultiMedias, Res};
+use crate::model_xml;
 
 /// 盖章位置与印模。
 #[derive(Clone, Debug)]
@@ -236,11 +236,11 @@ pub(crate) fn prepare(
 }
 
 fn parse_schema<T: yaserde::YaDeserialize>(bytes: &[u8]) -> Result<T, OfdError> {
-    schema_xml::from_bytes(bytes).map_err(|error| OfdError::InvalidStructure(error.to_string()))
+    model_xml::from_bytes(bytes).map_err(|error| OfdError::InvalidStructure(error.to_string()))
 }
 
 fn serialize_schema<T: yaserde::YaSerialize>(value: &T) -> Result<Vec<u8>, OfdError> {
-    schema_xml::to_bytes(value).map_err(|error| OfdError::InvalidStructure(error.to_string()))
+    model_xml::to_bytes(value).map_err(|error| OfdError::InvalidStructure(error.to_string()))
 }
 
 fn validate(stamp: &StampAppearance) -> Result<(), OfdError> {

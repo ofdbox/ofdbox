@@ -1,8 +1,8 @@
-use ofdbox_core::schema::definition::{StBox, StId, StRefId};
-use ofdbox_core::schema::page::{
+use ofdbox_core::model::definition::{StBox, StId, StRefId};
+use ofdbox_core::model::page::{
     GraphicObject, GraphicUnit, Layer, LayerType, Page, PageContent, TextCode, TextObject,
 };
-use ofdbox_core::schema_xml as xml;
+use ofdbox_core::model_xml as xml;
 
 #[test]
 fn parses_and_writes_page_content() {

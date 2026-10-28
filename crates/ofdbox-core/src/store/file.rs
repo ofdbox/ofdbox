@@ -1,9 +1,9 @@
 use std::rc::Rc;
 
 use crate::error::OfdError;
-use crate::schema::definition::{StId, StLoc};
-use crate::schema::document::{CommonData, Document, Pages};
-use crate::schema::ofd::{DocBody, DocInfo, Ofd};
+use crate::model::definition::{StId, StLoc};
+use crate::model::document::{CommonData, Document, Pages};
+use crate::model::ofd::{DocBody, DocInfo, Ofd};
 use crate::store::storage::{CreateOptions, OpenOptions, OpenStorage, Storage};
 use crate::store::{ObjectContext, PackageStore, Stored};
 

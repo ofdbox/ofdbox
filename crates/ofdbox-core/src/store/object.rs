@@ -4,9 +4,9 @@ use std::rc::Rc;
 use yaserde::{YaDeserialize, YaSerialize};
 
 use crate::error::OfdError;
-use crate::schema::definition::StLoc;
-use crate::schema::document::Document;
-use crate::schema_xml;
+use crate::model::definition::StLoc;
+use crate::model::document::Document;
+use crate::model_xml;
 use crate::store::ObjectContext;
 
 /// 已绑定容器位置的 XML 对象。
@@ -64,7 +64,7 @@ impl<T: YaDeserialize> Stored<T> {
     /// 从容器加载对象。
     pub fn load(context: Rc<ObjectContext>, location: StLoc) -> Result<Self, OfdError> {
         let bytes = context.read_entry(&location)?;
-        let data = schema_xml::from_bytes(&bytes)
+        let data = model_xml::from_bytes(&bytes)
             .map_err(|error| OfdError::InvalidStructure(error.to_string()))?;
         let object_context = ObjectContext::child(&context, location.clone())?;
 
@@ -80,7 +80,7 @@ impl<T: YaDeserialize> Stored<T> {
 impl<T: YaSerialize> Stored<T> {
     /// 把当前对象写回容器。
     pub fn save(&self) -> Result<(), OfdError> {
-        let bytes = schema_xml::to_bytes(&self.data)
+        let bytes = model_xml::to_bytes(&self.data)
             .map_err(|error| OfdError::InvalidStructure(error.to_string()))?;
         self.context.write_entry(&self.location, bytes)
     }
@@ -161,7 +161,7 @@ where
 
     fn load(context: Rc<ObjectContext>, location: StLoc) -> Result<Self, OfdError> {
         let bytes = context.read_entry(&location)?;
-        let data = schema_xml::from_bytes(&bytes)
+        let data = model_xml::from_bytes(&bytes)
             .map_err(|error| OfdError::InvalidStructure(error.to_string()))?;
         let object_context = ObjectContext::child(&context, location.clone())?;
         Ok(Self {
@@ -173,7 +173,7 @@ where
     }
 
     fn save(&self) -> Result<(), OfdError> {
-        let bytes = schema_xml::to_bytes(&self.data)
+        let bytes = model_xml::to_bytes(&self.data)
             .map_err(|error| OfdError::InvalidStructure(error.to_string()))?;
         self.context.write_entry(&self.location, bytes)
     }

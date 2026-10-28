@@ -12,12 +12,12 @@ use crate::package_write::{
     DecryptedWriteReport, ExistingEntry, PackageEdits, PackageWriteOptions, PlanItem, copy_raw,
     write_plain_entry,
 };
-use crate::schema::decrypt_seed::DecryptSeed;
-use crate::schema::doc_entries::DocEntries;
-use crate::schema::encryption::Encryptions;
-use crate::schema::entries_map::EncryptedEntries;
-use crate::schema::signature::Signature;
-use crate::schema::signatures::Signatures;
+use crate::model::decrypt_seed::DecryptSeed;
+use crate::model::doc_entries::DocEntries;
+use crate::model::encryption::Encryptions;
+use crate::model::entries_map::EncryptedEntries;
+use crate::model::signature::Signature;
+use crate::model::signatures::Signatures;
 use crate::sign::ReferenceDigest;
 use crate::sign::{
     DEFAULT_SIGNATURE_METHOD, ProtectScope, SignedValueProducer, SigningContext, SigningReport,
@@ -41,7 +41,7 @@ struct DecryptionEntry {
 
 struct DecryptionOperation {
     /// 所属加密操作，用于按条目解包包装密钥。
-    info: crate::schema::encryption::EncryptInfo,
+    info: crate::model::encryption::EncryptInfo,
     /// 该次加密操作的通用文件密钥。
     default_key: FileKey,
     /// 逻辑路径 -> 解密信息。
@@ -516,15 +516,15 @@ impl OfdPackage {
     }
 
     /// 以 schema 解析 `OFD.xml`。
-    pub fn parse_root_schema(&mut self) -> Result<crate::schema::ofd::Ofd, OfdError> {
+    pub fn parse_root_schema(&mut self) -> Result<crate::model::ofd::Ofd, OfdError> {
         let entry = self.root_entry_name()?;
         let bytes = self.read_entry(&entry)?;
-        crate::schema_xml::from_bytes(&bytes)
+        crate::model_xml::from_bytes(&bytes)
             .map_err(|error| OfdError::InvalidStructure(error.to_string()))
     }
 
     /// 以 schema 解析 `Document.xml`。
-    pub fn parse_document_schema(&mut self) -> Result<crate::schema::document::Document, OfdError> {
+    pub fn parse_document_schema(&mut self) -> Result<crate::model::document::Document, OfdError> {
         let root = self.parse_root_schema()?;
         let doc_root = root
             .doc_bodies
@@ -534,7 +534,7 @@ impl OfdPackage {
         let entry = resolve_loc("", doc_root)?;
         self.document_entry = Some(entry.clone());
         let bytes = self.read_entry(&entry)?;
-        crate::schema_xml::from_bytes(&bytes)
+        crate::model_xml::from_bytes(&bytes)
             .map_err(|error| OfdError::InvalidStructure(error.to_string()))
     }
 
@@ -560,7 +560,7 @@ impl OfdPackage {
     pub fn parse_signatures(&mut self) -> Result<Signatures, OfdError> {
         let entry = self.root_entry_name()?;
         let bytes = self.read_entry(&entry)?;
-        let ofd: crate::schema::ofd::Ofd = crate::schema_xml::from_bytes(&bytes)
+        let ofd: crate::model::ofd::Ofd = crate::model_xml::from_bytes(&bytes)
             .map_err(|error| OfdError::InvalidStructure(error.to_string()))?;
         let loc = ofd
             .doc_bodies
@@ -650,7 +650,7 @@ impl OfdPackage {
 
     fn parse_signatures_entry(&mut self, entry: String) -> Result<Signatures, OfdError> {
         let bytes = self.read_entry(&entry)?;
-        let index: Signatures = crate::schema_xml::from_bytes(&bytes)
+        let index: Signatures = crate::model_xml::from_bytes(&bytes)
             .map_err(|error| OfdError::InvalidStructure(error.to_string()))?;
         self.signatures_entry = Some(entry);
         Ok(index)
@@ -660,7 +660,7 @@ impl OfdPackage {
     pub fn parse_encryptions(&mut self) -> Result<Encryptions, OfdError> {
         let entry = resolve_loc("", "Encryptions.xml")?;
         let bytes = self.read_entry(&entry)?;
-        crate::schema_xml::from_bytes(&bytes)
+        crate::model_xml::from_bytes(&bytes)
             .map_err(|error| OfdError::InvalidStructure(error.to_string()))
     }
 
@@ -668,7 +668,7 @@ impl OfdPackage {
     pub fn parse_decrypt_seed(&mut self, loc: &str) -> Result<DecryptSeed, OfdError> {
         let entry = resolve_loc("", loc)?;
         let bytes = self.read_entry(&entry)?;
-        crate::schema_xml::from_bytes(&bytes)
+        crate::model_xml::from_bytes(&bytes)
             .map_err(|error| OfdError::InvalidStructure(error.to_string()))
     }
 
@@ -678,7 +678,7 @@ impl OfdPackage {
     pub fn parse_entries_map(&mut self, loc: &str) -> Result<EncryptedEntries, OfdError> {
         let entry = resolve_loc("", loc)?;
         let bytes = self.read_entry(&entry)?;
-        crate::schema_xml::from_bytes(&bytes)
+        crate::model_xml::from_bytes(&bytes)
             .map_err(|error| OfdError::InvalidStructure(error.to_string()))
     }
 
@@ -739,7 +739,7 @@ impl OfdPackage {
                     .decrypt(&file_key, &map_raw)
                     .map_err(|_| OfdError::Crypto("明密文映射表解密失败".to_owned()))?
             };
-            let map: EncryptedEntries = crate::schema_xml::from_bytes(&map_bytes)
+            let map: EncryptedEntries = crate::model_xml::from_bytes(&map_bytes)
                 .map_err(|error| OfdError::InvalidStructure(error.to_string()))?;
             let mut entries = HashMap::new();
             for entry in map.entries() {
@@ -881,7 +881,7 @@ impl OfdPackage {
     pub fn parse_ofd_entries(&mut self) -> Result<DocEntries, OfdError> {
         let entry = resolve_loc("", "OFDEntries.xml")?;
         let bytes = self.read_entry(&entry)?;
-        crate::schema_xml::from_bytes(&bytes)
+        crate::model_xml::from_bytes(&bytes)
             .map_err(|error| OfdError::InvalidStructure(error.to_string()))
     }
 
@@ -1075,7 +1075,7 @@ impl OfdPackage {
 
     fn parse_signature_entry(&mut self, entry: String) -> Result<Signature, OfdError> {
         let bytes = self.read_entry(&entry)?;
-        let signature: Signature = crate::schema_xml::from_bytes(&bytes)
+        let signature: Signature = crate::model_xml::from_bytes(&bytes)
             .map_err(|error| OfdError::InvalidStructure(error.to_string()))?;
         self.signature_entry = Some(entry);
         Ok(signature)
@@ -1579,7 +1579,7 @@ impl OfdPackage {
                     let Ok(bytes) = self.read_entry(&entry) else {
                         continue;
                     };
-                    let Ok(signature): Result<Signature, _> = crate::schema_xml::from_bytes(&bytes)
+                    let Ok(signature): Result<Signature, _> = crate::model_xml::from_bytes(&bytes)
                     else {
                         continue;
                     };
@@ -1765,19 +1765,19 @@ fn build_entries_xml(
         creator_name: options.creator_name.clone(),
         version: options.version.clone(),
         creation_date: options.creation_date.clone(),
-        file_list: crate::schema::doc_entries::FileList {
+        file_list: crate::model::doc_entries::FileList {
             files: files
                 .iter()
                 .enumerate()
-                .map(|(index, path)| crate::schema::doc_entries::File {
+                .map(|(index, path)| crate::model::doc_entries::File {
                     id: format!("f{}", index + 1),
-                    file_loc: crate::schema::definition::StLoc::new(path),
+                    file_loc: crate::model::definition::StLoc::new(path),
                 })
                 .collect(),
         },
-        signed_value_loc: crate::schema::definition::StLoc::new(signed_value),
+        signed_value_loc: crate::model::definition::StLoc::new(signed_value),
     };
-    crate::schema_xml::to_bytes(&entries)
+    crate::model_xml::to_bytes(&entries)
         .map_err(|error| OfdError::InvalidStructure(error.to_string()))
 }
 

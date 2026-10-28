@@ -7,14 +7,14 @@
 use base64::Engine;
 
 use crate::error::OfdError;
-use crate::schema::definition::{StBox, StLoc};
-use crate::schema::ofd::Ofd;
-use crate::schema::signature::{
+use crate::model::definition::{StBox, StLoc};
+use crate::model::ofd::Ofd;
+use crate::model::signature::{
     CheckMethod, Provider, Reference, References, Signature, SignedInfo,
     StampAnnot as SchemaStampAnnot,
 };
-use crate::schema::signatures::{SignatureRef, SignatureType, Signatures};
-use crate::schema_xml;
+use crate::model::signatures::{SignatureRef, SignatureType, Signatures};
+use crate::model_xml;
 use crate::stamp::{StampAnnot, StampAppearance};
 
 /// 单个 `Reference` 的摘要校验结果。
@@ -247,7 +247,7 @@ pub(crate) fn write_signature_xml(
         },
         signed_value: StLoc::new(signed_value_path),
     };
-    schema_xml::to_string(&signature).map_err(|error| OfdError::InvalidStructure(error.to_string()))
+    model_xml::to_string(&signature).map_err(|error| OfdError::InvalidStructure(error.to_string()))
 }
 
 /// 新建 `Signatures.xml`。
@@ -264,7 +264,7 @@ pub(crate) fn new_signatures_xml(
             base_loc: StLoc::new(base_loc),
         }],
     };
-    schema_xml::to_string(&index).map_err(|error| OfdError::InvalidStructure(error.to_string()))
+    model_xml::to_string(&index).map_err(|error| OfdError::InvalidStructure(error.to_string()))
 }
 
 /// 在已有 `Signatures.xml` 末尾追加一条签名记录，并更新 `MaxSignId`。
@@ -275,7 +275,7 @@ pub(crate) fn append_signature(
     max_id: &str,
     signature_type: &str,
 ) -> Result<Vec<u8>, OfdError> {
-    let mut index: Signatures = schema_xml::from_bytes(existing)
+    let mut index: Signatures = model_xml::from_bytes(existing)
         .map_err(|error| OfdError::InvalidStructure(error.to_string()))?;
     index.max_sign_id = Some(max_id.to_owned());
     index.signatures.push(SignatureRef {
@@ -283,19 +283,19 @@ pub(crate) fn append_signature(
         signature_type: signature_type_value(signature_type),
         base_loc: StLoc::new(base_loc),
     });
-    schema_xml::to_bytes(&index).map_err(|error| OfdError::InvalidStructure(error.to_string()))
+    model_xml::to_bytes(&index).map_err(|error| OfdError::InvalidStructure(error.to_string()))
 }
 
 /// 在 `OFD.xml` 的 `DocBody` 末尾补 `Signatures` 链接。
 pub(crate) fn insert_signatures_link(root_xml: &[u8], link: &str) -> Result<Vec<u8>, OfdError> {
-    let mut ofd: Ofd = schema_xml::from_bytes(root_xml)
+    let mut ofd: Ofd = model_xml::from_bytes(root_xml)
         .map_err(|error| OfdError::InvalidStructure(error.to_string()))?;
     let body = ofd
         .doc_bodies
         .first_mut()
         .ok_or_else(|| OfdError::InvalidStructure("OFD.xml 缺少 DocBody".to_owned()))?;
     body.signatures = Some(StLoc::new(link));
-    schema_xml::to_bytes(&ofd).map_err(|error| OfdError::InvalidStructure(error.to_string()))
+    model_xml::to_bytes(&ofd).map_err(|error| OfdError::InvalidStructure(error.to_string()))
 }
 
 fn signature_type_value(value: &str) -> SignatureType {

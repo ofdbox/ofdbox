@@ -1,10 +1,10 @@
-use ofdbox_core::schema::definition::{PageArea, StBox, StId, StLoc, StRefId};
-use ofdbox_core::schema::document::{CommonData, Document, PageEntry, Pages};
-use ofdbox_core::schema::ofd::{DocBody, DocInfo, Ofd};
-use ofdbox_core::schema::page::{
+use ofdbox_core::model::definition::{PageArea, StBox, StId, StLoc, StRefId};
+use ofdbox_core::model::document::{CommonData, Document, PageEntry, Pages};
+use ofdbox_core::model::ofd::{DocBody, DocInfo, Ofd};
+use ofdbox_core::model::page::{
     GraphicObject, GraphicUnit, Layer, LayerType, Page, PageContent, TextCode, TextObject,
 };
-use ofdbox_core::schema::res::{Font, Fonts, Res};
+use ofdbox_core::model::res::{Font, Fonts, Res};
 
 #[test]
 fn builds_basic_ofd_objects() {

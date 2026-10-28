@@ -46,9 +46,9 @@ mod package;
 mod package_write;
 mod refs;
 #[allow(missing_docs)]
-pub mod schema;
+pub mod model;
 #[allow(missing_docs)]
-pub mod schema_xml;
+pub mod model_xml;
 mod sign;
 mod stamp;
 #[allow(missing_docs)]

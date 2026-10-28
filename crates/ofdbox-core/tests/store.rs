@@ -53,12 +53,12 @@ fn loads_saves_and_reloads_page_through_store() {
     let entry = &doc.data.pages.pages[0];
     let mut page = entry.load(&doc).expect("page");
     let text = page.data.content.as_mut().expect("content").layers[0].objects[0].clone();
-    let ofdbox_core::schema::page::GraphicObject::Text(mut text) = text else {
+    let ofdbox_core::model::page::GraphicObject::Text(mut text) = text else {
         panic!("not text");
     };
     text.text_codes[0].text = "after".to_owned();
     page.data.content.as_mut().unwrap().layers[0].objects[0] =
-        ofdbox_core::schema::page::GraphicObject::Text(text);
+        ofdbox_core::model::page::GraphicObject::Text(text);
     page.save().expect("save page");
 
     let dir = tempfile::tempdir().expect("tempdir");
@@ -70,7 +70,7 @@ fn loads_saves_and_reloads_page_through_store() {
     let doc = ofd.document(0).expect("document");
     let page = doc.page("1").expect("page by id");
     let object = &page.data.content.as_ref().unwrap().layers[0].objects[0];
-    let ofdbox_core::schema::page::GraphicObject::Text(text) = object else {
+    let ofdbox_core::model::page::GraphicObject::Text(text) = object else {
         panic!("not text");
     };
     assert_eq!(text.text_codes[0].text, "after");
@@ -122,7 +122,7 @@ fn creates_memory_ofd() {
     let file = OfdFile::create().expect("create");
     let mut doc = file.document(0).expect("document");
     let page = doc
-        .add_page(ofdbox_core::schema::page::Page::default())
+        .add_page(ofdbox_core::model::page::Page::default())
         .expect("add page");
     assert_eq!(page.location().as_str(), "Doc_0/Pages/Page_1/Content.xml");
 
@@ -147,7 +147,7 @@ fn creates_directory_ofd() {
     })
     .expect("create");
     let mut doc = file.document(0).expect("document");
-    doc.add_page(ofdbox_core::schema::page::Page::default())
+    doc.add_page(ofdbox_core::model::page::Page::default())
         .expect("add page");
     assert!(source.join("OFD.xml").is_file());
     assert!(source.join("Doc_0/Pages/Page_1/Content.xml").is_file());

@@ -1,16 +1,16 @@
 use std::rc::Rc;
 
 use crate::error::OfdError;
-use crate::schema::annotation::PageAnnot;
-use crate::schema::annotations::Annotations;
-use crate::schema::attachments::Attachments;
-use crate::schema::custom_tags::CustomTags;
-use crate::schema::definition::StLoc;
-use crate::schema::document::{Document, PageEntry};
-use crate::schema::extensions::Extensions;
-use crate::schema::ofd::{DocBody, Ofd};
-use crate::schema::page::Page;
-use crate::schema::res::Res;
+use crate::model::annotation::PageAnnot;
+use crate::model::annotations::Annotations;
+use crate::model::attachments::Attachments;
+use crate::model::custom_tags::CustomTags;
+use crate::model::definition::StLoc;
+use crate::model::document::{Document, PageEntry};
+use crate::model::extensions::Extensions;
+use crate::model::ofd::{DocBody, Ofd};
+use crate::model::page::Page;
+use crate::model::res::Res;
 use crate::store::{ObjectContext, Stored};
 use yaserde::YaDeserialize;
 

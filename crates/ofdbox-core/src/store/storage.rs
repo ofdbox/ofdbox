@@ -2,7 +2,7 @@
 
 use std::path::PathBuf;
 
-use crate::schema::definition::PageArea;
+use crate::model::definition::PageArea;
 
 /// 创建新 OFD 时使用的存储后端。
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
