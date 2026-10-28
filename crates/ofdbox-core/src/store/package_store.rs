@@ -25,6 +25,7 @@ pub struct PackageStore {
 
 impl PackageStore {
     /// 打开只读 ZIP。
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn open_zip(path: impl AsRef<Path>) -> Result<Self, OfdError> {
         Ok(Self {
             backend: Backend::ZipReadOnly(Mutex::new(Box::new(OfdPackage::open(path)?))),
@@ -58,6 +59,7 @@ impl PackageStore {
     ///
     /// 当前使用 `OfdPackage::read_entry`，得到的是已解密 entry。
     /// 加密包编辑暂未支持重新加密。
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn extract_from_zip(path: impl AsRef<Path>, storage: Storage) -> Result<Self, OfdError> {
         let mut package = OfdPackage::open(path)?;
         Self::extract(&mut package, storage)

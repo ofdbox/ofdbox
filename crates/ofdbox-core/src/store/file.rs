@@ -70,11 +70,13 @@ impl OfdFile {
     }
 
     /// 以只读 ZIP 打开已有 OFD。
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn open(path: impl AsRef<std::path::Path>) -> Result<Self, OfdError> {
         Self::open_with(path, OpenOptions::default())
     }
 
     /// 按选项打开已有 OFD。
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn open_with(
         path: impl AsRef<std::path::Path>,
         options: OpenOptions,
@@ -126,6 +128,7 @@ impl OfdFile {
     }
 
     /// 打包并写回 OFD 文件。
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn save(&self, path: impl AsRef<std::path::Path>) -> Result<(), OfdError> {
         self.store.save(path)
     }

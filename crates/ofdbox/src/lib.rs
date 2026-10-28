@@ -28,8 +28,11 @@ pub use ofdbox_crypto as crypto;
 #[cfg(feature = "crypto")]
 pub use ofdbox_crypto::{
     CertificateBackend, EncryptOptions, EncryptionRecipient, EncryptionScheme, PasswordBackend,
-    Sm2SignedDataProducer, Sm2SignedDataVerifier, edit_encrypted, edit_encrypted_preserving,
-    encrypt_package, write_ofd_entries_encrypted,
+    Sm2SignedDataProducer, Sm2SignedDataVerifier,
+};
+#[cfg(all(feature = "crypto", not(target_arch = "wasm32")))]
+pub use ofdbox_crypto::{
+    edit_encrypted, edit_encrypted_preserving, encrypt_package, write_ofd_entries_encrypted,
 };
 
 #[cfg(feature = "seal")]
