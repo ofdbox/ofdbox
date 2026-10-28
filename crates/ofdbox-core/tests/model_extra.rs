@@ -280,3 +280,10 @@ fn gouraud_gradient_back_color() {
     let reparsed: model::page::Page = model_xml::from_bytes(&written).expect("reparse");
     assert_eq!(parsed, reparsed);
 }
+
+#[test]
+fn empty_color_matches_default() {
+    let parsed: model::page::Color = model_xml::from_str("<Color/>").expect("parse");
+    assert_eq!(parsed, model::page::Color::default());
+    assert!(matches!(parsed.kind, model::page::ColorKind::None));
+}

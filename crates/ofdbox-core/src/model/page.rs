@@ -135,7 +135,7 @@ impl Default for Color {
             index: None,
             color_space: None,
             alpha: 255,
-            kind: None,
+            kind: ColorKind::None,
         }
     }
 }
@@ -839,7 +839,7 @@ pub struct Color {
     pub alpha: i32,
     /// 颜色内容。
     #[yaserde(flatten = true)]
-    pub kind: Option<ColorKind>,
+    pub kind: ColorKind,
 }
 
 /// 颜色内容。
@@ -1542,9 +1542,7 @@ fn write_color_named<W: Write>(
         event = event.attr("Alpha", value.as_str());
     }
     writer.write(event).map_err(yaserde::Error::custom)?;
-    if let Some(kind) = &color.kind {
-        kind.serialize(writer)?;
-    }
+    color.kind.serialize(writer)?;
     writer
         .write(yaserde::__xml::writer::XmlEvent::end_element())
         .map_err(yaserde::Error::custom)?;
