@@ -7,15 +7,6 @@ use zip::ZipArchive;
 use crate::cache::ByteLruCache;
 use crate::crypto::{CryptoBackend, FileKey, SignatureVerifiers, detect_signed_value_format};
 use crate::error::OfdError;
-use crate::model::annotation::{Annotations, PageAnnot};
-use crate::model::attachment::Attachments;
-use crate::model::custom_tags::CustomTags;
-use crate::model::document::{Document, PageEntry};
-use crate::model::extensions::Extensions;
-use crate::model::ofd::OfdRoot;
-use crate::model::page::Page;
-use crate::model::res::Res;
-use crate::model::version::Version;
 use crate::options::{CacheOptions, ReadOptions};
 use crate::package_write::{
     DecryptedWriteReport, ExistingEntry, PackageEdits, PackageWriteOptions, PlanItem, copy_raw,
@@ -32,7 +23,6 @@ use crate::sign::{
     DEFAULT_SIGNATURE_METHOD, ProtectScope, SignedValueProducer, SigningContext, SigningReport,
     SigningRequest,
 };
-use crate::xml::parser::parse_xml;
 use crate::xml::tree::XmlDocument;
 
 /// OFD 包根条目的固定名称。
@@ -165,7 +155,6 @@ pub struct OfdPackage {
     decryption: Option<DecryptionContext>,
     document_entry: Option<String>,
     signature_entry: Option<String>,
-    annotations_entry: Option<String>,
     signatures_entry: Option<String>,
 }
 
@@ -247,7 +236,6 @@ impl OfdPackage {
             decryption: None,
             document_entry: None,
             signature_entry: None,
-            annotations_entry: None,
             signatures_entry: None,
         })
     }
@@ -527,21 +515,6 @@ impl OfdPackage {
         Ok(bytes)
     }
 
-    /// 读取并解析 `OFD.xml`。
-    pub fn parse_root(&mut self) -> Result<OfdRoot, OfdError> {
-        let entry = self.root_entry_name()?;
-        let key = (entry.clone(), self.options.strict);
-        if let Some(doc) = self.xml_cache.get(&key) {
-            return OfdRoot::from_document(doc, self.options);
-        }
-
-        let bytes = self.read_entry(&entry)?;
-        let doc = Arc::new(parse_xml(&bytes, self.options)?);
-        self.xml_cache
-            .insert(key, Arc::clone(&doc), doc.estimated_size());
-        OfdRoot::from_document(doc, self.options)
-    }
-
     /// 以 schema 解析 `OFD.xml`。
     pub fn parse_root_schema(&mut self) -> Result<crate::schema::ofd::Ofd, OfdError> {
         let entry = self.root_entry_name()?;
@@ -565,317 +538,20 @@ impl OfdPackage {
             .map_err(|error| OfdError::InvalidStructure(error.to_string()))
     }
 
-    /// 读取并解析 `OFD.xml` 中 `DocRoot` 指向的 `Document.xml`。
-    pub fn parse_document(&mut self) -> Result<Document, OfdError> {
-        let doc_root = {
-            let root = self.parse_root()?;
-            root.doc_bodies()
-                .next()
-                .and_then(|body| body.doc_root().map(str::to_owned))
-        }
-        .ok_or_else(|| OfdError::InvalidStructure("OFD.xml 缺少 DocRoot".to_owned()))?;
-        let entry = resolve_loc("", &doc_root)?;
-        self.document_entry = Some(entry.clone());
-        let key = (entry.clone(), self.options.strict);
-        if let Some(doc) = self.xml_cache.get(&key) {
-            return Document::from_document(doc, self.options);
-        }
-
-        let bytes = self.read_entry(&entry)?;
-        let doc = Arc::new(parse_xml(&bytes, self.options)?);
-        self.xml_cache
-            .insert(key, Arc::clone(&doc), doc.estimated_size());
-        Document::from_document(doc, self.options)
-    }
-
-    /// 读取并解析页面内容文件，路径相对于包根。
-    pub fn parse_page(&mut self, loc: &str) -> Result<Page, OfdError> {
-        let entry = resolve_loc("", loc)?;
-        self.parse_page_entry(entry)
-    }
-
     /// 枚举包内所有 DocBody。
     pub fn documents(&mut self) -> Result<Vec<DocumentEntry>, OfdError> {
-        let root = self.parse_root()?;
-        let bodies: Vec<_> = root.doc_bodies().collect();
-        let entries = bodies
+        let root = self.parse_root_schema()?;
+        let entries = root
+            .doc_bodies
             .iter()
             .enumerate()
             .map(|(index, body)| DocumentEntry {
                 index,
-                doc_id: body
-                    .doc_info()
-                    .and_then(|info| info.doc_id().map(str::to_owned)),
-                doc_root: body.doc_root().map(str::to_owned),
+                doc_id: Some(body.doc_info.doc_id.clone()),
+                doc_root: Some(body.doc_root.as_str().to_owned()),
             })
             .collect();
         Ok(entries)
-    }
-
-    /// 按 DocBody 序号解析 `Document.xml`。
-    pub fn parse_document_at(&mut self, index: usize) -> Result<Document, OfdError> {
-        let doc_root = {
-            let root = self.parse_root()?;
-            root.doc_bodies()
-                .nth(index)
-                .and_then(|body| body.doc_root().map(str::to_owned))
-        }
-        .ok_or_else(|| OfdError::InvalidStructure(format!("DocBody 不存在: {index}")))?;
-        let entry = resolve_loc("", &doc_root)?;
-        let key = (entry.clone(), self.options.strict);
-        if let Some(doc) = self.xml_cache.get(&key) {
-            return Document::from_document(doc, self.options);
-        }
-        let bytes = self.read_entry(&entry)?;
-        let doc = Arc::new(parse_xml(&bytes, self.options)?);
-        self.xml_cache
-            .insert(key, Arc::clone(&doc), doc.estimated_size());
-        Document::from_document(doc, self.options)
-    }
-
-    /// 解析指定 DocBody 的页面对象。
-    pub fn parse_page_for_document(
-        &mut self,
-        index: usize,
-        page: &PageEntry,
-    ) -> Result<Page, OfdError> {
-        let doc_root = {
-            let root = self.parse_root()?;
-            root.doc_bodies()
-                .nth(index)
-                .and_then(|body| body.doc_root().map(str::to_owned))
-        }
-        .ok_or_else(|| OfdError::InvalidStructure(format!("DocBody 不存在: {index}")))?;
-        let doc_entry = resolve_loc("", &doc_root)?;
-        let base = parent_dir(&doc_entry)
-            .ok_or_else(|| OfdError::InvalidStructure("无法解析 Document.xml 目录".to_owned()))?;
-        let loc = page
-            .base_loc()
-            .ok_or_else(|| OfdError::InvalidStructure("Page 缺少 BaseLoc".to_owned()))?;
-        let entry = resolve_loc(base, loc)?;
-        self.parse_page_entry(entry)
-    }
-
-    /// 解析指定 DocBody 的资源文件。
-    pub fn parse_res_for_document(&mut self, index: usize, loc: &str) -> Result<Res, OfdError> {
-        let doc_root = {
-            let root = self.parse_root()?;
-            root.doc_bodies()
-                .nth(index)
-                .and_then(|body| body.doc_root().map(str::to_owned))
-        }
-        .ok_or_else(|| OfdError::InvalidStructure(format!("DocBody 不存在: {index}")))?;
-        let doc_entry = resolve_loc("", &doc_root)?;
-        let base = parent_dir(&doc_entry)
-            .ok_or_else(|| OfdError::InvalidStructure("无法解析 Document.xml 目录".to_owned()))?;
-        let entry = resolve_loc(base, loc)?;
-        self.parse_res_entry(entry)
-    }
-
-    /// 解析 `Document.xml` 中某个页面指向的内容文件。
-    ///
-    /// `Page.BaseLoc` 相对于 `Document.xml` 所在目录解析。
-    pub fn parse_page_for(&mut self, page: &PageEntry) -> Result<Page, OfdError> {
-        if self.document_entry.is_none() {
-            self.parse_document()?;
-        }
-        let loc = page
-            .base_loc()
-            .ok_or_else(|| OfdError::InvalidStructure("Page 缺少 BaseLoc".to_owned()))?;
-        let base = self
-            .document_entry
-            .as_deref()
-            .and_then(parent_dir)
-            .ok_or_else(|| OfdError::InvalidStructure("尚未定位 Document.xml".to_owned()))?;
-        let entry = resolve_loc(base, loc)?;
-        self.parse_page_entry(entry)
-    }
-
-    fn parse_page_entry(&mut self, entry: String) -> Result<Page, OfdError> {
-        let key = (entry.clone(), self.options.strict);
-        if let Some(doc) = self.xml_cache.get(&key) {
-            return Page::from_document(doc, self.options);
-        }
-
-        let bytes = self.read_entry(&entry)?;
-        let doc = Arc::new(parse_xml(&bytes, self.options)?);
-        self.xml_cache
-            .insert(key, Arc::clone(&doc), doc.estimated_size());
-        Page::from_document(doc, self.options)
-    }
-
-    /// 读取并解析资源文件，路径相对于包根。
-    pub fn parse_res(&mut self, loc: &str) -> Result<Res, OfdError> {
-        let entry = resolve_loc("", loc)?;
-        self.parse_res_entry(entry)
-    }
-
-    /// 解析 `Document.xml` 中引用的资源文件。
-    ///
-    /// `PublicRes` / `DocumentRes` 相对于 `Document.xml` 所在目录解析。
-    pub fn parse_res_from_document(&mut self, loc: &str) -> Result<Res, OfdError> {
-        if self.document_entry.is_none() {
-            self.parse_document()?;
-        }
-        let base = self
-            .document_entry
-            .as_deref()
-            .and_then(parent_dir)
-            .ok_or_else(|| OfdError::InvalidStructure("尚未定位 Document.xml".to_owned()))?;
-        let entry = resolve_loc(base, loc)?;
-        self.parse_res_entry(entry)
-    }
-
-    fn parse_res_entry(&mut self, entry: String) -> Result<Res, OfdError> {
-        let key = (entry.clone(), self.options.strict);
-        if let Some(doc) = self.xml_cache.get(&key) {
-            return Res::from_document(doc, self.options);
-        }
-
-        let bytes = self.read_entry(&entry)?;
-        let doc = Arc::new(parse_xml(&bytes, self.options)?);
-        self.xml_cache
-            .insert(key, Arc::clone(&doc), doc.estimated_size());
-        Res::from_document(doc, self.options)
-    }
-
-    /// 解析 `Document.xml` 中声明的注释索引文件。
-    ///
-    /// `Annotations` 相对于 `Document.xml` 所在目录解析。
-    pub fn parse_annotations(&mut self) -> Result<Annotations, OfdError> {
-        let document = self.parse_document()?;
-        let loc = document.annotations().map(str::to_owned).ok_or_else(|| {
-            OfdError::InvalidStructure("Document.xml 未声明 Annotations".to_owned())
-        })?;
-        let base = self
-            .document_entry
-            .as_deref()
-            .and_then(parent_dir)
-            .ok_or_else(|| OfdError::InvalidStructure("尚未定位 Document.xml".to_owned()))?;
-        let entry = self.resolve_existing_loc(base, &loc)?;
-        let view = self.parse_annotations_entry(entry.clone())?;
-        self.annotations_entry = Some(entry);
-        Ok(view)
-    }
-
-    /// 解析 `Document.xml` 中声明的附件列表文件。
-    ///
-    /// `Attachments` 相对于 `Document.xml` 所在目录解析。
-    pub fn parse_attachments(&mut self) -> Result<Attachments, OfdError> {
-        let document = self.parse_document()?;
-        let loc = document.attachments().map(str::to_owned).ok_or_else(|| {
-            OfdError::InvalidStructure("Document.xml 未声明 Attachments".to_owned())
-        })?;
-        let base = self
-            .document_entry
-            .as_deref()
-            .and_then(parent_dir)
-            .ok_or_else(|| OfdError::InvalidStructure("尚未定位 Document.xml".to_owned()))?;
-        let entry = resolve_loc(base, &loc)?;
-        let key = (entry.clone(), self.options.strict);
-        if let Some(doc) = self.xml_cache.get(&key) {
-            return Attachments::from_document(doc, self.options);
-        }
-
-        let bytes = self.read_entry(&entry)?;
-        let doc = Arc::new(parse_xml(&bytes, self.options)?);
-        self.xml_cache
-            .insert(key, Arc::clone(&doc), doc.estimated_size());
-        Attachments::from_document(doc, self.options)
-    }
-
-    /// 解析 `Document.xml` 中声明的自定义标引列表文件。
-    ///
-    /// `CustomTags` 相对于 `Document.xml` 所在目录解析。
-    pub fn parse_custom_tags(&mut self) -> Result<CustomTags, OfdError> {
-        let document = self.parse_document()?;
-        let loc = document.custom_tags().map(str::to_owned).ok_or_else(|| {
-            OfdError::InvalidStructure("Document.xml 未声明 CustomTags".to_owned())
-        })?;
-        let base = self
-            .document_entry
-            .as_deref()
-            .and_then(parent_dir)
-            .ok_or_else(|| OfdError::InvalidStructure("尚未定位 Document.xml".to_owned()))?;
-        let entry = resolve_loc(base, &loc)?;
-        let key = (entry.clone(), self.options.strict);
-        if let Some(doc) = self.xml_cache.get(&key) {
-            return CustomTags::from_document(doc, self.options);
-        }
-
-        let bytes = self.read_entry(&entry)?;
-        let doc = Arc::new(parse_xml(&bytes, self.options)?);
-        self.xml_cache
-            .insert(key, Arc::clone(&doc), doc.estimated_size());
-        CustomTags::from_document(doc, self.options)
-    }
-
-    /// 解析 `Document.xml` 中声明的扩展信息列表文件。
-    ///
-    /// `Extensions` 相对于 `Document.xml` 所在目录解析。
-    pub fn parse_extensions(&mut self) -> Result<Extensions, OfdError> {
-        let document = self.parse_document()?;
-        let loc = document.extensions().map(str::to_owned).ok_or_else(|| {
-            OfdError::InvalidStructure("Document.xml 未声明 Extensions".to_owned())
-        })?;
-        let base = self
-            .document_entry
-            .as_deref()
-            .and_then(parent_dir)
-            .ok_or_else(|| OfdError::InvalidStructure("尚未定位 Document.xml".to_owned()))?;
-        let entry = resolve_loc(base, &loc)?;
-        let key = (entry.clone(), self.options.strict);
-        if let Some(doc) = self.xml_cache.get(&key) {
-            return Extensions::from_document(doc, self.options);
-        }
-
-        let bytes = self.read_entry(&entry)?;
-        let doc = Arc::new(parse_xml(&bytes, self.options)?);
-        self.xml_cache
-            .insert(key, Arc::clone(&doc), doc.estimated_size());
-        Extensions::from_document(doc, self.options)
-    }
-
-    /// 解析注释索引中 `FileLoc` 指向的分页注释文件。
-    ///
-    /// 路径相对于注释索引文件所在目录解析；索引尚未解析时会先读取 `Document.xml`。
-    pub fn parse_page_annot(&mut self, file_loc: &str) -> Result<PageAnnot, OfdError> {
-        if self.annotations_entry.is_none() {
-            self.parse_annotations()?;
-        }
-        let base = self
-            .annotations_entry
-            .as_deref()
-            .and_then(parent_dir)
-            .ok_or_else(|| OfdError::InvalidStructure("尚未定位注释索引文件".to_owned()))?;
-        let entry = self.resolve_existing_loc(base, file_loc)?;
-        self.parse_page_annot_entry(entry)
-    }
-
-    fn parse_annotations_entry(&mut self, entry: String) -> Result<Annotations, OfdError> {
-        let key = (entry.clone(), self.options.strict);
-        if let Some(doc) = self.xml_cache.get(&key) {
-            return Annotations::from_document(doc, self.options);
-        }
-
-        let bytes = self.read_entry(&entry)?;
-        let doc = Arc::new(parse_xml(&bytes, self.options)?);
-        self.xml_cache
-            .insert(key, Arc::clone(&doc), doc.estimated_size());
-        Annotations::from_document(doc, self.options)
-    }
-
-    fn parse_page_annot_entry(&mut self, entry: String) -> Result<PageAnnot, OfdError> {
-        let key = (entry.clone(), self.options.strict);
-        if let Some(doc) = self.xml_cache.get(&key) {
-            return PageAnnot::from_document(doc, self.options);
-        }
-
-        let bytes = self.read_entry(&entry)?;
-        let doc = Arc::new(parse_xml(&bytes, self.options)?);
-        self.xml_cache
-            .insert(key, Arc::clone(&doc), doc.estimated_size());
-        PageAnnot::from_document(doc, self.options)
     }
 
     /// 解析 `OFD.xml` 中第一个 `DocBody` 声明的签名列表文件。
@@ -898,22 +574,6 @@ impl OfdPackage {
     /// 返回已定位的 `Document.xml` entry。
     pub fn document_entry_name(&self) -> Option<&str> {
         self.document_entry.as_deref()
-    }
-
-    /// 返回页面 `BaseLoc` 对应的包内 entry。
-    pub fn page_entry_name(&mut self, page: &PageEntry) -> Result<String, OfdError> {
-        if self.document_entry.is_none() {
-            self.parse_document()?;
-        }
-        let loc = page
-            .base_loc()
-            .ok_or_else(|| OfdError::InvalidStructure("Page 缺少 BaseLoc".to_owned()))?;
-        let base = self
-            .document_entry
-            .as_deref()
-            .and_then(parent_dir)
-            .ok_or_else(|| OfdError::InvalidStructure("尚未定位 Document.xml".to_owned()))?;
-        resolve_loc(base, loc)
     }
 
     fn resolve_existing_loc(&self, base: &str, loc: &str) -> Result<String, OfdError> {
@@ -994,21 +654,6 @@ impl OfdPackage {
             .map_err(|error| OfdError::InvalidStructure(error.to_string()))?;
         self.signatures_entry = Some(entry);
         Ok(index)
-    }
-
-    /// 解析版本列表 `BaseLoc` 指向的版本描述文件，路径相对于包根。
-    pub fn parse_doc_version(&mut self, base_loc: &str) -> Result<Version, OfdError> {
-        let entry = resolve_loc("", base_loc)?;
-        let key = (entry.clone(), self.options.strict);
-        if let Some(doc) = self.xml_cache.get(&key) {
-            return Version::from_document(doc, self.options);
-        }
-
-        let bytes = self.read_entry(&entry)?;
-        let doc = Arc::new(parse_xml(&bytes, self.options)?);
-        self.xml_cache
-            .insert(key, Arc::clone(&doc), doc.estimated_size());
-        Version::from_document(doc, self.options)
     }
 
     /// 解析包根目录下的解密入口 `Encryptions.xml`。
@@ -1653,7 +1298,7 @@ impl OfdPackage {
             return Err(OfdError::InvalidStructure("缺少签名时间".to_owned()));
         }
 
-        self.parse_document()?;
+        self.parse_document_schema()?;
         let doc_entry = self
             .document_entry
             .clone()
@@ -1666,11 +1311,11 @@ impl OfdPackage {
             Some(crate::stamp::prepare(self, &request.stamps, &doc_entry)?)
         };
 
-        let root = self.parse_root()?;
+        let root = self.parse_root_schema()?;
         let link = root
-            .doc_bodies()
-            .next()
-            .and_then(|body| body.signatures().map(str::to_owned));
+            .doc_bodies
+            .first()
+            .and_then(|body| body.signatures.as_ref().map(|loc| loc.as_str().to_owned()));
         let (signatures_entry, root_edit) = match link {
             Some(loc) => (resolve_loc("", &loc)?, None),
             None => {

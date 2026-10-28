@@ -2,37 +2,62 @@
 //!
 //! `cargo run -p ofdbox --example read_ofd -- target/created.ofd`
 
-use ofdbox::core::OfdPackage;
-use ofdbox::model::page::GraphicObjectKind;
+use ofdbox::core::OfdFile;
+use ofdbox::model::page::GraphicObject;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let path = std::env::args()
         .nth(1)
         .unwrap_or_else(|| "target/created.ofd".to_owned());
-    let mut package = OfdPackage::open(&path)?;
+    let file = OfdFile::open(&path)?;
+    let ofd = file.ofd()?;
 
-    for document_entry in package.documents()? {
-        let index = document_entry.index;
-        let document = package.parse_document_at(index)?;
-        let pages = document.pages().ok_or("document has no pages")?;
-        println!("document {}: {} pages", index, pages.pages().count());
+    for (document_index, _) in ofd.data.doc_bodies.iter().enumerate() {
+        let document = ofd.document(document_index)?;
+        println!(
+            "document {}: {} pages",
+            document_index,
+            document.data.pages.pages.len()
+        );
 
-        for page_entry in pages.pages() {
-            let page = package.parse_page_for_document(index, &page_entry)?;
+        for page_entry in document.pages() {
+            let page = page_entry.load()?;
             println!("  page {:?}", page_entry.id());
-            if let Some(content) = page.content() {
-                for layer in content.layers() {
-                    for object in layer.objects() {
-                        println!(
-                            "    {:?} id={:?} boundary={:?}",
-                            object.kind(),
-                            object.id(),
-                            object.boundary()
-                        );
-                        if object.kind() == GraphicObjectKind::Text {
-                            for code in object.text_codes() {
-                                println!("      text={:?}", code.text());
+            let Some(content) = &page.data.content else {
+                continue;
+            };
+            for layer in &content.layers {
+                for object in &layer.objects {
+                    match object {
+                        GraphicObject::Text(text) => {
+                            println!(
+                                "    Text id={} boundary={}",
+                                text.common.id, text.common.boundary
+                            );
+                            for code in &text.text_codes {
+                                println!("      text={:?}", code.text);
                             }
+                        }
+                        GraphicObject::Path(path) => {
+                            println!(
+                                "    Path id={} boundary={}",
+                                path.common.id, path.common.boundary
+                            );
+                        }
+                        GraphicObject::Image(image) => {
+                            println!(
+                                "    Image id={} resource={}",
+                                image.common.id, image.resource_id
+                            );
+                        }
+                        GraphicObject::Composite(composite) => {
+                            println!(
+                                "    Composite id={} resource={}",
+                                composite.common.id, composite.resource_id
+                            );
+                        }
+                        GraphicObject::PageBlock(block) => {
+                            println!("    PageBlock id={}", block.id);
                         }
                     }
                 }

@@ -41,8 +41,6 @@ mod annotation_edit;
 mod cache;
 mod crypto;
 mod error;
-#[allow(missing_docs)]
-pub mod model;
 mod options;
 mod package;
 mod package_write;
@@ -55,7 +53,6 @@ mod sign;
 mod stamp;
 #[allow(missing_docs)]
 pub mod store;
-mod write;
 mod writer;
 mod xml;
 

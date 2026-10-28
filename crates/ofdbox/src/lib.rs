@@ -11,9 +11,9 @@
 
 pub use ofdbox_algo as algo;
 pub use ofdbox_core as core;
-pub use ofdbox_core::model;
-pub use ofdbox_core::model::document::{Document, PageEntry};
 pub use ofdbox_core::schema;
+pub use ofdbox_core::schema as model;
+pub use ofdbox_core::schema::document::{Document, PageEntry};
 pub use ofdbox_core::{
     AnnotationEditReport, AnnotationEditor, AnnotationSpec, CacheOptions, CreateOptions,
     DEFAULT_SIGNATURE_METHOD, EntriesVerification, EntriesWriteOptions, EntriesWriteReport,
