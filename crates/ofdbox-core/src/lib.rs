@@ -52,7 +52,6 @@ mod sign;
 mod stamp;
 #[allow(missing_docs)]
 pub mod store;
-mod writer;
 
 pub use annotation_edit::{
     AnnotationCgTransform, AnnotationComposite, AnnotationEditReport, AnnotationEditor,
@@ -82,4 +81,3 @@ pub use store::{
     CreateOptions, ObjectContext, OfdFile, OpenOptions, OpenStorage, PackageStore, Storage, Stored,
     StoredObject,
 };
-pub use writer::{OfdWriter, PageSize};

@@ -17,11 +17,10 @@ pub use ofdbox_core::model_xml;
 pub use ofdbox_core::{
     AnnotationEditReport, AnnotationEditor, AnnotationSpec, CacheOptions, CreateOptions,
     DEFAULT_SIGNATURE_METHOD, EntriesVerification, EntriesWriteOptions, EntriesWriteReport,
-    ObjectContext, OfdError, OfdFile, OfdPackage, OfdWriter, OpenOptions, OpenStorage,
-    PackageDateTime, PackageEdits, PackageStore, PackageWriteOptions, PageSize, ProtectScope,
-    ProviderInfo, ReadOptions, ReferenceGraphOptions, SignatureVerifiers, SignedValueFormat,
-    SignedValueProducer, SigningReport, SigningRequest, StampAppearance, Storage, Stored,
-    StoredObject,
+    ObjectContext, OfdError, OfdFile, OfdPackage, OpenOptions, OpenStorage, PackageDateTime,
+    PackageEdits, PackageStore, PackageWriteOptions, ProtectScope, ProviderInfo, ReadOptions,
+    ReferenceGraphOptions, SignatureVerifiers, SignedValueFormat, SignedValueProducer,
+    SigningReport, SigningRequest, StampAppearance, Storage, Stored, StoredObject,
 };
 
 #[cfg(feature = "crypto")]
