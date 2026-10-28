@@ -12,6 +12,8 @@ use quick_xml::escape::escape;
 use crate::error::OfdError;
 use crate::options::ReadOptions;
 use crate::package::{OfdPackage, parent_dir, resolve_loc};
+use crate::schema::document::Document;
+use crate::schema_xml;
 use crate::xml::parser::parse_xml;
 use crate::xml::tree::{NodeId, XmlDocument};
 
@@ -94,14 +96,14 @@ pub(crate) fn prepare(
     let annotations_entry = resolve_loc(&doc_dir, &annotations)?;
     let document_res_entry = resolve_loc(&doc_dir, &document_res)?;
 
-    let pages: std::collections::HashSet<String> = child(&document_doc, document_root, "Pages")
-        .map(|pages_node| {
-            document_doc
-                .children_named(pages_node, "Page")
-                .filter_map(|page| document_doc.attribute(page, "ID").map(str::to_owned))
-                .collect()
-        })
-        .unwrap_or_default();
+    let document_view: Document = schema_xml::from_bytes(document.as_bytes())
+        .map_err(|error| OfdError::InvalidStructure(error.to_string()))?;
+    let pages: std::collections::HashSet<String> = document_view
+        .pages
+        .pages
+        .iter()
+        .map(|page| page.id.to_string())
+        .collect();
     for stamp in stamps {
         if !pages.contains(&stamp.page_id) {
             return Err(OfdError::InvalidStructure(format!(
