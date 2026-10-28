@@ -88,6 +88,22 @@ ofdbox = { path = "...", default-features = false, features = ["crypto"] }
 ofdbox = { path = "...", default-features = false, features = ["seal"] }
 ```
 
+## 加密编辑限制
+
+`edit_encrypted` 与 `edit_encrypted_preserving` 会重新加密包，已有签名不再有效。
+
+`edit_encrypted_preserving` 支持：
+
+```text
+单层 / 多层 EncryptInfo
+修改已有 entry
+删除 entry
+新增 entry
+保留未修改 entry 的原始加密字节
+```
+
+签名需要重新生成。
+
 ## 标准覆盖
 
 - **GB/T 33190—2016**：文档结构已覆盖。
