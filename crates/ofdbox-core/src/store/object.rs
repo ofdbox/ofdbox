@@ -1,9 +1,11 @@
+use std::cell::RefCell;
 use std::rc::Rc;
 
 use yaserde::{YaDeserialize, YaSerialize};
 
 use crate::error::OfdError;
 use crate::schema::definition::StLoc;
+use crate::schema::document::Document;
 use crate::schema_xml;
 use crate::store::ObjectContext;
 
@@ -15,6 +17,7 @@ pub struct Stored<T> {
     pub data: T,
     context: Rc<ObjectContext>,
     location: StLoc,
+    document_cache: RefCell<Option<Rc<Stored<Document>>>>,
 }
 
 impl<T> Stored<T> {
@@ -24,6 +27,7 @@ impl<T> Stored<T> {
             data,
             context,
             location,
+            document_cache: RefCell::new(None),
         }
     }
 
@@ -35,6 +39,14 @@ impl<T> Stored<T> {
     /// 当前对象的 entry。
     pub fn location(&self) -> &StLoc {
         &self.location
+    }
+
+    pub(crate) fn cached_document(&self) -> Option<Rc<Stored<Document>>> {
+        self.document_cache.borrow().as_ref().map(Rc::clone)
+    }
+
+    pub(crate) fn cache_document(&self, document: Rc<Stored<Document>>) {
+        *self.document_cache.borrow_mut() = Some(document);
     }
 
     /// 取出纯数据。
@@ -60,6 +72,7 @@ impl<T: YaDeserialize> Stored<T> {
             data,
             context: object_context,
             location,
+            document_cache: RefCell::new(None),
         })
     }
 }
@@ -155,6 +168,7 @@ where
             data,
             context: object_context,
             location,
+            document_cache: RefCell::new(None),
         })
     }
 

@@ -130,14 +130,21 @@ impl Stored<Page> {
         load_all(self.context(), &self.data.page_res)
     }
 
-    /// 加载所属文档。
-    pub fn document(&self) -> Result<Stored<Document>, OfdError> {
+    /// 加载所属文档（按页面缓存）。
+    pub fn document(&self) -> Result<Rc<Stored<Document>>, OfdError> {
+        if let Some(document) = self.cached_document() {
+            return Ok(document);
+        }
         let parent = self
             .context()
             .parent()
             .ok_or_else(|| OfdError::InvalidStructure("页面缺少文档上下文".to_owned()))?;
-
-        Stored::<Document>::load(Rc::clone(parent), parent.current().clone())
+        let document = Rc::new(Stored::<Document>::load(
+            Rc::clone(parent),
+            parent.current().clone(),
+        )?);
+        self.cache_document(Rc::clone(&document));
+        Ok(document)
     }
 
     /// 加载所属文档的文档资源。

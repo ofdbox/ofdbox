@@ -156,3 +156,20 @@ fn creates_directory_ofd() {
     file.save(&output).expect("save");
     assert!(output.is_file());
 }
+
+
+#[test]
+fn caches_page_document() {
+    let bytes = fixtures::zip_with_entries(&[
+        ("OFD.xml", OFD.as_bytes()),
+        ("Doc_0/Document.xml", DOCUMENT.as_bytes()),
+        ("Doc_0/Pages/Page_0/Content.xml", PAGE.as_bytes()),
+    ]);
+    let reader = OfdFile::open_bytes(bytes).expect("open");
+    let ofd = reader.ofd().expect("ofd");
+    let doc = ofd.document(0).expect("document");
+    let page = doc.page("1").expect("page");
+    let first = page.document().expect("document");
+    let second = page.document().expect("document");
+    assert!(std::rc::Rc::ptr_eq(&first, &second));
+}
