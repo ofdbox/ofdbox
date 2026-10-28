@@ -63,11 +63,6 @@ where
 {
     let mut package = OfdPackage::from_bytes(input.to_vec())?;
     package.enable_decryption(backend)?;
-    if package.decryption_operation_count() > 1 {
-        return Err(OfdError::UnsupportedScheme(
-            "多层加密暂不支持逐 entry 保留".to_owned(),
-        ));
-    }
 
     let mut plaintext = Cursor::new(Vec::new());
     package.write_decrypted_to(&mut plaintext)?;
@@ -129,6 +124,11 @@ where
 
     for (name, bytes) in &edited_entries {
         let Some(original) = originals.get(name) else {
+            if package.decryption_operation_count() > 1 {
+                return Err(OfdError::UnsupportedScheme(
+                    "多层加密暂不支持新增 entry".to_owned(),
+                ));
+            }
             let encrypted = package.encrypt_new_entry(bytes)?;
             entries_map.entries.push(EncryptEntry {
                 path: name.clone(),

@@ -553,15 +553,23 @@ impl OfdPackage {
     /// 使用当前解密会话的密钥重新加密逻辑 entry。
     pub fn encrypt_entry(&mut self, name: &str, data: &[u8]) -> Result<Vec<u8>, OfdError> {
         let name = normalize_entry_name(name)?;
-        let Some(layer) = self.decryption_layer(&name) else {
+        let Some(start) = self.decryption_layer(&name) else {
             return Ok(data.to_vec());
         };
-        let key = self.layer_key(layer, &name)?;
-        let context = self
-            .decryption
-            .as_ref()
-            .ok_or(OfdError::EncryptionRequired)?;
-        context.backend.encrypt(&key, data)
+        let total = self.decryption_operation_count();
+        let mut bytes = data.to_vec();
+        for index in (start..total).rev() {
+            if !self.layer_contains(index, &name) {
+                continue;
+            }
+            let key = self.layer_key(index, &name)?;
+            let context = self
+                .decryption
+                .as_ref()
+                .ok_or(OfdError::EncryptionRequired)?;
+            bytes = context.backend.encrypt(&key, &bytes)?;
+        }
+        Ok(bytes)
     }
 
     /// 以模型解析 `OFD.xml`。
