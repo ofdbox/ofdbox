@@ -41,6 +41,23 @@ for entry in document.pages() {
 }
 ```
 
+需要保留未修改加密 entry 原始字节时：
+
+```rust
+use ofdbox::edit_encrypted_preserving;
+
+let output = edit_encrypted_preserving(
+    &encrypted,
+    Box::new(PasswordBackend::new("secret")),
+    |file| {
+        let mut page = file.document(0)?.page("1")?;
+        page.data.content = ...;
+        page.save()?;
+        Ok(())
+    },
+)?;
+```
+
 加密包编辑：
 
 ```rust
