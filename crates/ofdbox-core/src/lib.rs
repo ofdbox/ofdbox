@@ -53,7 +53,6 @@ mod stamp;
 #[allow(missing_docs)]
 pub mod store;
 mod writer;
-mod xml;
 
 pub use annotation_edit::{
     AnnotationCgTransform, AnnotationComposite, AnnotationEditReport, AnnotationEditor,
@@ -84,6 +83,3 @@ pub use store::{
     StoredObject,
 };
 pub use writer::{OfdWriter, PageSize};
-pub use xml::namespace::OFD_NAMESPACE;
-pub use xml::parser::parse_xml;
-pub use xml::tree::{NodeId, QName, Span, XmlAttribute, XmlDocument, XmlNode};

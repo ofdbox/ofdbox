@@ -36,20 +36,6 @@ pub struct Diagnostic {
     pub message: String,
 }
 
-impl Diagnostic {
-    pub(crate) fn new(
-        code: DiagnosticCode,
-        path: impl Into<String>,
-        message: impl Into<String>,
-    ) -> Self {
-        Self {
-            code,
-            path: path.into(),
-            message: message.into(),
-        }
-    }
-}
-
 /// `ofdbox-core` 的统一错误类型。
 #[derive(Debug, Error)]
 #[non_exhaustive]

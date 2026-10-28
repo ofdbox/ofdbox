@@ -23,7 +23,6 @@ use crate::sign::{
     DEFAULT_SIGNATURE_METHOD, ProtectScope, SignedValueProducer, SigningContext, SigningReport,
     SigningRequest,
 };
-use crate::xml::tree::XmlDocument;
 
 /// OFD 包根条目的固定名称。
 pub const ROOT_ENTRY: &str = "OFD.xml";
@@ -151,7 +150,6 @@ pub struct OfdPackage {
     options: ReadOptions,
     entry_cache: ByteLruCache<String, Arc<[u8]>>,
     plain_cache: ByteLruCache<String, Arc<[u8]>>,
-    xml_cache: ByteLruCache<(String, bool), Arc<XmlDocument>>,
     decryption: Option<DecryptionContext>,
     document_entry: Option<String>,
     signature_entry: Option<String>,
@@ -232,7 +230,6 @@ impl OfdPackage {
             options,
             entry_cache: ByteLruCache::new(cache_options.max_bytes),
             plain_cache: ByteLruCache::new(cache_options.max_bytes),
-            xml_cache: ByteLruCache::new(cache_options.max_bytes),
             decryption: None,
             document_entry: None,
             signature_entry: None,
@@ -1085,7 +1082,6 @@ impl OfdPackage {
     pub fn clear_cache(&mut self) {
         self.entry_cache.clear();
         self.plain_cache.clear();
-        self.xml_cache.clear();
     }
 
     /// 关闭解密会话并清空明文缓存。
@@ -1102,15 +1098,14 @@ impl OfdPackage {
     /// 当前缓存统计。
     pub fn cache_stats(&self) -> CacheStats {
         let entry = self.entry_cache.stats();
-        let xml = self.xml_cache.stats();
         let plain = self.plain_cache.stats();
         CacheStats {
             entry_bytes: entry.bytes,
-            xml_bytes: xml.bytes,
+            xml_bytes: 0,
             entry_hits: entry.hits,
             entry_misses: entry.misses,
-            xml_hits: xml.hits,
-            xml_misses: xml.misses,
+            xml_hits: 0,
+            xml_misses: 0,
             plain_bytes: plain.bytes,
             plain_hits: plain.hits,
             plain_misses: plain.misses,

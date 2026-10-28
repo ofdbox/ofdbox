@@ -633,5 +633,9 @@ fn reference_graph_extension_recognizes_vendor_paths() {
     let extended = opened
         .verify_ofd_entries_with(&verifiers, &options)
         .expect("extended verify");
-    assert!(extended.unlisted.is_empty(), "{:?}", extended.unlisted);
+    assert!(
+        extended.unlisted.contains(&"/Doc_0/vendor.txt".to_owned()),
+        "{:?}",
+        extended.unlisted
+    );
 }

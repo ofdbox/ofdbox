@@ -25,6 +25,10 @@ pub struct CustomTag {
     #[yaserde(rename = "SchemaLoc")]
     pub schema_loc: Option<StLoc>,
     /// 标引内容路径。
-    #[yaserde(rename = "FileLoc")]
+    #[yaserde(rename = "FileLoc", default = "default_st_loc")]
     pub file_loc: StLoc,
+}
+
+fn default_st_loc() -> StLoc {
+    StLoc::default()
 }
