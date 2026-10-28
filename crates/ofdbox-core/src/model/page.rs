@@ -843,7 +843,7 @@ pub struct Color {
 }
 
 /// 颜色内容。
-#[derive(Clone, Debug, PartialEq, yaserde::YaSerialize, yaserde::YaDeserialize)]
+#[derive(Clone, Debug, Default, PartialEq, yaserde::YaDeserialize)]
 pub enum ColorKind {
     /// 底纹。
     #[yaserde(rename = "Pattern")]
@@ -860,13 +860,47 @@ pub enum ColorKind {
     /// 格点高洛德渐变。
     #[yaserde(rename = "LaGourandShd")]
     LaGouraudShd(LaGouraudShd),
+    /// 无颜色内容。
+    #[default]
+    None,
 }
 
-impl Default for ColorKind {
-    fn default() -> Self {
-        Self::Pattern(Pattern::default())
+impl YaSerialize for ColorKind {
+    fn serialize<W: Write>(&self, writer: &mut Serializer<W>) -> yaserde::Result<()> {
+        match self {
+            Self::Pattern(value) => value.serialize(writer),
+            Self::AxialShd(value) => {
+                writer.set_start_event_name(Some("AxialShd".to_owned()));
+                value.serialize(writer)
+            }
+            Self::RadialShd(value) => {
+                writer.set_start_event_name(Some("RadialShd".to_owned()));
+                value.serialize(writer)
+            }
+            Self::GouraudShd(value) => {
+                writer.set_start_event_name(Some("GouraudShd".to_owned()));
+                value.serialize(writer)
+            }
+            Self::LaGouraudShd(value) => {
+                writer.set_start_event_name(Some("LaGourandShd".to_owned()));
+                value.serialize(writer)
+            }
+            Self::None => Ok(()),
+        }
+    }
+
+    fn serialize_attributes(
+        &self,
+        attributes: Vec<yaserde::__xml::attribute::OwnedAttribute>,
+        namespace: yaserde::__xml::namespace::Namespace,
+    ) -> yaserde::Result<(
+        Vec<yaserde::__xml::attribute::OwnedAttribute>,
+        yaserde::__xml::namespace::Namespace,
+    )> {
+        Ok((attributes, namespace))
     }
 }
+
 
 /// 底纹。
 #[derive(Clone, Debug, Default, PartialEq)]

@@ -50,9 +50,10 @@ fn page_with_path_color_and_gradient() {
     </Layer>
   </Content>
 </Page>"#;
-    let page: model::page::Page = model_xml::from_bytes(xml.as_bytes()).expect("parse");
-    let written = model_xml::to_bytes(&page).expect("serialize");
+    let parsed: model::page::Page = model_xml::from_bytes(xml.as_bytes()).expect("parse");
+    let written = model_xml::to_bytes(&parsed).expect("serialize");
     let page: model::page::Page = model_xml::from_bytes(&written).expect("reparse");
+    assert_eq!(parsed, page);
     let objects = &page.content.as_ref().unwrap().layers[0].objects;
     assert_eq!(objects.len(), 1);
     assert!(matches!(objects[0], model::page::GraphicObject::Path(_)));
