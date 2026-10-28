@@ -8,10 +8,10 @@ OFDBox 是一个 Rust 实现的 OFD 版式文档工具箱，依据 GB/T 33190—
 
 | 能力 | 状态 | 说明 |
 | --- | --- | --- |
-| 文档结构读取/写出 | 已完成 | GB/T 33190—2016 全量文件与结构模型，宽松读取、严格写出、缓存 |
+| 文档结构读取/写出 | 已完成 | GB/T 33190—2016 全量文件与 `model` 模型；`model_xml` 双向转换；`store` 对象读写 |
 | GM/T 0099 加密结构 | 已完成 | 签名扩展、`Encryptions.xml`、`DecryptSeed`、`EncryptedEntries`、`OFDEntries.xml` |
-| 文档加密/解密 | 已完成 | 口令/证书后端、SM4、流式解密；口令加密写出；密钥随会话释放 |
-| 包写出/重打包 | 已完成 | `write_to`/`write_with` 原样复制 ZIP 元数据，可替换/删除/新增 entry；加密包可 `write_decrypted_to` 另存为未加密包 |
+| 文档加密/解密 | 已完成 | 口令/证书后端、SM4、流式解密；加密包编辑未支持 |
+| 包写出/重打包 | 已完成 | `write_to`/`write_with` 原样复制 ZIP 元数据，可替换/删除/新增 entry；加密包编辑当前显式拒绝 |
 | 数字签名生成 | 已完成 | `Type=Sign`：按保护范围计算 References、生成 `Signature.xml`/`Signatures.xml`/`SignedValue.dat`（GB/T 35275 SignedData），支持追加签名 |
 | 签名/签章验签 | 已完成 | 35275 SignedData、38540 `SES_Signature` 与厂商自定义格式按内容分派；可插拔 `SignatureVerifier` |
 | 印章识别/验签 | 已完成 | GM/T 0031 与 GB/T 38540 印章格式识别、图片提取、制章者签名、证书链与签章者列表 |

@@ -168,3 +168,48 @@ fn page_with_axial_gradient() {
     let reparsed: model::page::Page = model_xml::from_bytes(&written).expect("reparse");
     assert_eq!(parsed, reparsed);
 }
+
+#[test]
+fn page_with_radial_gradient() {
+    let xml = r#"<Page><Content><Layer ID="1"><PathObject ID="2" Boundary="0 0 100 100" Fill="true">
+      <FillColor><RadialShd StartPoint="50 50" EndPoint="50 50" EndRadius="50">
+        <Segment Position="0"><Color Value="255 0 0"/></Segment>
+        <Segment Position="1"><Color Value="0 0 255"/></Segment>
+      </RadialShd></FillColor>
+      <AbbreviatedData>M 0 0 L 100 0</AbbreviatedData>
+    </PathObject></Layer></Content></Page>"#;
+    let parsed: model::page::Page = model_xml::from_bytes(xml.as_bytes()).expect("parse");
+    let written = model_xml::to_bytes(&parsed).expect("serialize");
+    let reparsed: model::page::Page = model_xml::from_bytes(&written).expect("reparse");
+    assert_eq!(parsed, reparsed);
+}
+
+#[test]
+fn page_with_gouraud_gradient() {
+    let xml = r#"<Page><Content><Layer ID="1"><PathObject ID="2" Boundary="0 0 100 100" Fill="true">
+      <FillColor><GouraudShd>
+        <Point X="0" Y="0"><Color Value="255 0 0"/></Point>
+        <Point X="100" Y="0"><Color Value="0 0 255"/></Point>
+      </GouraudShd></FillColor>
+      <AbbreviatedData>M 0 0 L 100 0</AbbreviatedData>
+    </PathObject></Layer></Content></Page>"#;
+    let parsed: model::page::Page = model_xml::from_bytes(xml.as_bytes()).expect("parse");
+    let written = model_xml::to_bytes(&parsed).expect("serialize");
+    let reparsed: model::page::Page = model_xml::from_bytes(&written).expect("reparse");
+    assert_eq!(parsed, reparsed);
+}
+
+#[test]
+fn page_with_la_gouraud_gradient() {
+    let xml = r#"<Page><Content><Layer ID="1"><PathObject ID="2" Boundary="0 0 100 100" Fill="true">
+      <FillColor><LaGourandShd VerticesPerRow="2">
+        <Point X="0" Y="0"><Color Value="255 0 0"/></Point>
+        <Point X="100" Y="0"><Color Value="0 0 255"/></Point>
+      </LaGourandShd></FillColor>
+      <AbbreviatedData>M 0 0 L 100 0</AbbreviatedData>
+    </PathObject></Layer></Content></Page>"#;
+    let parsed: model::page::Page = model_xml::from_bytes(xml.as_bytes()).expect("parse");
+    let written = model_xml::to_bytes(&parsed).expect("serialize");
+    let reparsed: model::page::Page = model_xml::from_bytes(&written).expect("reparse");
+    assert_eq!(parsed, reparsed);
+}
