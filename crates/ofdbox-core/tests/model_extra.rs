@@ -113,3 +113,37 @@ fn doc_entries_roundtrip() {
     let entries: model::doc_entries::DocEntries = roundtrip(xml);
     assert_eq!(entries.file_list.files.len(), 2);
 }
+
+
+#[test]
+fn page_annot_text_roundtrip() {
+    let xml = r#"<PageAnnot>
+  <Annot ID="1" Type="Highlight" Creator="tester" LastModDate="20261028">
+    <Appearance Boundary="10 10 100 30">
+      <TextObject ID="2" Boundary="10 10 100 30" Font="1" Size="12">
+        <TextCode X="0" Y="0">hello</TextCode>
+      </TextObject>
+    </Appearance>
+  </Annot>
+</PageAnnot>"#;
+    let parsed: model::annotation::PageAnnot = model_xml::from_bytes(xml.as_bytes()).expect("parse");
+    let written = model_xml::to_bytes(&parsed).expect("serialize");
+    let reparsed: model::annotation::PageAnnot =
+        model_xml::from_bytes(&written).expect("reparse");
+    assert_eq!(parsed, reparsed);
+}
+
+#[test]
+fn signatures_index_roundtrip() {
+    let xml = r#"<Signatures>
+  <MaxSignId>2</MaxSignId>
+  <Signature ID="1" Type="Sign" BaseLoc="Signs/Sign_0/Signature.xml"/>
+  <Signature ID="2" Type="Seal" BaseLoc="Signs/Sign_1/Signature.xml"/>
+</Signatures>"#;
+    let parsed: model::signatures::Signatures =
+        model_xml::from_bytes(xml.as_bytes()).expect("parse");
+    let written = model_xml::to_bytes(&parsed).expect("serialize");
+    let reparsed: model::signatures::Signatures =
+        model_xml::from_bytes(&written).expect("reparse");
+    assert_eq!(parsed, reparsed);
+}
