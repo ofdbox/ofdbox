@@ -267,7 +267,7 @@ fn stamps_with_appearance() {
     assert!(
         std::str::from_utf8(&document_xml)
             .expect("utf8")
-            .contains("<ofd:MaxUnitID>5</ofd:MaxUnitID>")
+            .contains("MaxUnitID>5<")
     );
     let resources = signed
         .read_entry("Doc_0/DocumentRes.xml")

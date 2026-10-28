@@ -23,16 +23,16 @@ pub struct PageAnnot {
 #[yaserde(rename = "Annot")]
 pub struct Annot {
     /// 注释 ID。
-    #[yaserde(attribute = true, rename = "ID")]
+    #[yaserde(attribute = true, rename = "ID", default = "default_st_id")]
     pub id: StId,
     /// 注释类型。
-    #[yaserde(attribute = true, rename = "Type")]
+    #[yaserde(attribute = true, rename = "Type", default = "default_annotation_type")]
     pub annot_type: AnnotationType,
     /// 创建者。
-    #[yaserde(attribute = true, rename = "Creator")]
+    #[yaserde(attribute = true, rename = "Creator", default = "default_string")]
     pub creator: String,
     /// 最后修改日期。
-    #[yaserde(attribute = true, rename = "LastModDate")]
+    #[yaserde(attribute = true, rename = "LastModDate", default = "default_string")]
     pub last_mod_date: String,
     /// 是否可见。
     #[yaserde(attribute = true, rename = "Visible", default = "default_true")]
@@ -59,7 +59,7 @@ pub struct Annot {
     #[yaserde(rename = "Parameters")]
     pub parameters: Option<Parameters>,
     /// 外观。
-    #[yaserde(rename = "Appearance")]
+    #[yaserde(rename = "Appearance", default = "default_appearance")]
     pub appearance: Appearance,
 }
 
@@ -212,4 +212,20 @@ fn default_true() -> bool {
 
 fn default_false() -> bool {
     false
+}
+
+fn default_st_id() -> StId {
+    StId::default()
+}
+
+fn default_annotation_type() -> AnnotationType {
+    AnnotationType::Link
+}
+
+fn default_string() -> String {
+    String::new()
+}
+
+fn default_appearance() -> Appearance {
+    Appearance::default()
 }
