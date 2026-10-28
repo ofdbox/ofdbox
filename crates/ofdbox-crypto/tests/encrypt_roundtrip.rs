@@ -416,3 +416,35 @@ fn preserves_unmodified_encrypted_entries() {
     };
     assert_eq!(text.text_codes[0].text, "after");
 }
+
+#[test]
+fn deletes_encrypted_page_preserving() {
+    let plain = zip_with_entries(&[
+        ("OFD.xml", ROOT.as_bytes()),
+        ("Doc_0/Document.xml", DOCUMENT.as_bytes()),
+        ("Doc_0/Pages/Page_0/Content.xml", PAGE.as_bytes()),
+    ]);
+    let options = EncryptOptions::password("alice", "secret");
+    let encrypted = encrypt_package(&plain, &options).expect("encrypt");
+
+    let output = edit_encrypted_preserving(
+        &encrypted,
+        Box::new(PasswordBackend::new("secret")),
+        |file: &mut OfdFile| {
+            let mut document = file.document(0)?;
+            document.remove_page("1")?;
+            Ok(())
+        },
+    )
+    .expect("delete page");
+
+    let mut reopened = OfdPackage::from_bytes(output).expect("reopen");
+    reopened
+        .enable_decryption(Box::new(PasswordBackend::new("secret")))
+        .expect("decrypt");
+    let document = reopened
+        .parse_document_schema()
+        .expect("document after delete");
+    assert!(document.pages.pages.is_empty());
+    assert!(!reopened.contains("Doc_0/Pages/Page_0/Content.xml"));
+}

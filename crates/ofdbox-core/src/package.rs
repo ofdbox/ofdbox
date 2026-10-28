@@ -265,12 +265,12 @@ impl OfdPackage {
     pub fn contains(&self, name: &str) -> bool {
         let name = name.trim_start_matches('/');
         if let Some(context) = &self.decryption
-            && context
+            && let Some(entry) = context
                 .operations
                 .iter()
-                .any(|operation| operation.entries.contains_key(name))
+                .find_map(|operation| operation.entries.get(name))
         {
-            return true;
+            return self.archive.index_for_name(&entry.physical).is_some();
         }
         self.archive.index_for_name(name).is_some()
             || self.entry_index.contains_key(&entry_key(name))
