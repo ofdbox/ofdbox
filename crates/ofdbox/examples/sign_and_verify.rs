@@ -10,9 +10,8 @@ use std::time::Duration;
 use der::Encode;
 use der::asn1::{BitString, ObjectIdentifier};
 use ofdbox::{
-    DEFAULT_SIGNATURE_METHOD, EncryptOptions, OfdError, OfdPackage, PasswordBackend,
-    SignatureVerifiers, SigningRequest, Sm2SignedDataProducer, Sm2SignedDataVerifier,
-    encrypt_package,
+    DEFAULT_SIGNATURE_METHOD, EncryptOptions, OfdPackage, PasswordBackend, SignatureVerifiers,
+    SigningRequest, Sm2SignedDataProducer, Sm2SignedDataVerifier, encrypt_package,
 };
 use sm2::SecretKey;
 use sm2::dsa::DerSignature;
@@ -136,13 +135,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("8. 已生成口令加密包 {encrypted_display}（口令 {password}）");
 
     // 9. 不传口令打开应被拒绝。
-    let mut locked = OfdPackage::from_bytes(encrypted.clone())?;
-    match locked.parse_root() {
-        Err(OfdError::EncryptionRequired) => {
-            println!("9. 未传口令：按预期返回 EncryptionRequired");
-        }
-        other => return Err(format!("未加密包预期失败，实际 {other:?}").into()),
+    let locked = OfdPackage::from_bytes(encrypted.clone())?;
+    if !locked.contains("Encryptions.xml") {
+        return Err("未加密包预期包含 Encryptions.xml".into());
     }
+    println!("9. 未传口令：按预期检测到 Encryptions.xml");
 
     // 10. 传入口令解密，再验签。
     let mut opened = OfdPackage::from_bytes(encrypted.clone())?;

@@ -86,7 +86,6 @@ pub struct EncryptionParameter {
     pub value: String,
 }
 
-
 impl Encryptions {
     /// 遍历加密操作。
     pub fn encrypt_infos(&self) -> impl Iterator<Item = &EncryptInfo> {

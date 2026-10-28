@@ -131,25 +131,21 @@ fn check_package(path: &Path, stats: &mut Stats) {
             return;
         }
     };
-    match package.parse_root() {
-        Ok(_) => {}
-        Err(OfdError::EncryptionRequired) => {
-            stats.encrypted += 1;
-            return;
-        }
-        // 空 ZIP、只有目录的包等：不是可解析的 OFD，计入“无效”。
-        Err(OfdError::MissingEntry(name)) if name.eq_ignore_ascii_case("OFD.xml") => {
+    if package.contains("Encryptions.xml") {
+        stats.encrypted += 1;
+        return;
+    }
+    if let Err(error) = package.parse_root_schema() {
+        if matches!(&error, OfdError::MissingEntry(name) if name.eq_ignore_ascii_case("OFD.xml")) {
             stats.invalid += 1;
-            return;
-        }
-        Err(error) => {
+        } else {
             stats
                 .structure_failures
                 .push(format!("{}: {error}", path.display()));
-            return;
         }
+        return;
     }
-    if let Err(error) = package.parse_document() {
+    if let Err(error) = package.parse_document_schema() {
         stats
             .structure_failures
             .push(format!("{}: {error}", path.display()));
@@ -160,7 +156,7 @@ fn check_package(path: &Path, stats: &mut Stats) {
     match package.to_bytes() {
         Ok(bytes) => match OfdPackage::from_bytes(bytes) {
             Ok(mut copy) => {
-                if let Err(error) = copy.parse_root() {
+                if let Err(error) = copy.parse_root_schema() {
                     stats
                         .repack_failures
                         .push(format!("{}: 重打包后无法解析: {error}", path.display()));

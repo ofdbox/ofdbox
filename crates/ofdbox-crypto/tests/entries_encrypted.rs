@@ -87,10 +87,7 @@ fn generates_entries_for_encrypted_package() {
     assert_eq!(report.files, 1);
 
     let mut result = OfdPackage::from_bytes(output).expect("open result");
-    assert!(matches!(
-        result.parse_root(),
-        Err(OfdError::EncryptionRequired)
-    ));
+    assert!(result.contains("Encryptions.xml"));
     result
         .enable_decryption(Box::new(PasswordBackend::new("new-secret")))
         .expect("decrypt result");

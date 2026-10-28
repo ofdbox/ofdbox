@@ -63,7 +63,6 @@ pub struct ExtendParameter {
     pub text: String,
 }
 
-
 impl DecryptSeed {
     /// 加密保护方案标识。
     pub fn encrypt_case_id(&self) -> Option<&str> {

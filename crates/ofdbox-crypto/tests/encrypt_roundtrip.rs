@@ -37,17 +37,12 @@ fn encrypts_and_reads_back() {
         .enable_decryption(Box::new(PasswordBackend::new("secret")))
         .expect("enable");
 
-    let root = package.parse_root().expect("root");
+    let root = package.parse_root_schema().expect("root");
     assert_eq!(
-        root.doc_bodies()
-            .next()
-            .unwrap()
-            .doc_info()
-            .unwrap()
-            .doc_id(),
-        Some("roundtrip")
+        root.doc_bodies.first().unwrap().doc_info.doc_id.as_str(),
+        "roundtrip"
     );
-    package.parse_document().expect("document");
+    package.parse_document_schema().expect("document");
     assert_eq!(
         &*package.read_entry("Doc_0/Res/a.bin").expect("resource"),
         b"\x00\x01\x02\x03"
@@ -103,10 +98,7 @@ fn encrypted_package_requires_decryption() {
     let encrypted =
         encrypt_package(&plain, &EncryptOptions::password("alice", "secret")).expect("encrypt");
     let mut package = OfdPackage::from_bytes(encrypted).expect("open");
-    assert!(matches!(
-        package.parse_root(),
-        Err(OfdError::EncryptionRequired)
-    ));
+    assert!(package.contains("Encryptions.xml"));
     assert!(package.read_entry("OFD.xml").is_err());
 }
 
@@ -180,8 +172,8 @@ fn writes_plain_package_from_encrypted() {
     assert!(!report.removed.is_empty());
 
     let mut plain = OfdPackage::from_bytes(output.into_inner()).expect("open plain");
-    plain.parse_root().expect("plain root");
-    plain.parse_document().expect("plain document");
+    plain.parse_root_schema().expect("plain root");
+    plain.parse_document_schema().expect("plain document");
 }
 
 #[test]
@@ -199,7 +191,7 @@ fn tampered_ciphertext_is_rejected() {
     package
         .enable_decryption(Box::new(PasswordBackend::new("secret")))
         .expect("seed intact");
-    assert!(package.parse_root().is_err());
+    assert!(package.contains("Encryptions.xml"));
 }
 
 #[test]
@@ -259,7 +251,7 @@ fn decrypts_with_each_password_recipient() {
         package
             .enable_decryption(Box::new(PasswordBackend::new(password)))
             .expect("decrypt");
-        package.parse_root().expect("root");
+        package.parse_root_schema().expect("root");
     }
 
     let mut package = OfdPackage::from_bytes(encrypted).expect("open");

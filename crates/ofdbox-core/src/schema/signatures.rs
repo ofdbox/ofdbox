@@ -50,7 +50,6 @@ fn default_signature_type() -> SignatureType {
     SignatureType::Seal
 }
 
-
 impl Signatures {
     /// 最大签名 ID。
     pub fn max_sign_id(&self) -> Option<&str> {

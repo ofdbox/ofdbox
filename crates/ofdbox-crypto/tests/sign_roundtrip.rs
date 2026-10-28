@@ -159,10 +159,10 @@ fn signs_and_verifies_package() {
     assert_eq!(id, "s001");
 
     let mut document = OfdPackage::from_bytes(signed).expect("open signed");
-    let root = document.parse_root().expect("root");
-    let body = root.doc_bodies().next().expect("doc body");
+    let root = document.parse_root_schema().expect("root");
+    let body = root.doc_bodies.first().expect("doc body");
     assert_eq!(
-        body.signatures(),
+        body.signatures.as_ref().map(|loc| loc.as_str()),
         Some("Doc_0/Signs/Signatures.xml"),
         "OFD.xml 应补上 Signatures 链接"
     );
@@ -259,8 +259,8 @@ fn strict_reparse_accepts_generated_structure() {
         ofdbox_core::CacheOptions::default(),
     )
     .expect("strict open");
-    strict.parse_root().expect("strict root");
-    strict.parse_document().expect("strict document");
+    strict.parse_root_schema().expect("strict root");
+    strict.parse_document_schema().expect("strict document");
     strict.parse_signatures().expect("strict signatures");
     strict
         .parse_signature("Sign_0/Signature.xml")

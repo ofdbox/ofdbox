@@ -12,21 +12,21 @@ use crate::model::attachment::Attachments;
 use crate::model::custom_tags::CustomTags;
 use crate::model::document::{Document, PageEntry};
 use crate::model::extensions::Extensions;
-use crate::schema::doc_entries::DocEntries;
-use crate::schema::decrypt_seed::DecryptSeed;
-use crate::schema::encryption::Encryptions;
-use crate::schema::entries_map::EncryptedEntries;
 use crate::model::ofd::OfdRoot;
 use crate::model::page::Page;
 use crate::model::res::Res;
-use crate::schema::signature::Signature;
-use crate::schema::signatures::Signatures;
 use crate::model::version::Version;
 use crate::options::{CacheOptions, ReadOptions};
 use crate::package_write::{
     DecryptedWriteReport, ExistingEntry, PackageEdits, PackageWriteOptions, PlanItem, copy_raw,
     write_plain_entry,
 };
+use crate::schema::decrypt_seed::DecryptSeed;
+use crate::schema::doc_entries::DocEntries;
+use crate::schema::encryption::Encryptions;
+use crate::schema::entries_map::EncryptedEntries;
+use crate::schema::signature::Signature;
+use crate::schema::signatures::Signatures;
 use crate::sign::ReferenceDigest;
 use crate::sign::{
     DEFAULT_SIGNATURE_METHOD, ProtectScope, SignedValueProducer, SigningContext, SigningReport,
@@ -540,6 +540,29 @@ impl OfdPackage {
         self.xml_cache
             .insert(key, Arc::clone(&doc), doc.estimated_size());
         OfdRoot::from_document(doc, self.options)
+    }
+
+    /// 以 schema 解析 `OFD.xml`。
+    pub fn parse_root_schema(&mut self) -> Result<crate::schema::ofd::Ofd, OfdError> {
+        let entry = self.root_entry_name()?;
+        let bytes = self.read_entry(&entry)?;
+        crate::schema_xml::from_bytes(&bytes)
+            .map_err(|error| OfdError::InvalidStructure(error.to_string()))
+    }
+
+    /// 以 schema 解析 `Document.xml`。
+    pub fn parse_document_schema(&mut self) -> Result<crate::schema::document::Document, OfdError> {
+        let root = self.parse_root_schema()?;
+        let doc_root = root
+            .doc_bodies
+            .first()
+            .map(|body| body.doc_root.as_str())
+            .ok_or_else(|| OfdError::InvalidStructure("OFD.xml 缺少 DocBody".to_owned()))?;
+        let entry = resolve_loc("", doc_root)?;
+        self.document_entry = Some(entry.clone());
+        let bytes = self.read_entry(&entry)?;
+        crate::schema_xml::from_bytes(&bytes)
+            .map_err(|error| OfdError::InvalidStructure(error.to_string()))
     }
 
     /// 读取并解析 `OFD.xml` 中 `DocRoot` 指向的 `Document.xml`。
@@ -1911,8 +1934,7 @@ impl OfdPackage {
                     let Ok(bytes) = self.read_entry(&entry) else {
                         continue;
                     };
-                    let Ok(signature): Result<Signature, _> =
-                        crate::schema_xml::from_bytes(&bytes)
+                    let Ok(signature): Result<Signature, _> = crate::schema_xml::from_bytes(&bytes)
                     else {
                         continue;
                     };

@@ -118,8 +118,10 @@ fn repack_keeps_ciphertext_and_decryptability() {
     reopened
         .enable_decryption(Box::new(PasswordBackend::new("pw")))
         .expect("enable decryption");
-    reopened.parse_root().expect("decrypted root");
-    reopened.parse_document().expect("decrypted document");
+    reopened.parse_root_schema().expect("decrypted root");
+    reopened
+        .parse_document_schema()
+        .expect("decrypted document");
 }
 
 #[test]
@@ -145,8 +147,10 @@ fn decrypted_save_produces_plain_package() {
 
     let mut plain = OfdPackage::from_bytes(output).expect("open plain");
     assert!(!plain.decryption_enabled());
-    plain.parse_root().expect("root without decryption");
-    plain.parse_document().expect("document without decryption");
+    plain.parse_root_schema().expect("root without decryption");
+    plain
+        .parse_document_schema()
+        .expect("document without decryption");
 
     let names = plain.entry_names().expect("entry names");
     assert!(names.iter().any(|name| name == "OFD.xml"));

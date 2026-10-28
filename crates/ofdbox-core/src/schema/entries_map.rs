@@ -29,7 +29,6 @@ pub struct EncryptEntry {
     pub decrypt_seed_loc: Option<StLoc>,
 }
 
-
 impl EncryptedEntries {
     /// 明密文条目。
     pub fn entries(&self) -> impl Iterator<Item = &EncryptEntry> {

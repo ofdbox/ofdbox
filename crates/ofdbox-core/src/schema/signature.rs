@@ -143,7 +143,6 @@ fn default_st_loc() -> StLoc {
     StLoc::default()
 }
 
-
 impl Signature {
     /// 签名信息。
     pub fn signed_info(&self) -> Option<&SignedInfo> {
@@ -242,7 +241,6 @@ impl Reference {
         &self.check_value
     }
 }
-
 
 impl Seal {
     /// 印章基准路径。
