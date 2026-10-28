@@ -155,6 +155,10 @@ where
         if edited_names.contains(name) {
             continue;
         }
+        entries_map
+            .entries
+            .retain(|entry| entry.path != *name && entry.epath != original.physical);
+        map_changed = true;
         if original.physical != *name {
             edits.remove(&original.physical);
         } else {
