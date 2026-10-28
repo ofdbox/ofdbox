@@ -33,7 +33,7 @@ use crate::sign::{
     DEFAULT_SIGNATURE_METHOD, ProtectScope, SignedValueProducer, SigningContext, SigningReport,
     SigningRequest,
 };
-use crate::write::ofd::{write_start, write_text_element};
+use crate::sign::{write_start, write_text_element};
 use crate::xml::parser::parse_xml;
 use crate::xml::tree::XmlDocument;
 
