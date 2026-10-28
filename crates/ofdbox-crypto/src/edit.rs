@@ -60,7 +60,7 @@ struct OriginalEntry {
 
 /// 解密编辑后重新加密，但保留未修改 entry 的原始加密字节。
 ///
-/// 要求加密包只有一层加密操作；新增 entry 暂不支持。
+/// 支持单层/多层 EncryptInfo、已有 entry 修改/删除和新增 entry。
 pub fn edit_encrypted_preserving<F>(
     input: &[u8],
     backend: Box<dyn CryptoBackend>,
@@ -120,14 +120,14 @@ where
     }
 
     let mut edits = PackageEdits::new();
-    let map_locs = package.ordered_entries_map_locs();
+    let map_locs = package.ordered_entries_maps();
     let mut maps = Vec::new();
-    for (index, loc) in map_locs.iter().enumerate() {
+    for (index, loc) in &map_locs {
         let encrypted = package.entries_map_is_encrypted(loc)?;
         let entry = package.resolve_entry("", loc)?;
-        let model = package.parse_entries_map_decrypted_at(index, loc)?;
+        let model = package.parse_entries_map_decrypted_at(*index, loc)?;
         maps.push(MapState {
-            index,
+            index: *index,
             entry,
             encrypted,
             model,

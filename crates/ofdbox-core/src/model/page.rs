@@ -1430,7 +1430,7 @@ impl YaSerialize for GouraudShd {
             point.serialize(writer)?;
         }
         if let Some(color) = &self.back_color {
-            write_color(writer, color)?;
+            write_color_named(writer, "BackColor", color)?;
         }
         writer
             .write(yaserde::__xml::writer::XmlEvent::end_element())
@@ -1495,7 +1495,7 @@ impl YaSerialize for LaGouraudShd {
             point.serialize(writer)?;
         }
         if let Some(color) = &self.back_color {
-            write_color(writer, color)?;
+            write_color_named(writer, "BackColor", color)?;
         }
         writer
             .write(yaserde::__xml::writer::XmlEvent::end_element())
@@ -1516,11 +1516,19 @@ impl YaSerialize for LaGouraudShd {
 }
 
 fn write_color<W: Write>(writer: &mut Serializer<W>, color: &Color) -> yaserde::Result<()> {
+    write_color_named(writer, "Color", color)
+}
+
+fn write_color_named<W: Write>(
+    writer: &mut Serializer<W>,
+    name: &str,
+    color: &Color,
+) -> yaserde::Result<()> {
     let value = color.value.as_ref().map(ToString::to_string);
     let index = color.index.map(|value| value.to_string());
     let color_space = color.color_space.map(|value| value.to_string());
     let alpha = (color.alpha != 255).then(|| color.alpha.to_string());
-    let mut event = yaserde::__xml::writer::XmlEvent::start_element("Color");
+    let mut event = yaserde::__xml::writer::XmlEvent::start_element(name);
     if let Some(value) = &value {
         event = event.attr("Value", value.as_str());
     }

@@ -551,6 +551,27 @@ impl OfdPackage {
             .collect())
     }
 
+    /// 按解密顺序返回操作索引与 EntriesMap 路径。
+    pub fn ordered_entries_maps(&self) -> Vec<(usize, String)> {
+        self.decryption
+            .as_ref()
+            .map(|context| {
+                context
+                    .operations
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(index, operation)| {
+                        operation
+                            .info
+                            .entries_map_loc
+                            .as_ref()
+                            .map(|loc| (index, loc.as_str().to_owned()))
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
     /// 按解密顺序返回所有 EntriesMap 路径。
     pub fn ordered_entries_map_locs(&self) -> Vec<String> {
         self.decryption

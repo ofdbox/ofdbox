@@ -264,3 +264,19 @@ fn page_with_clip_and_composite() {
     let reparsed: model::page::Page = model_xml::from_bytes(&written).expect("reparse");
     assert_eq!(parsed, reparsed);
 }
+
+#[test]
+fn gouraud_gradient_back_color() {
+    let xml = r#"<Page><Content><Layer ID="1"><PathObject ID="2" Boundary="0 0 100 100" Fill="true">
+      <FillColor><GouraudShd>
+        <BackColor Value="255 255 255"/>
+        <Point X="0" Y="0"><Color Value="255 0 0"/></Point>
+        <Point X="100" Y="0"><Color Value="0 0 255"/></Point>
+      </GouraudShd></FillColor>
+      <AbbreviatedData>M 0 0 L 100 0</AbbreviatedData>
+    </PathObject></Layer></Content></Page>"#;
+    let parsed: model::page::Page = model_xml::from_bytes(xml.as_bytes()).expect("parse");
+    let written = model_xml::to_bytes(&parsed).expect("serialize");
+    let reparsed: model::page::Page = model_xml::from_bytes(&written).expect("reparse");
+    assert_eq!(parsed, reparsed);
+}
