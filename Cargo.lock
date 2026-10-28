@@ -485,7 +485,8 @@ dependencies = [
 [[package]]
 name = "ofdbox-yaserde"
 version = "0.13.1"
-source = "git+https://github.com/ofdbox/yaserde.git?rev=2bd1f5d#2bd1f5d8c45c72683436b6605f277858a90ab160"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "296d71b3643b02b96c1bf7b1d53e20c61cbb8a6a243a1e735a3e04aa7715ee35"
 dependencies = [
  "log",
  "ofdbox-yaserde-derive",
@@ -495,7 +496,8 @@ dependencies = [
 [[package]]
 name = "ofdbox-yaserde-derive"
 version = "0.13.1"
-source = "git+https://github.com/ofdbox/yaserde.git?rev=2bd1f5d#2bd1f5d8c45c72683436b6605f277858a90ab160"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6820652115d341e3726813af38dd9dd7c73b0fbc77b8b2c6a8e85069b246b792"
 dependencies = [
  "heck",
  "log",
