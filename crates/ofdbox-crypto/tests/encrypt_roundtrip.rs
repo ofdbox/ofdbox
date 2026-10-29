@@ -60,6 +60,38 @@ fn encrypts_and_reads_back() {
 }
 
 #[test]
+fn ofd_file_detects_and_decrypts_entries() {
+    let plain = zip_with_entries(&[
+        ("OFD.xml", ROOT.as_bytes()),
+        ("Doc_0/Document.xml", DOCUMENT.as_bytes()),
+        ("Doc_0/Res/a.bin", b"\x00\x01\x02\x03"),
+    ]);
+    let encrypted =
+        encrypt_package(&plain, &EncryptOptions::password("alice", "secret")).expect("encrypt");
+
+    let file = OfdFile::open_bytes(encrypted).expect("open encrypted");
+    assert!(file.is_encrypted().expect("detect encryption"));
+
+    file.enable_decryption(Box::new(PasswordBackend::new("secret")))
+        .expect("enable decryption");
+
+    let root = file.read_entry("OFD.xml").expect("read decrypted root");
+    assert!(String::from_utf8_lossy(&root).contains("<ofd:DocID>roundtrip</ofd:DocID>"));
+    file.document(0).expect("load decrypted document");
+
+    let names = file.entry_names().expect("entry names");
+    assert!(names.iter().any(|name| name == "Encryptions.xml"));
+}
+
+#[test]
+fn ofd_file_reports_plain_package() {
+    let plain = zip_with_entries(&[("OFD.xml", ROOT.as_bytes())]);
+    let file = OfdFile::open_bytes(plain).expect("open plain");
+    assert!(!file.is_encrypted().expect("detect encryption"));
+    assert!(file.read_entry("OFD.xml").is_ok());
+}
+
+#[test]
 fn wrong_password_fails() {
     let plain = zip_with_entries(&[
         ("OFD.xml", ROOT.as_bytes()),

@@ -4,6 +4,7 @@ use std::io::{Cursor, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
+use crate::crypto::CryptoBackend;
 use crate::error::OfdError;
 use crate::package::{OfdPackage, normalize_entry_name};
 use crate::store::storage::Storage;
@@ -85,6 +86,37 @@ impl PackageStore {
             store.write_entry(&name, bytes)?;
         }
         Ok(store)
+    }
+
+    /// 是否包含加密声明。
+    pub(crate) fn is_encrypted(&self) -> Result<bool, OfdError> {
+        match &self.backend {
+            Backend::ZipReadOnly(package) => {
+                let package = package
+                    .lock()
+                    .map_err(|_| OfdError::InvalidStructure("ZIP 锁已损坏".to_owned()))?;
+                Ok(package.contains("Encryptions.xml"))
+            }
+            _ => Ok(self.exists("Encryptions.xml")),
+        }
+    }
+
+    /// 启用 ZIP 后端的按需解密。
+    pub(crate) fn enable_decryption(
+        &self,
+        backend: Box<dyn CryptoBackend>,
+    ) -> Result<(), OfdError> {
+        match &self.backend {
+            Backend::ZipReadOnly(package) => {
+                let mut package = package
+                    .lock()
+                    .map_err(|_| OfdError::InvalidStructure("ZIP 锁已损坏".to_owned()))?;
+                package.enable_decryption(backend)
+            }
+            _ => Err(OfdError::InvalidStructure(
+                "当前存储后端不支持解密".to_owned(),
+            )),
+        }
     }
 
     /// 读取 entry。

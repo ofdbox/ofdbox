@@ -1,5 +1,6 @@
 use std::rc::Rc;
 
+use crate::crypto::CryptoBackend;
 use crate::error::OfdError;
 use crate::model::definition::{StId, StLoc};
 use crate::model::document::{CommonData, Document, Pages};
@@ -110,6 +111,26 @@ impl OfdFile {
         let store = Rc::new(store);
         let root = ObjectContext::root(Rc::clone(&store));
         Ok(Self { store, root })
+    }
+
+    /// 当前文件是否包含加密声明。
+    pub fn is_encrypted(&self) -> Result<bool, OfdError> {
+        self.store.is_encrypted()
+    }
+
+    /// 启用解密。之后 [`Self::read_entry`] 和严格模型读取都会返回明文。
+    pub fn enable_decryption(&self, backend: Box<dyn CryptoBackend>) -> Result<(), OfdError> {
+        self.store.enable_decryption(backend)
+    }
+
+    /// 读取 entry 原始字节；启用解密后返回明文。
+    pub fn read_entry(&self, entry: &str) -> Result<Vec<u8>, OfdError> {
+        self.store.read_entry(entry)
+    }
+
+    /// 列出容器内全部 entry，包括加密元数据。
+    pub fn entry_names(&self) -> Result<Vec<String>, OfdError> {
+        self.store.entry_names()
     }
 
     /// 加载 OFD.xml。
