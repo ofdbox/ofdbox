@@ -574,10 +574,16 @@ impl OfdPackage {
     }
 
     /// 判断 EntriesMap 文件本身是否加密。
+    ///
+    /// 按 `EntriesMapLoc` 的扩展名区分：`EntriesMap.xml` 为明文，
+    /// `entriesmap.dat` 为密文。未知扩展名按实际 XML 结构兜底判断。
     pub fn entries_map_is_encrypted(&mut self, loc: &str) -> Result<bool, OfdError> {
         let entry = resolve_loc("", loc)?;
         let raw = self.read_raw_entry(&entry)?;
-        Ok(!looks_like_xml(&raw))
+        if let Some(encrypted) = entries_map_encrypted_by_extension(loc) {
+            return Ok(encrypted);
+        }
+        Ok(crate::model_xml::from_bytes::<EncryptedEntries>(&raw).is_err())
     }
 
     /// 使用指定加密层的默认密钥加密 EntriesMap。
@@ -790,9 +796,9 @@ impl OfdPackage {
     ) -> Result<EncryptedEntries, OfdError> {
         let entry = resolve_loc("", loc)?;
         let raw = self.read_raw_entry(&entry)?;
-        let bytes = if looks_like_xml(&raw) {
-            raw.to_vec()
-        } else {
+        let encrypted = entries_map_encrypted_by_extension(loc)
+            .unwrap_or_else(|| crate::model_xml::from_bytes::<EncryptedEntries>(&raw).is_err());
+        let bytes = if encrypted {
             let key = self
                 .default_encryption_key_at(index)
                 .ok_or(OfdError::EncryptionRequired)?;
@@ -801,6 +807,8 @@ impl OfdPackage {
                 .as_ref()
                 .ok_or(OfdError::EncryptionRequired)?;
             context.backend.decrypt(&key, &raw)?
+        } else {
+            raw.to_vec()
         };
         crate::model_xml::from_bytes(&bytes)
             .map_err(|error| OfdError::InvalidStructure(error.to_string()))
@@ -856,12 +864,15 @@ impl OfdPackage {
 
             let map_entry = normalize_entry_name(&resolve_loc("", map_loc)?)?;
             let map_raw = self.read_raw_entry(&map_entry)?;
-            let map_bytes = if looks_like_xml(&map_raw) {
-                map_raw.to_vec()
-            } else {
+            let map_encrypted = entries_map_encrypted_by_extension(map_loc).unwrap_or_else(|| {
+                crate::model_xml::from_bytes::<EncryptedEntries>(&map_raw).is_err()
+            });
+            let map_bytes = if map_encrypted {
                 backend
                     .decrypt(&file_key, &map_raw)
                     .map_err(|_| OfdError::Crypto("明密文映射表解密失败".to_owned()))?
+            } else {
+                map_raw.to_vec()
             };
             let map: EncryptedEntries = crate::model_xml::from_bytes(&map_bytes)
                 .map_err(|error| OfdError::InvalidStructure(error.to_string()))?;
@@ -1802,12 +1813,13 @@ pub(crate) fn parent_dir(path: &str) -> Option<&str> {
     Some(path.rfind('/').map(|index| &path[..index]).unwrap_or(""))
 }
 
-fn looks_like_xml(bytes: &[u8]) -> bool {
-    let bytes = bytes.strip_prefix(b"\xEF\xBB\xBF").unwrap_or(bytes);
-    bytes
-        .iter()
-        .find(|byte| !byte.is_ascii_whitespace())
-        .is_some_and(|byte| *byte == b'<')
+fn entries_map_encrypted_by_extension(loc: &str) -> Option<bool> {
+    let extension = loc.rsplit_once('.')?.1.to_ascii_lowercase();
+    match extension.as_str() {
+        "xml" => Some(false),
+        "dat" => Some(true),
+        _ => None,
+    }
 }
 
 pub(crate) fn entry_key(name: &str) -> String {
@@ -1944,5 +1956,52 @@ mod tests {
     #[test]
     fn probe_rejects_non_zip() {
         assert!(OfdPackage::probe(b"not a zip").is_err());
+    }
+
+    #[test]
+    fn entries_map_encryption_uses_loc_extension() {
+        use super::entries_map_encrypted_by_extension;
+
+        assert_eq!(
+            entries_map_encrypted_by_extension("/EntriesMap.xml"),
+            Some(false)
+        );
+        assert_eq!(
+            entries_map_encrypted_by_extension("/entriesmap.dat"),
+            Some(true)
+        );
+        assert_eq!(
+            entries_map_encrypted_by_extension("/entriesmap.DAT"),
+            Some(true)
+        );
+        assert_eq!(entries_map_encrypted_by_extension("/entriesmap"), None);
+    }
+
+    #[test]
+    fn entries_map_extension_wins_over_content_prefix() {
+        let mut writer = zip::ZipWriter::new(Cursor::new(Vec::new()));
+        writer
+            .start_file("entriesmap.dat", SimpleFileOptions::default())
+            .expect("start dat");
+        writer
+            .write_all(b"<xml-looking-ciphertext")
+            .expect("write dat");
+        writer
+            .start_file("EntriesMap.xml", SimpleFileOptions::default())
+            .expect("start xml");
+        writer.write_all(b"not xml").expect("write xml");
+        let bytes = writer.finish().expect("finish zip").into_inner();
+        let mut package = OfdPackage::from_bytes(bytes).expect("open package");
+
+        assert!(
+            package
+                .entries_map_is_encrypted("/entriesmap.dat")
+                .expect("dat flag")
+        );
+        assert!(
+            !package
+                .entries_map_is_encrypted("/EntriesMap.xml")
+                .expect("xml flag")
+        );
     }
 }
