@@ -2,6 +2,14 @@
 
 ## 0.0.2 - 2026-10-29
 
+### 结构严格化与 API 变更
+
+- 按 XSD 严格化默认值与必填字段：图元透明度恢复为 255，`TabDisplay` 默认 `DocTitle`，`Print/@Printable`、`PageArea/PhysicalBox`、资源 ID、`Layer`/`PageBlock`/`Pattern` 等按 schema 要求校验；`DocUsage`、`ZoomMode`、`OutlineElem/@Count`、`Sound` 属性及 `Dest/@Left`/`@Top` 保持可选。
+- 拆分 `GraphicUnit` 与页面对象 ID：`GraphicUnit` 只承载 `CT_GraphicUnit` 公共属性；`TextObject`/`PathObject`/`ImageObject`/`CompositeObject` 的 ID 移到对象扩展；新增无 ID 的 `ClipPath`/`ClipText`，裁剪对象不再写出非法 `ID`。
+- 新增 `OfdFile::is_encrypted`、`enable_decryption`、`read_entry`、`entry_names`，支持 ZIP 后端按需解密读取 entry。
+- `EntriesMapLoc` 按扩展名区分明密文映射表（`EntriesMap.xml` 明文、`entriesmap.dat` 密文），不再用密文首字节判断 XML。
+- CI 移除 macOS 测试任务，main 仅跑 Linux 与 Windows。
+
 ### 新增
 
 - 新增独立 crate `ofdbox-algo`：国密算法原语与 OID 注册表，不依赖其他 `ofdbox-*` crate。提供 SM3、SM2-1 签名/验签、SM2+SM3 复合签名、SM4-CBC、SM3-KDF，以及按角色（digest / signature / suite / cipher / kdf）注册的 `AlgorithmRegistry`；`ofdbox-crypto` 的 `sign_sm3` 改为复用。后续增加：`x509` feature（SPKI/证书 → 公钥，`id-ecPublicKey` 归一化为 SM2）、SM2-3 加解密、`AlgorithmRegistry::sign_suite`、SM4-ECB/CTR、HMAC-SM3，及 `Mac` 角色注册；`ofdbox-crypto` 的证书公钥提取改为复用。

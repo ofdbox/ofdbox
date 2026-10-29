@@ -5,6 +5,9 @@ edition = "2024"
 rust-version = "1.88"
 license = "MIT OR Apache-2.0"
 description = "国产密码算法与 OID 注册表"
+repository = "https://github.com/ofdbox/ofdbox"
+homepage = "https://github.com/ofdbox/ofdbox"
+readme = "../../README.md"
 keywords = ["gm", "sm2", "sm3", "sm4", "oid"]
 categories = ["cryptography"]
 
