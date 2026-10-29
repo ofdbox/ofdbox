@@ -21,8 +21,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # PR 只跑 Linux；main 才跑三平台
-        os: ${{ github.ref == 'refs/heads/main' && fromJSON('["ubuntu-latest", "windows-latest", "macos-latest"]') || fromJSON('["ubuntu-latest"]') }}
+        # PR 只跑 Linux；main 跑 Linux 和 Windows
+        os: ${{ github.ref == 'refs/heads/main' && fromJSON('["ubuntu-latest", "windows-latest"]') || fromJSON('["ubuntu-latest"]') }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
