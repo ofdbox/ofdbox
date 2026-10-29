@@ -32,16 +32,16 @@ pub struct Signature {
 #[yaserde(rename = "SignedInfo")]
 pub struct SignedInfo {
     /// 签名提供者。
-    #[yaserde(rename = "Provider", default = "default_provider")]
+    #[yaserde(rename = "Provider")]
     pub provider: Provider,
     /// 签名算法。
     #[yaserde(rename = "SignatureMethod")]
-    pub signature_method: Option<String>,
+    pub signature_method: String,
     /// 签名时间。
     #[yaserde(rename = "SignatureDateTime")]
     pub signature_date_time: Option<String>,
     /// 引用。
-    #[yaserde(rename = "References", default = "default_references")]
+    #[yaserde(rename = "References")]
     pub references: References,
     /// 签章注释。
     #[yaserde(rename = "StampAnnot")]
@@ -58,7 +58,7 @@ pub struct SignedInfo {
 #[yaserde(rename = "Provider")]
 pub struct Provider {
     /// 提供者名称。
-    #[yaserde(attribute = true, rename = "ProviderName", default = "default_string")]
+    #[yaserde(attribute = true, rename = "ProviderName")]
     pub provider_name: String,
     /// 版本。
     #[yaserde(attribute = true, rename = "Version")]
@@ -84,12 +84,8 @@ pub struct References {
     #[yaserde(rename = "Reference")]
     pub references: Vec<Reference>,
     /// 校验方法。
-    #[yaserde(
-        attribute = true,
-        rename = "CheckMethod",
-        default = "default_check_method"
-    )]
-    pub check_method: CheckMethod,
+    #[yaserde(attribute = true, rename = "CheckMethod")]
+    pub check_method: Option<CheckMethod>,
 }
 
 /// 校验方法。
@@ -154,14 +150,6 @@ pub struct Seal {
     pub base_loc: StLoc,
 }
 
-fn default_check_method() -> CheckMethod {
-    CheckMethod::Md5
-}
-
-fn default_string() -> String {
-    String::new()
-}
-
 fn default_st_loc() -> StLoc {
     StLoc::default()
 }
@@ -186,7 +174,7 @@ impl SignedInfo {
 
     /// 签名方法。
     pub fn signature_method(&self) -> Option<&str> {
-        self.signature_method.as_deref()
+        Some(self.signature_method.as_str())
     }
 
     /// 印章信息。
@@ -245,7 +233,7 @@ impl References {
 
     /// 校验方法。
     pub fn check_method(&self) -> Option<&str> {
-        Some(match &self.check_method {
+        self.check_method.as_ref().map(|method| match method {
             CheckMethod::Md5 => "MD5",
             CheckMethod::Sha1 => "SHA1",
             CheckMethod::Other(value) => value,
@@ -270,12 +258,4 @@ impl Seal {
     pub fn base_loc(&self) -> Option<&str> {
         Some(self.base_loc.as_str())
     }
-}
-
-fn default_provider() -> Provider {
-    Provider::default()
-}
-
-fn default_references() -> References {
-    References::default()
 }

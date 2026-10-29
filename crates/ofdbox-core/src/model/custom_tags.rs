@@ -33,7 +33,7 @@ pub struct CustomTag {
     pub namespace: Option<String>,
     /// 标引类型 ID。
     #[yaserde(attribute = true, rename = "TypeID")]
-    pub type_id: Option<String>,
+    pub type_id: String,
     /// 约束文件路径。
     #[yaserde(rename = "SchemaLoc")]
     pub schema_loc: Option<StLoc>,

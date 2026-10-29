@@ -252,7 +252,7 @@ fn page_with_clip_and_composite() {
         <AbbreviatedData>M 0 0 L 100 100</AbbreviatedData>
         <Clips>
           <Clip>
-            <Area><Path><AbbreviatedData>M 0 0 L 50 50</AbbreviatedData><PathObject/></Path></Area>
+            <Area><Path ID="4" Boundary="0 0 50 50"><AbbreviatedData>M 0 0 L 50 50</AbbreviatedData></Path></Area>
           </Clip>
         </Clips>
       </PathObject>

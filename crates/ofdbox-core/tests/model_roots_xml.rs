@@ -51,7 +51,7 @@ fn attachments_roundtrip() {
 #[test]
 fn custom_tags_roundtrip() {
     roundtrip::<CustomTags>(
-        r#"<CustomTags xmlns="http://www.ofdspec.org/2016"><CustomTag NameSpace="urn:demo"><SchemaLoc>Tags/demo.xsd</SchemaLoc><FileLoc>Tags/demo.xml</FileLoc></CustomTag></CustomTags>"#,
+        r#"<CustomTags xmlns="http://www.ofdspec.org/2016"><CustomTag TypeID="demo" NameSpace="urn:demo"><SchemaLoc>Tags/demo.xsd</SchemaLoc><FileLoc>Tags/demo.xml</FileLoc></CustomTag></CustomTags>"#,
     );
 }
 
@@ -65,7 +65,7 @@ fn extensions_roundtrip() {
 #[test]
 fn signature_roundtrip() {
     roundtrip::<Signature>(
-        r#"<Signature xmlns="http://www.ofdspec.org/2016"><SignedInfo><Provider ProviderName="demo"/><References CheckMethod="MD5"><Reference FileRef="Doc_0/Document.xml"><CheckValue>YWJj</CheckValue></Reference></References><StampAnnot ID="s1" PageRef="1" Boundary="0 0 10 10"/></SignedInfo><SignedValue>Signs/Sign_0/SignedValue.dat</SignedValue></Signature>"#,
+        r#"<Signature xmlns="http://www.ofdspec.org/2016"><SignedInfo><Provider ProviderName="demo"/><SignatureMethod>1.2.156.10197.1.501</SignatureMethod><References CheckMethod="MD5"><Reference FileRef="Doc_0/Document.xml"><CheckValue>YWJj</CheckValue></Reference></References><StampAnnot ID="s1" PageRef="1" Boundary="0 0 10 10"/></SignedInfo><SignedValue>Signs/Sign_0/SignedValue.dat</SignedValue></Signature>"#,
     );
 }
 

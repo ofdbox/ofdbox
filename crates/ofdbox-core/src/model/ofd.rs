@@ -122,8 +122,8 @@ pub struct DocInfo {
     #[yaserde(rename = "ModDate")]
     pub mod_date: Option<String>,
     /// 文档用途。
-    #[yaserde(rename = "DocUsage")]
-    pub doc_usage: Option<String>,
+    #[yaserde(rename = "DocUsage", default = "default_doc_usage")]
+    pub doc_usage: String,
     /// 封面路径。
     #[yaserde(rename = "Cover")]
     pub cover: Option<StLoc>,
@@ -201,11 +201,19 @@ pub struct VersionRef {
     #[yaserde(attribute = true, rename = "Index")]
     pub index: i32,
     /// 是否当前版本。
-    #[yaserde(attribute = true, rename = "Current")]
+    #[yaserde(attribute = true, rename = "Current", default = "default_false")]
     pub current: bool,
     /// 版本描述文件路径。
     #[yaserde(attribute = true, rename = "BaseLoc")]
     pub base_loc: StLoc,
+}
+
+fn default_doc_usage() -> String {
+    "Normal".to_owned()
+}
+
+fn default_false() -> bool {
+    false
 }
 
 fn default_doc_type() -> String {

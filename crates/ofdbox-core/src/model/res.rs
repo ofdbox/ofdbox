@@ -175,7 +175,7 @@ pub struct Font {
     #[yaserde(attribute = true, rename = "ID", default = "default_st_id")]
     pub id: StId,
     /// 字体名。
-    #[yaserde(attribute = true, rename = "FontName", default = "default_string")]
+    #[yaserde(attribute = true, rename = "FontName")]
     pub font_name: String,
     /// 字体族名。
     #[yaserde(attribute = true, rename = "FamilyName")]
@@ -250,10 +250,10 @@ pub struct MultiMedias {
 #[yaserde(rename = "MultiMedia")]
 pub struct MultiMedia {
     /// 资源 ID。
-    #[yaserde(attribute = true, rename = "ID", default = "default_st_id")]
+    #[yaserde(attribute = true, rename = "ID")]
     pub id: StId,
     /// 资源类型。
-    #[yaserde(attribute = true, rename = "Type", default = "default_media_type")]
+    #[yaserde(attribute = true, rename = "Type")]
     pub media_type: MultiMediaType,
     /// 格式。
     #[yaserde(attribute = true, rename = "Format")]
@@ -340,10 +340,6 @@ fn default_bits() -> i32 {
     8
 }
 
-fn default_media_type() -> MultiMediaType {
-    MultiMediaType::Image
-}
-
 fn default_line_width() -> f64 {
     0.353
 }
@@ -370,10 +366,6 @@ fn default_st_loc() -> StLoc {
 
 fn default_color_space_type() -> ColorSpaceType {
     ColorSpaceType::Rgb
-}
-
-fn default_string() -> String {
-    String::new()
 }
 
 impl Default for Res {

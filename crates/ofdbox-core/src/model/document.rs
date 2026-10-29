@@ -58,7 +58,7 @@ pub struct CommonData {
     #[yaserde(rename = "MaxUnitID")]
     pub max_unit_id: StId,
     /// 默认页面区域。
-    #[yaserde(rename = "PageArea", default = "default_page_area")]
+    #[yaserde(rename = "PageArea")]
     pub page_area: PageArea,
     /// 公共资源路径。
     #[yaserde(rename = "PublicRes")]
@@ -155,8 +155,8 @@ pub struct OutlineElem {
     #[yaserde(attribute = true, rename = "Title")]
     pub title: String,
     /// 子项数量。
-    #[yaserde(attribute = true, rename = "Count")]
-    pub count: Option<i32>,
+    #[yaserde(attribute = true, rename = "Count", default = "default_i32_zero")]
+    pub count: i32,
     /// 是否展开。
     #[yaserde(attribute = true, rename = "Expanded", default = "default_true")]
     pub expanded: bool,
@@ -169,29 +169,27 @@ pub struct OutlineElem {
 }
 
 /// 权限声明。
-#[derive(
-    Clone, Debug, Default, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize,
-)]
+#[derive(Clone, Debug, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize)]
 #[yaserde(rename = "Permissions")]
 pub struct Permissions {
     /// 是否允许编辑。
-    #[yaserde(rename = "Edit")]
-    pub edit: Option<bool>,
+    #[yaserde(rename = "Edit", default = "default_true")]
+    pub edit: bool,
     /// 是否允许注释。
-    #[yaserde(rename = "Annot")]
-    pub annot: Option<bool>,
+    #[yaserde(rename = "Annot", default = "default_true")]
+    pub annot: bool,
     /// 是否允许导出。
-    #[yaserde(rename = "Export")]
-    pub export: Option<bool>,
+    #[yaserde(rename = "Export", default = "default_true")]
+    pub export: bool,
     /// 是否允许签名。
-    #[yaserde(rename = "Signature")]
-    pub signature: Option<bool>,
+    #[yaserde(rename = "Signature", default = "default_true")]
+    pub signature: bool,
     /// 是否允许水印。
-    #[yaserde(rename = "Watermark")]
-    pub watermark: Option<bool>,
+    #[yaserde(rename = "Watermark", default = "default_true")]
+    pub watermark: bool,
     /// 是否允许截屏。
-    #[yaserde(rename = "PrintScreen")]
-    pub print_screen: Option<bool>,
+    #[yaserde(rename = "PrintScreen", default = "default_true")]
+    pub print_screen: bool,
     /// 打印权限。
     #[yaserde(rename = "Print")]
     pub print: Option<PrintPermission>,
@@ -205,7 +203,7 @@ pub struct Permissions {
 #[yaserde(rename = "Print")]
 pub struct PrintPermission {
     /// 是否可打印。
-    #[yaserde(attribute = true, rename = "Printable")]
+    #[yaserde(attribute = true, rename = "Printable", default = "default_true")]
     pub printable: bool,
     /// 打印份数。
     #[yaserde(attribute = true, rename = "Copies", default = "default_copies")]
@@ -227,32 +225,30 @@ pub struct ValidPeriod {
 }
 
 /// 视图偏好。
-#[derive(
-    Clone, Debug, Default, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize,
-)]
+#[derive(Clone, Debug, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize)]
 #[yaserde(rename = "VPreferences")]
 pub struct VPreferences {
     /// 页面模式。
-    #[yaserde(rename = "PageMode")]
-    pub page_mode: Option<PageMode>,
+    #[yaserde(rename = "PageMode", default = "default_page_mode")]
+    pub page_mode: PageMode,
     /// 页面布局。
-    #[yaserde(rename = "PageLayout")]
-    pub page_layout: Option<PageLayout>,
+    #[yaserde(rename = "PageLayout", default = "default_page_layout")]
+    pub page_layout: PageLayout,
     /// 标签显示。
-    #[yaserde(rename = "TabDisplay")]
-    pub tab_display: Option<TabDisplay>,
+    #[yaserde(rename = "TabDisplay", default = "default_tab_display")]
+    pub tab_display: TabDisplay,
     /// 隐藏工具栏。
-    #[yaserde(rename = "HideToolbar")]
-    pub hide_toolbar: Option<bool>,
+    #[yaserde(rename = "HideToolbar", default = "default_false")]
+    pub hide_toolbar: bool,
     /// 隐藏菜单栏。
-    #[yaserde(rename = "HideMenubar")]
-    pub hide_menubar: Option<bool>,
+    #[yaserde(rename = "HideMenubar", default = "default_false")]
+    pub hide_menubar: bool,
     /// 隐藏窗口 UI。
-    #[yaserde(rename = "HideWindowUI")]
-    pub hide_window_ui: Option<bool>,
+    #[yaserde(rename = "HideWindowUI", default = "default_false")]
+    pub hide_window_ui: bool,
     /// 缩放模式。
-    #[yaserde(rename = "ZoomMode")]
-    pub zoom_mode: Option<ZoomMode>,
+    #[yaserde(rename = "ZoomMode", default = "default_zoom_mode")]
+    pub zoom_mode: ZoomMode,
     /// 固定缩放比例。
     #[yaserde(rename = "Zoom")]
     pub zoom: Option<f64>,
@@ -326,9 +322,9 @@ crate::impl_xml_enum_codec!(PageLayout, Other, {
 #[derive(Clone, Debug, Default, PartialEq, Eq, ofdbox_yaserde::DefaultYaSerde)]
 pub enum TabDisplay {
     /// 文档标题。
-    #[default]
     DocTitle,
     /// 文件名。
+    #[default]
     FileName,
     /// 未知值。
     Other(String),
@@ -389,8 +385,28 @@ fn default_true() -> bool {
     true
 }
 
-fn default_page_area() -> PageArea {
-    PageArea::default()
+fn default_false() -> bool {
+    false
+}
+
+fn default_i32_zero() -> i32 {
+    0
+}
+
+fn default_page_mode() -> PageMode {
+    PageMode::None
+}
+
+fn default_page_layout() -> PageLayout {
+    PageLayout::OneColumn
+}
+
+fn default_tab_display() -> TabDisplay {
+    TabDisplay::FileName
+}
+
+fn default_zoom_mode() -> ZoomMode {
+    ZoomMode::Default
 }
 
 fn default_copies() -> i32 {
@@ -401,7 +417,7 @@ impl Default for OutlineElem {
     fn default() -> Self {
         Self {
             title: String::new(),
-            count: None,
+            count: 0,
             expanded: true,
             actions: None,
             children: Vec::new(),
@@ -412,8 +428,38 @@ impl Default for OutlineElem {
 impl Default for PrintPermission {
     fn default() -> Self {
         Self {
-            printable: false,
+            printable: true,
             copies: -1,
+        }
+    }
+}
+
+impl Default for Permissions {
+    fn default() -> Self {
+        Self {
+            edit: true,
+            annot: true,
+            export: true,
+            signature: true,
+            watermark: true,
+            print_screen: true,
+            print: None,
+            valid_period: None,
+        }
+    }
+}
+
+impl Default for VPreferences {
+    fn default() -> Self {
+        Self {
+            page_mode: PageMode::None,
+            page_layout: PageLayout::OneColumn,
+            tab_display: TabDisplay::FileName,
+            hide_toolbar: false,
+            hide_menubar: false,
+            hide_window_ui: false,
+            zoom_mode: ZoomMode::Default,
+            zoom: None,
         }
     }
 }

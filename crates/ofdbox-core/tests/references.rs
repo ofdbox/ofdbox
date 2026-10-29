@@ -30,6 +30,7 @@ fn signature_xml(check_value: &str) -> String {
 <ofd:Signature xmlns:ofd="http://www.ofdspec.org/2016">
   <ofd:SignedInfo>
     <ofd:Provider ProviderName="P"/>
+    <ofd:SignatureMethod>TEST</ofd:SignatureMethod>
     <ofd:References CheckMethod="TEST">
       <ofd:Reference FileRef="/a.txt"><ofd:CheckValue>{check_value}</ofd:CheckValue></ofd:Reference>
     </ofd:References>

@@ -49,7 +49,7 @@ pub struct Page {
 #[yaserde(rename = "Template")]
 pub struct Template {
     /// 模板 ID。
-    #[yaserde(attribute = true, rename = "TemplateID", default = "default_st_ref_id")]
+    #[yaserde(attribute = true, rename = "TemplateID")]
     pub template_id: StRefId,
     /// 显示层级。
     #[yaserde(
@@ -93,7 +93,7 @@ impl Default for GraphicUnit {
         Self {
             id: StId::default(),
             boundary: StBox::default(),
-            name: None,
+            name: String::new(),
             visible: true,
             ctm: None,
             draw_param: None,
@@ -103,7 +103,7 @@ impl Default for GraphicUnit {
             miter_limit: 4.234,
             dash_offset: 0.0,
             dash_pattern: None,
-            alpha: 255,
+            alpha: 0,
             actions: None,
             clips: None,
         }
@@ -347,14 +347,14 @@ impl YaDeserialize for GraphicObject {
 #[derive(Clone, Debug, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize)]
 pub struct GraphicUnit {
     /// 图元 ID。
-    #[yaserde(attribute = true, rename = "ID", default = "default_st_id")]
+    #[yaserde(attribute = true, rename = "ID")]
     pub id: StId,
     /// 边界区域。
-    #[yaserde(attribute = true, rename = "Boundary", default = "default_st_box")]
+    #[yaserde(attribute = true, rename = "Boundary")]
     pub boundary: StBox,
     /// 名称。
-    #[yaserde(attribute = true, rename = "Name")]
-    pub name: Option<String>,
+    #[yaserde(attribute = true, rename = "Name", default = "default_string")]
+    pub name: String,
     /// 是否可见。
     #[yaserde(attribute = true, rename = "Visible", default = "default_true")]
     pub visible: bool,
@@ -387,7 +387,7 @@ pub struct GraphicUnit {
     #[yaserde(attribute = true, rename = "DashPattern")]
     pub dash_pattern: Option<StArray>,
     /// 透明度。
-    #[yaserde(attribute = true, rename = "Alpha", default = "default_alpha")]
+    #[yaserde(attribute = true, rename = "Alpha", default = "default_graphic_alpha")]
     pub alpha: i32,
     /// 图元动作。
     #[yaserde(rename = "Actions")]
@@ -445,10 +445,10 @@ pub struct TextObject {
     #[yaserde(flatten = true)]
     pub common: GraphicUnit,
     /// 字体资源 ID。
-    #[yaserde(attribute = true, rename = "Font", default = "default_st_ref_id")]
+    #[yaserde(attribute = true, rename = "Font")]
     pub font: StRefId,
     /// 字号。
-    #[yaserde(attribute = true, rename = "Size", default = "default_zero_f64")]
+    #[yaserde(attribute = true, rename = "Size")]
     pub size: f64,
     /// 是否描边。
     #[yaserde(attribute = true, rename = "Stroke", default = "default_false")]
@@ -517,17 +517,11 @@ pub struct TextCode {
 }
 
 /// 字形变换。
-#[derive(
-    Clone, Debug, Default, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize,
-)]
+#[derive(Clone, Debug, Default, PartialEq, ofdbox_yaserde::YaDeserialize)]
 #[yaserde(rename = "CGTransform")]
 pub struct CgTransform {
     /// 字符起点。
-    #[yaserde(
-        attribute = true,
-        rename = "CodePosition",
-        default = "default_i32_zero"
-    )]
+    #[yaserde(attribute = true, rename = "CodePosition")]
     pub code_position: i32,
     /// 字符数量。
     #[yaserde(attribute = true, rename = "CodeCount", default = "default_one_i32")]
@@ -538,6 +532,56 @@ pub struct CgTransform {
     /// 字形索引。
     #[yaserde(rename = "Glyphs")]
     pub glyphs: Option<String>,
+}
+
+impl YaSerialize for CgTransform {
+    fn serialize<W: Write>(&self, writer: &mut Serializer<W>) -> ofdbox_yaserde::Result<()> {
+        // `CodePosition`/`CodeCount`/`GlyphCount` 在 XSD 中是必选属性，即使取值等于
+        // 默认值也必须写出；derive 的 `default` 会跳过等于默认值的属性，因此手写。
+        let code_position = self.code_position.to_string();
+        let code_count = self.code_count.to_string();
+        let glyph_count = self.glyph_count.to_string();
+        let element_name = crate::model_xml::ofd_name(writer, "CGTransform");
+        writer
+            .write(
+                ofdbox_yaserde::__xml::writer::XmlEvent::start_element(element_name.as_str())
+                    .attr("CodePosition", code_position.as_str())
+                    .attr("CodeCount", code_count.as_str())
+                    .attr("GlyphCount", glyph_count.as_str()),
+            )
+            .map_err(ofdbox_yaserde::Error::custom)?;
+        if let Some(glyphs) = &self.glyphs {
+            let glyphs_name = crate::model_xml::ofd_name(writer, "Glyphs");
+            writer
+                .write(ofdbox_yaserde::__xml::writer::XmlEvent::start_element(
+                    glyphs_name.as_str(),
+                ))
+                .map_err(ofdbox_yaserde::Error::custom)?;
+            writer
+                .write(ofdbox_yaserde::__xml::writer::XmlEvent::characters(
+                    glyphs.as_str(),
+                ))
+                .map_err(ofdbox_yaserde::Error::custom)?;
+            writer
+                .write(ofdbox_yaserde::__xml::writer::XmlEvent::end_element())
+                .map_err(ofdbox_yaserde::Error::custom)?;
+        }
+        writer
+            .write(ofdbox_yaserde::__xml::writer::XmlEvent::end_element())
+            .map_err(ofdbox_yaserde::Error::custom)?;
+        Ok(())
+    }
+
+    fn serialize_attributes(
+        &self,
+        attributes: Vec<ofdbox_yaserde::__xml::attribute::OwnedAttribute>,
+        namespace: ofdbox_yaserde::__xml::namespace::Namespace,
+    ) -> ofdbox_yaserde::Result<(
+        Vec<ofdbox_yaserde::__xml::attribute::OwnedAttribute>,
+        ofdbox_yaserde::__xml::namespace::Namespace,
+    )> {
+        Ok((attributes, namespace))
+    }
 }
 
 /// 路径图元。
@@ -554,7 +598,7 @@ pub struct PathObject {
     #[yaserde(rename = "FillColor")]
     pub fill_color: Option<Color>,
     /// 缩写路径数据。
-    #[yaserde(rename = "AbbreviatedData", default = "default_string")]
+    #[yaserde(rename = "AbbreviatedData")]
     pub abbreviated_data: String,
     /// 是否描边。
     #[yaserde(attribute = true, rename = "Stroke", default = "default_true")]
@@ -1680,6 +1724,10 @@ fn default_alpha() -> i32 {
     255
 }
 
+fn default_graphic_alpha() -> i32 {
+    0
+}
+
 fn default_hscale() -> f64 {
     1.0
 }
@@ -1708,20 +1756,8 @@ fn default_rule() -> PathRule {
     PathRule::NonZero
 }
 
-fn default_st_id() -> StId {
-    StId::default()
-}
-
-fn default_st_ref_id() -> StRefId {
-    StRefId::default()
-}
-
 fn default_string() -> String {
     String::new()
-}
-
-fn default_st_box() -> StBox {
-    StBox::default()
 }
 
 fn default_template_z_order() -> TemplateZOrder {

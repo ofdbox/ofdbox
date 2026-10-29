@@ -167,6 +167,9 @@ fn reads_seal_only_on_demand() {
     let signature = br#"<ofd:Signature xmlns:ofd="http://www.ofdspec.org/2016">
         <ofd:SignedValue>SignedValue.dat</ofd:SignedValue>
         <ofd:SignedInfo>
+          <ofd:Provider ProviderName="P"/>
+          <ofd:SignatureMethod>TEST</ofd:SignatureMethod>
+          <ofd:References CheckMethod="MD5"><ofd:Reference FileRef="Doc_0/Document.xml"><ofd:CheckValue>YWJj</ofd:CheckValue></ofd:Reference></ofd:References>
           <ofd:Seal><ofd:BaseLoc>Seal.esl</ofd:BaseLoc></ofd:Seal>
         </ofd:SignedInfo>
       </ofd:Signature>"#;

@@ -67,7 +67,7 @@ const ANNOTATIONS_WITH_PAGE: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
 <ofd:Annotations xmlns:ofd="http://www.ofdspec.org/2016"><ofd:Page PageID="1"><ofd:FileLoc>Page_0/Annotation.xml</ofd:FileLoc></ofd:Page></ofd:Annotations>"#;
 
 const PAGE_ANNOT_EXISTING: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
-<ofd:PageAnnot xmlns:ofd="http://www.ofdspec.org/2016"><ofd:Annot Type="Stamp" ID="1" Subtype="Stamp"/></ofd:PageAnnot>"#;
+<ofd:PageAnnot xmlns:ofd="http://www.ofdspec.org/2016"><ofd:Annot Type="Stamp" ID="1" Creator="demo" LastModDate="2020-01-01" Subtype="Stamp"/></ofd:PageAnnot>"#;
 
 const CONTENT: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
 <ofd:Page xmlns:ofd="http://www.ofdspec.org/2016">

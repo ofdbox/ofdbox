@@ -382,17 +382,17 @@ crate::impl_xml_enum_codec!(DestType, Other, {
 #[yaserde(rename = "Dest")]
 pub struct Dest {
     /// 目标类型。
-    #[yaserde(attribute = true, rename = "Type", default = "default_dest_type")]
+    #[yaserde(attribute = true, rename = "Type")]
     pub dest_type: DestType,
     /// 目标页面 ID。
-    #[yaserde(attribute = true, rename = "PageID", default = "default_st_ref_id")]
+    #[yaserde(attribute = true, rename = "PageID")]
     pub page_id: StRefId,
     /// 左坐标。
-    #[yaserde(attribute = true, rename = "Left")]
-    pub left: Option<f64>,
+    #[yaserde(attribute = true, rename = "Left", default = "default_zero_f64")]
+    pub left: f64,
     /// 上坐标。
-    #[yaserde(attribute = true, rename = "Top")]
-    pub top: Option<f64>,
+    #[yaserde(attribute = true, rename = "Top", default = "default_zero_f64")]
+    pub top: f64,
     /// 右坐标。
     #[yaserde(attribute = true, rename = "Right")]
     pub right: Option<f64>,
@@ -460,7 +460,7 @@ pub struct Actions {
 #[yaserde(rename = "Action")]
 pub struct Action {
     /// 触发事件。
-    #[yaserde(attribute = true, rename = "Event", default = "default_action_event")]
+    #[yaserde(attribute = true, rename = "Event")]
     pub event: ActionEvent,
     /// 动作区域。
     #[yaserde(rename = "Region")]
@@ -542,7 +542,7 @@ impl Default for ActionKind {
 #[yaserde(rename = "URI")]
 pub struct Uri {
     /// URI。
-    #[yaserde(attribute = true, rename = "URI", default = "default_string")]
+    #[yaserde(attribute = true, rename = "URI")]
     pub uri: String,
     /// 基准路径。
     #[yaserde(attribute = true, rename = "Base")]
@@ -557,7 +557,7 @@ pub struct Uri {
 #[yaserde(rename = "GotoA")]
 pub struct GotoA {
     /// 附件 ID。
-    #[yaserde(attribute = true, rename = "AttachID", default = "default_string")]
+    #[yaserde(attribute = true, rename = "AttachID")]
     pub attach_id: String,
     /// 是否新窗口。
     #[yaserde(attribute = true, rename = "NewWindow")]
@@ -572,14 +572,14 @@ pub struct Sound {
     #[yaserde(attribute = true, rename = "ResourceID")]
     pub resource_id: StRefId,
     /// 音量。
-    #[yaserde(attribute = true, rename = "Volume")]
-    pub volume: Option<i32>,
+    #[yaserde(attribute = true, rename = "Volume", default = "default_volume")]
+    pub volume: i32,
     /// 是否重复。
-    #[yaserde(attribute = true, rename = "Repeat")]
-    pub repeat: Option<bool>,
+    #[yaserde(attribute = true, rename = "Repeat", default = "default_false")]
+    pub repeat: bool,
     /// 是否同步。
-    #[yaserde(attribute = true, rename = "Synchronous")]
-    pub synchronous: Option<bool>,
+    #[yaserde(attribute = true, rename = "Synchronous", default = "default_false")]
+    pub synchronous: bool,
 }
 
 /// 影片操作类型。
@@ -613,7 +613,11 @@ pub struct Movie {
     #[yaserde(attribute = true, rename = "ResourceID")]
     pub resource_id: StRefId,
     /// 操作。
-    #[yaserde(attribute = true, rename = "Operator")]
+    #[yaserde(
+        attribute = true,
+        rename = "Operator",
+        default = "default_movie_operator"
+    )]
     pub operator: MovieOperator,
 }
 
@@ -890,22 +894,22 @@ impl YaDeserialize for RegionCommand {
     }
 }
 
-fn default_string() -> String {
-    String::new()
+fn default_zero_f64() -> f64 {
+    0.0
+}
+
+fn default_volume() -> i32 {
+    100
+}
+
+fn default_false() -> bool {
+    false
+}
+
+fn default_movie_operator() -> MovieOperator {
+    MovieOperator::Play
 }
 
 fn default_st_box() -> StBox {
     StBox::default()
-}
-
-fn default_action_event() -> ActionEvent {
-    ActionEvent::Do
-}
-
-fn default_dest_type() -> DestType {
-    DestType::Xyz
-}
-
-fn default_st_ref_id() -> StRefId {
-    StRefId::default()
 }

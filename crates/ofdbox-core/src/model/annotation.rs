@@ -34,16 +34,16 @@ pub struct PageAnnot {
 #[yaserde(rename = "Annot")]
 pub struct Annot {
     /// 注释 ID。
-    #[yaserde(attribute = true, rename = "ID", default = "default_st_id")]
+    #[yaserde(attribute = true, rename = "ID")]
     pub id: StId,
     /// 注释类型。
-    #[yaserde(attribute = true, rename = "Type", default = "default_annotation_type")]
+    #[yaserde(attribute = true, rename = "Type")]
     pub annot_type: AnnotationType,
     /// 创建者。
-    #[yaserde(attribute = true, rename = "Creator", default = "default_string")]
+    #[yaserde(attribute = true, rename = "Creator")]
     pub creator: String,
     /// 最后修改日期。
-    #[yaserde(attribute = true, rename = "LastModDate", default = "default_string")]
+    #[yaserde(attribute = true, rename = "LastModDate")]
     pub last_mod_date: String,
     /// 是否可见。
     #[yaserde(attribute = true, rename = "Visible", default = "default_true")]
@@ -234,18 +234,6 @@ fn default_true() -> bool {
 
 fn default_false() -> bool {
     false
-}
-
-fn default_st_id() -> StId {
-    StId::default()
-}
-
-fn default_annotation_type() -> AnnotationType {
-    AnnotationType::Link
-}
-
-fn default_string() -> String {
-    String::new()
 }
 
 fn default_appearance() -> Appearance {
