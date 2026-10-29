@@ -17,7 +17,7 @@ use super::page::{Color, PageBlock};
 #[yaserde(rename = "Res")]
 pub struct Res {
     /// 资源基准路径。
-    #[yaserde(attribute = true, rename = "BaseLoc", default = "default_base_loc")]
+    #[yaserde(attribute = true, rename = "BaseLoc")]
     pub base_loc: StLoc,
     /// 颜色空间集合。
     #[yaserde(rename = "ColorSpaces")]
@@ -52,14 +52,10 @@ pub struct ColorSpaces {
 #[yaserde(rename = "ColorSpace")]
 pub struct ColorSpace {
     /// 资源 ID。
-    #[yaserde(attribute = true, rename = "ID", default = "default_st_id")]
+    #[yaserde(attribute = true, rename = "ID")]
     pub id: StId,
     /// 颜色空间类型。
-    #[yaserde(
-        attribute = true,
-        rename = "Type",
-        default = "default_color_space_type"
-    )]
+    #[yaserde(attribute = true, rename = "Type")]
     pub color_space_type: ColorSpaceType,
     /// 每分量位数。
     #[yaserde(
@@ -123,7 +119,7 @@ pub struct DrawParams {
 #[yaserde(rename = "DrawParam")]
 pub struct DrawParam {
     /// 资源 ID。
-    #[yaserde(attribute = true, rename = "ID", default = "default_st_id")]
+    #[yaserde(attribute = true, rename = "ID")]
     pub id: StId,
     /// 相对参数引用。
     #[yaserde(attribute = true, rename = "Relative")]
@@ -172,7 +168,7 @@ pub struct Fonts {
 #[yaserde(rename = "Font")]
 pub struct Font {
     /// 资源 ID。
-    #[yaserde(attribute = true, rename = "ID", default = "default_st_id")]
+    #[yaserde(attribute = true, rename = "ID")]
     pub id: StId,
     /// 字体名。
     #[yaserde(attribute = true, rename = "FontName")]
@@ -259,7 +255,7 @@ pub struct MultiMedia {
     #[yaserde(attribute = true, rename = "Format")]
     pub format: Option<String>,
     /// 媒体文件路径。
-    #[yaserde(rename = "MediaFile", default = "default_st_loc")]
+    #[yaserde(rename = "MediaFile")]
     pub media_file: StLoc,
 }
 
@@ -301,7 +297,7 @@ pub struct CompositeGraphicUnits {
 #[yaserde(rename = "CompositeGraphicUnit")]
 pub struct CompositeGraphicUnit {
     /// 资源 ID。
-    #[yaserde(attribute = true, rename = "ID", default = "default_st_id")]
+    #[yaserde(attribute = true, rename = "ID")]
     pub id: StId,
     /// 缩略图引用。
     #[yaserde(rename = "Thumbnail")]
@@ -328,14 +324,6 @@ fn default_false() -> bool {
     false
 }
 
-fn default_base_loc() -> StLoc {
-    StLoc::new(".")
-}
-
-fn default_st_id() -> StId {
-    StId::default()
-}
-
 fn default_bits() -> i32 {
     8
 }
@@ -358,14 +346,6 @@ fn default_zero() -> f64 {
 
 fn default_miter() -> f64 {
     4.234
-}
-
-fn default_st_loc() -> StLoc {
-    StLoc::default()
-}
-
-fn default_color_space_type() -> ColorSpaceType {
-    ColorSpaceType::Rgb
 }
 
 impl Default for Res {

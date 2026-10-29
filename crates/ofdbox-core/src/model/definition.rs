@@ -388,11 +388,11 @@ pub struct Dest {
     #[yaserde(attribute = true, rename = "PageID")]
     pub page_id: StRefId,
     /// 左坐标。
-    #[yaserde(attribute = true, rename = "Left", default = "default_zero_f64")]
-    pub left: f64,
+    #[yaserde(attribute = true, rename = "Left")]
+    pub left: Option<f64>,
     /// 上坐标。
-    #[yaserde(attribute = true, rename = "Top", default = "default_zero_f64")]
-    pub top: f64,
+    #[yaserde(attribute = true, rename = "Top")]
+    pub top: Option<f64>,
     /// 右坐标。
     #[yaserde(attribute = true, rename = "Right")]
     pub right: Option<f64>,
@@ -411,7 +411,7 @@ pub struct Dest {
 #[yaserde(rename = "PageArea")]
 pub struct PageArea {
     /// 物理区域。
-    #[yaserde(rename = "PhysicalBox", default = "default_st_box")]
+    #[yaserde(rename = "PhysicalBox")]
     pub physical_box: StBox,
     /// 应用区域。
     #[yaserde(rename = "ApplicationBox")]
@@ -560,7 +560,7 @@ pub struct GotoA {
     #[yaserde(attribute = true, rename = "AttachID")]
     pub attach_id: String,
     /// 是否新窗口。
-    #[yaserde(attribute = true, rename = "NewWindow")]
+    #[yaserde(attribute = true, rename = "NewWindow", default = "default_true")]
     pub new_window: bool,
 }
 
@@ -572,14 +572,14 @@ pub struct Sound {
     #[yaserde(attribute = true, rename = "ResourceID")]
     pub resource_id: StRefId,
     /// 音量。
-    #[yaserde(attribute = true, rename = "Volume", default = "default_volume")]
-    pub volume: i32,
+    #[yaserde(attribute = true, rename = "Volume")]
+    pub volume: Option<i32>,
     /// 是否重复。
-    #[yaserde(attribute = true, rename = "Repeat", default = "default_false")]
-    pub repeat: bool,
+    #[yaserde(attribute = true, rename = "Repeat")]
+    pub repeat: Option<bool>,
     /// 是否同步。
-    #[yaserde(attribute = true, rename = "Synchronous", default = "default_false")]
-    pub synchronous: bool,
+    #[yaserde(attribute = true, rename = "Synchronous")]
+    pub synchronous: Option<bool>,
 }
 
 /// 影片操作类型。
@@ -894,22 +894,10 @@ impl YaDeserialize for RegionCommand {
     }
 }
 
-fn default_zero_f64() -> f64 {
-    0.0
-}
-
-fn default_volume() -> i32 {
-    100
-}
-
-fn default_false() -> bool {
-    false
+fn default_true() -> bool {
+    true
 }
 
 fn default_movie_operator() -> MovieOperator {
     MovieOperator::Play
-}
-
-fn default_st_box() -> StBox {
-    StBox::default()
 }

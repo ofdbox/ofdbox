@@ -51,7 +51,7 @@ fn attachments_roundtrip() {
 #[test]
 fn custom_tags_roundtrip() {
     roundtrip::<CustomTags>(
-        r#"<CustomTags xmlns="http://www.ofdspec.org/2016"><CustomTag TypeID="demo" NameSpace="urn:demo"><SchemaLoc>Tags/demo.xsd</SchemaLoc><FileLoc>Tags/demo.xml</FileLoc></CustomTag></CustomTags>"#,
+        r#"<CustomTags xmlns="http://www.ofdspec.org/2016"><CustomTag NameSpace="urn:demo"><SchemaLoc>Tags/demo.xsd</SchemaLoc><FileLoc>Tags/demo.xml</FileLoc></CustomTag></CustomTags>"#,
     );
 }
 

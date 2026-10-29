@@ -469,7 +469,7 @@ fn follows_custom_tag_schema_loc() {
         "<ofd:CustomTags>CustomTags.xml</ofd:CustomTags></ofd:Document>",
     );
     let custom_tags = r#"<?xml version="1.0" encoding="UTF-8"?>
-<ofd:CustomTags xmlns:ofd="http://www.ofdspec.org/2016"><ofd:CustomTag TypeID="demo" ID="1"><ofd:SchemaLoc>schema.xsd</ofd:SchemaLoc></ofd:CustomTag></ofd:CustomTags>"#;
+<ofd:CustomTags xmlns:ofd="http://www.ofdspec.org/2016"><ofd:CustomTag NameSpace="urn:demo" ID="1"><ofd:SchemaLoc>schema.xsd</ofd:SchemaLoc><ofd:FileLoc>custom.xml</ofd:FileLoc></ofd:CustomTag></ofd:CustomTags>"#;
     let mut edits = PackageEdits::new();
     edits.replace("Doc_0/Document.xml", document.into_bytes());
     edits.add("Doc_0/CustomTags.xml", custom_tags.as_bytes().to_vec());

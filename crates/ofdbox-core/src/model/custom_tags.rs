@@ -30,18 +30,14 @@ pub struct CustomTags {
 pub struct CustomTag {
     /// 命名空间（旧版属性）。
     #[yaserde(attribute = true, rename = "NameSpace")]
-    pub namespace: Option<String>,
-    /// 标引类型 ID。
+    pub namespace: String,
+    /// 标引类型 ID（扩展属性）。
     #[yaserde(attribute = true, rename = "TypeID")]
-    pub type_id: String,
+    pub type_id: Option<String>,
     /// 约束文件路径。
     #[yaserde(rename = "SchemaLoc")]
     pub schema_loc: Option<StLoc>,
     /// 标引内容路径。
-    #[yaserde(rename = "FileLoc", default = "default_st_loc")]
+    #[yaserde(rename = "FileLoc")]
     pub file_loc: StLoc,
-}
-
-fn default_st_loc() -> StLoc {
-    StLoc::default()
 }

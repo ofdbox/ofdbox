@@ -155,8 +155,8 @@ pub struct OutlineElem {
     #[yaserde(attribute = true, rename = "Title")]
     pub title: String,
     /// 子项数量。
-    #[yaserde(attribute = true, rename = "Count", default = "default_i32_zero")]
-    pub count: i32,
+    #[yaserde(attribute = true, rename = "Count")]
+    pub count: Option<i32>,
     /// 是否展开。
     #[yaserde(attribute = true, rename = "Expanded", default = "default_true")]
     pub expanded: bool,
@@ -203,7 +203,7 @@ pub struct Permissions {
 #[yaserde(rename = "Print")]
 pub struct PrintPermission {
     /// 是否可打印。
-    #[yaserde(attribute = true, rename = "Printable", default = "default_true")]
+    #[yaserde(attribute = true, rename = "Printable")]
     pub printable: bool,
     /// 打印份数。
     #[yaserde(attribute = true, rename = "Copies", default = "default_copies")]
@@ -247,8 +247,8 @@ pub struct VPreferences {
     #[yaserde(rename = "HideWindowUI", default = "default_false")]
     pub hide_window_ui: bool,
     /// 缩放模式。
-    #[yaserde(rename = "ZoomMode", default = "default_zoom_mode")]
-    pub zoom_mode: ZoomMode,
+    #[yaserde(rename = "ZoomMode")]
+    pub zoom_mode: Option<ZoomMode>,
     /// 固定缩放比例。
     #[yaserde(rename = "Zoom")]
     pub zoom: Option<f64>,
@@ -322,9 +322,9 @@ crate::impl_xml_enum_codec!(PageLayout, Other, {
 #[derive(Clone, Debug, Default, PartialEq, Eq, ofdbox_yaserde::DefaultYaSerde)]
 pub enum TabDisplay {
     /// 文档标题。
+    #[default]
     DocTitle,
     /// 文件名。
-    #[default]
     FileName,
     /// 未知值。
     Other(String),
@@ -389,10 +389,6 @@ fn default_false() -> bool {
     false
 }
 
-fn default_i32_zero() -> i32 {
-    0
-}
-
 fn default_page_mode() -> PageMode {
     PageMode::None
 }
@@ -402,11 +398,7 @@ fn default_page_layout() -> PageLayout {
 }
 
 fn default_tab_display() -> TabDisplay {
-    TabDisplay::FileName
-}
-
-fn default_zoom_mode() -> ZoomMode {
-    ZoomMode::Default
+    TabDisplay::DocTitle
 }
 
 fn default_copies() -> i32 {
@@ -417,7 +409,7 @@ impl Default for OutlineElem {
     fn default() -> Self {
         Self {
             title: String::new(),
-            count: 0,
+            count: None,
             expanded: true,
             actions: None,
             children: Vec::new(),
@@ -454,11 +446,11 @@ impl Default for VPreferences {
         Self {
             page_mode: PageMode::None,
             page_layout: PageLayout::OneColumn,
-            tab_display: TabDisplay::FileName,
+            tab_display: TabDisplay::DocTitle,
             hide_toolbar: false,
             hide_menubar: false,
             hide_window_ui: false,
-            zoom_mode: ZoomMode::Default,
+            zoom_mode: None,
             zoom: None,
         }
     }

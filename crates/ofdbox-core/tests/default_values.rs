@@ -4,10 +4,10 @@ use ofdbox_core::model::page::TextObject;
 use ofdbox_core::model_xml;
 
 #[test]
-fn doc_usage_defaults_to_normal() {
+fn doc_usage_is_optional() {
     let info: DocInfo =
         model_xml::from_str(r#"<DocInfo><DocID>id</DocID></DocInfo>"#).expect("parse DocInfo");
-    assert_eq!(info.doc_usage, "Normal");
+    assert_eq!(info.doc_usage, None);
 }
 
 #[test]
@@ -39,12 +39,12 @@ fn view_preferences_use_standard_defaults() {
 fn outline_and_graphic_defaults() {
     let outline: OutlineElem =
         model_xml::from_str(r#"<OutlineElem Title="t"/>"#).expect("parse OutlineElem");
-    assert_eq!(outline.count, 0);
+    assert_eq!(outline.count, None);
     assert!(outline.expanded);
 
     let text: TextObject =
         model_xml::from_str(r#"<TextObject ID="1" Boundary="0 0 10 10" Font="1" Size="10"/>"#)
             .expect("parse TextObject");
-    assert_eq!(text.common.alpha, 0);
+    assert_eq!(text.common.alpha, 255);
     assert!(text.common.name.is_empty());
 }

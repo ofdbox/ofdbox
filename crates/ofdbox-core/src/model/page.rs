@@ -103,7 +103,7 @@ impl Default for GraphicUnit {
             miter_limit: 4.234,
             dash_offset: 0.0,
             dash_pattern: None,
-            alpha: 0,
+            alpha: 255,
             actions: None,
             clips: None,
         }
@@ -221,9 +221,9 @@ impl YaDeserialize for Layer {
                 .map(|attribute| attribute.value.clone())
         };
         let id = value("ID")
-            .map(|value| value.parse().map_err(ofdbox_yaserde::Error::custom))
-            .transpose()?
-            .unwrap_or_default();
+            .ok_or_else(|| ofdbox_yaserde::Error::custom("Layer 缺少 ID"))?
+            .parse()
+            .map_err(ofdbox_yaserde::Error::custom)?;
         let layer_type = value("Type")
             .map(|value| value.parse().map_err(ofdbox_yaserde::Error::custom))
             .transpose()?
@@ -387,7 +387,7 @@ pub struct GraphicUnit {
     #[yaserde(attribute = true, rename = "DashPattern")]
     pub dash_pattern: Option<StArray>,
     /// 透明度。
-    #[yaserde(attribute = true, rename = "Alpha", default = "default_graphic_alpha")]
+    #[yaserde(attribute = true, rename = "Alpha", default = "default_alpha")]
     pub alpha: i32,
     /// 图元动作。
     #[yaserde(rename = "Actions")]
@@ -802,14 +802,10 @@ impl YaDeserialize for PageBlockObject {
         let id = attributes
             .iter()
             .find(|attribute| attribute.name.local_name == "ID")
-            .map(|attribute| {
-                attribute
-                    .value
-                    .parse()
-                    .map_err(ofdbox_yaserde::Error::custom)
-            })
-            .transpose()?
-            .unwrap_or_default();
+            .ok_or_else(|| ofdbox_yaserde::Error::custom("PageBlock 缺少 ID"))?
+            .value
+            .parse()
+            .map_err(ofdbox_yaserde::Error::custom)?;
         let objects = deserialize_objects(reader, "PageBlock")?;
         Ok(Self {
             id,
@@ -1152,8 +1148,10 @@ impl YaDeserialize for Pattern {
                 .map(|value| value.parse().map_err(ofdbox_yaserde::Error::custom))
                 .transpose()
         };
-        let width = number("Width")?.unwrap_or_default();
-        let height = number("Height")?.unwrap_or_default();
+        let width =
+            number("Width")?.ok_or_else(|| ofdbox_yaserde::Error::custom("Pattern 缺少 Width"))?;
+        let height = number("Height")?
+            .ok_or_else(|| ofdbox_yaserde::Error::custom("Pattern 缺少 Height"))?;
         let cell_content = CellContent::deserialize(reader)?;
         let _ = reader.next_event()?;
         Ok(Self {
@@ -1722,10 +1720,6 @@ fn default_miter_limit() -> f64 {
 
 fn default_alpha() -> i32 {
     255
-}
-
-fn default_graphic_alpha() -> i32 {
-    0
 }
 
 fn default_hscale() -> f64 {

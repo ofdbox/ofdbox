@@ -36,7 +36,7 @@ pub struct SignedInfo {
     pub provider: Provider,
     /// 签名算法。
     #[yaserde(rename = "SignatureMethod")]
-    pub signature_method: String,
+    pub signature_method: Option<String>,
     /// 签名时间。
     #[yaserde(rename = "SignatureDateTime")]
     pub signature_date_time: Option<String>,
@@ -84,8 +84,12 @@ pub struct References {
     #[yaserde(rename = "Reference")]
     pub references: Vec<Reference>,
     /// 校验方法。
-    #[yaserde(attribute = true, rename = "CheckMethod")]
-    pub check_method: Option<CheckMethod>,
+    #[yaserde(
+        attribute = true,
+        rename = "CheckMethod",
+        default = "default_check_method"
+    )]
+    pub check_method: CheckMethod,
 }
 
 /// 校验方法。
@@ -146,12 +150,8 @@ pub struct StampAnnot {
 #[yaserde(rename = "Seal")]
 pub struct Seal {
     /// 印章基准路径。
-    #[yaserde(rename = "BaseLoc", default = "default_st_loc")]
+    #[yaserde(rename = "BaseLoc")]
     pub base_loc: StLoc,
-}
-
-fn default_st_loc() -> StLoc {
-    StLoc::default()
 }
 
 impl Signature {
@@ -174,7 +174,7 @@ impl SignedInfo {
 
     /// 签名方法。
     pub fn signature_method(&self) -> Option<&str> {
-        Some(self.signature_method.as_str())
+        self.signature_method.as_deref()
     }
 
     /// 印章信息。
@@ -233,7 +233,7 @@ impl References {
 
     /// 校验方法。
     pub fn check_method(&self) -> Option<&str> {
-        self.check_method.as_ref().map(|method| match method {
+        Some(match &self.check_method {
             CheckMethod::Md5 => "MD5",
             CheckMethod::Sha1 => "SHA1",
             CheckMethod::Other(value) => value,
@@ -258,4 +258,8 @@ impl Seal {
     pub fn base_loc(&self) -> Option<&str> {
         Some(self.base_loc.as_str())
     }
+}
+
+fn default_check_method() -> CheckMethod {
+    CheckMethod::Md5
 }

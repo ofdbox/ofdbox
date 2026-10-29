@@ -236,11 +236,11 @@ pub(crate) fn write_signature_xml(
                 protocol_version: request.provider.protocol_version.clone(),
                 extend_data: request.provider.extend_data.clone(),
             },
-            signature_method: request.signature_method.to_owned(),
+            signature_method: Some(request.signature_method.to_owned()),
             signature_date_time: Some(request.signed_at.clone()),
             references: References {
                 references,
-                check_method: Some(CheckMethod::Other(DEFAULT_CHECK_METHOD.to_owned())),
+                check_method: CheckMethod::Other(DEFAULT_CHECK_METHOD.to_owned()),
             },
             stamp_annots,
             seal: None,
