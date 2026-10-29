@@ -32,28 +32,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         GraphicObject::Text(text) => {
                             println!(
                                 "    Text id={} boundary={}",
-                                text.common.id, text.common.boundary
+                                text.id, text.content.graphic.boundary
                             );
-                            for code in &text.text_codes {
+                            for code in &text.content.text_codes {
                                 println!("      text={:?}", code.text);
                             }
                         }
                         GraphicObject::Path(path) => {
                             println!(
                                 "    Path id={} boundary={}",
-                                path.common.id, path.common.boundary
+                                path.id, path.content.graphic.boundary
                             );
                         }
                         GraphicObject::Image(image) => {
                             println!(
                                 "    Image id={} resource={}",
-                                image.common.id, image.resource_id
+                                image.id, image.content.resource_id
                             );
                         }
                         GraphicObject::Composite(composite) => {
                             println!(
                                 "    Composite id={} resource={}",
-                                composite.common.id, composite.resource_id
+                                composite.id, composite.content.resource_id
                             );
                         }
                         GraphicObject::PageBlock(block) => {

@@ -2,7 +2,8 @@ use ofdbox_core::model::definition::{PageArea, StBox, StId, StLoc, StRefId};
 use ofdbox_core::model::document::{CommonData, Document, PageEntry, Pages};
 use ofdbox_core::model::ofd::{DocBody, DocInfo, Ofd};
 use ofdbox_core::model::page::{
-    GraphicObject, GraphicUnit, Layer, LayerType, Page, PageContent, TextCode, TextObject,
+    GraphicObject, GraphicUnit, Layer, LayerType, Page, PageContent, TextCode, TextContent,
+    TextObject,
 };
 use ofdbox_core::model::res::{Font, Fonts, Res};
 
@@ -19,20 +20,22 @@ fn builds_basic_ofd_objects() {
                 layer_type: LayerType::Body,
                 draw_param: None,
                 objects: vec![GraphicObject::Text(TextObject {
-                    common: GraphicUnit {
-                        id: StId(3),
-                        boundary: StBox::new(10.0, 10.0, 100.0, 20.0),
+                    id: StId(3),
+                    content: TextContent {
+                        graphic: GraphicUnit {
+                            boundary: StBox::new(10.0, 10.0, 100.0, 20.0),
+                            ..Default::default()
+                        },
+                        font: StRefId(1),
+                        size: 12.0,
+                        text_codes: vec![TextCode {
+                            x: Some(10.0),
+                            y: Some(20.0),
+                            text: "Hello OFD".to_owned(),
+                            ..Default::default()
+                        }],
                         ..Default::default()
                     },
-                    font: StRefId(1),
-                    size: 12.0,
-                    text_codes: vec![TextCode {
-                        x: Some(10.0),
-                        y: Some(20.0),
-                        text: "Hello OFD".to_owned(),
-                        ..Default::default()
-                    }],
-                    ..Default::default()
                 })],
             }],
         }),

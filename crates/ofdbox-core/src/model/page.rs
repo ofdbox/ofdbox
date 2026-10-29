@@ -91,7 +91,6 @@ pub struct PageContent {
 impl Default for GraphicUnit {
     fn default() -> Self {
         Self {
-            id: StId::default(),
             boundary: StBox::default(),
             name: String::new(),
             visible: true,
@@ -110,10 +109,10 @@ impl Default for GraphicUnit {
     }
 }
 
-impl Default for TextObject {
+impl Default for TextContent {
     fn default() -> Self {
         Self {
-            common: GraphicUnit::default(),
+            graphic: GraphicUnit::default(),
             font: StRefId::default(),
             size: 0.0,
             stroke: false,
@@ -131,10 +130,10 @@ impl Default for TextObject {
     }
 }
 
-impl Default for PathObject {
+impl Default for PathContent {
     fn default() -> Self {
         Self {
-            common: GraphicUnit::default(),
+            graphic: GraphicUnit::default(),
             stroke_color: None,
             fill_color: None,
             abbreviated_data: String::new(),
@@ -346,9 +345,6 @@ impl YaDeserialize for GraphicObject {
 /// 图元公共属性。
 #[derive(Clone, Debug, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize)]
 pub struct GraphicUnit {
-    /// 图元 ID。
-    #[yaserde(attribute = true, rename = "ID")]
-    pub id: StId,
     /// 边界区域。
     #[yaserde(attribute = true, rename = "Boundary")]
     pub boundary: StBox,
@@ -437,13 +433,12 @@ crate::impl_xml_enum_codec!(Join, Other, {
     Bevel => "Bevel",
 });
 
-/// 文字图元。
+/// 文字图元内容。
 #[derive(Clone, Debug, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize)]
-#[yaserde(rename = "TextObject")]
-pub struct TextObject {
+pub struct TextContent {
     /// 公共图元属性。
     #[yaserde(flatten = true)]
-    pub common: GraphicUnit,
+    pub graphic: GraphicUnit,
     /// 字体资源 ID。
     #[yaserde(attribute = true, rename = "Font")]
     pub font: StRefId,
@@ -491,6 +486,20 @@ pub struct TextObject {
     /// 文字片段。
     #[yaserde(rename = "TextCode")]
     pub text_codes: Vec<TextCode>,
+}
+
+/// 文字图元。
+#[derive(
+    Clone, Debug, Default, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize,
+)]
+#[yaserde(rename = "TextObject")]
+pub struct TextObject {
+    /// 图元 ID。
+    #[yaserde(attribute = true, rename = "ID")]
+    pub id: StId,
+    /// 文字内容。
+    #[yaserde(flatten = true)]
+    pub content: TextContent,
 }
 
 /// 文字片段。
@@ -584,13 +593,12 @@ impl YaSerialize for CgTransform {
     }
 }
 
-/// 路径图元。
+/// 路径图元内容。
 #[derive(Clone, Debug, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize)]
-#[yaserde(rename = "PathObject")]
-pub struct PathObject {
+pub struct PathContent {
     /// 公共图元属性。
     #[yaserde(flatten = true)]
-    pub common: GraphicUnit,
+    pub graphic: GraphicUnit,
     /// 描边色。
     #[yaserde(rename = "StrokeColor")]
     pub stroke_color: Option<Color>,
@@ -611,6 +619,20 @@ pub struct PathObject {
     pub rule: PathRule,
 }
 
+/// 路径图元。
+#[derive(
+    Clone, Debug, Default, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize,
+)]
+#[yaserde(rename = "PathObject")]
+pub struct PathObject {
+    /// 图元 ID。
+    #[yaserde(attribute = true, rename = "ID")]
+    pub id: StId,
+    /// 路径内容。
+    #[yaserde(flatten = true)]
+    pub content: PathContent,
+}
+
 /// 路径填充规则。
 #[derive(Clone, Debug, Default, PartialEq, Eq, ofdbox_yaserde::DefaultYaSerde)]
 pub enum PathRule {
@@ -628,15 +650,14 @@ crate::impl_xml_enum_codec!(PathRule, Other, {
     EvenOdd => "Even-Odd",
 });
 
-/// 图像图元。
+/// 图像图元内容。
 #[derive(
     Clone, Debug, Default, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize,
 )]
-#[yaserde(rename = "ImageObject")]
-pub struct ImageObject {
+pub struct ImageContent {
     /// 公共图元属性。
     #[yaserde(flatten = true)]
-    pub common: GraphicUnit,
+    pub graphic: GraphicUnit,
     /// 图像资源 ID。
     #[yaserde(attribute = true, rename = "ResourceID")]
     pub resource_id: StRefId,
@@ -649,6 +670,20 @@ pub struct ImageObject {
     /// 边框。
     #[yaserde(rename = "Border")]
     pub border: Option<Border>,
+}
+
+/// 图像图元。
+#[derive(
+    Clone, Debug, Default, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize,
+)]
+#[yaserde(rename = "ImageObject")]
+pub struct ImageObject {
+    /// 图元 ID。
+    #[yaserde(attribute = true, rename = "ID")]
+    pub id: StId,
+    /// 图像内容。
+    #[yaserde(flatten = true)]
+    pub content: ImageContent,
 }
 
 /// 图像边框。
@@ -683,18 +718,31 @@ pub struct Border {
     pub dash_pattern: Option<StArray>,
 }
 
+/// 复合图元内容。
+#[derive(
+    Clone, Debug, Default, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize,
+)]
+pub struct CompositeContent {
+    /// 公共图元属性。
+    #[yaserde(flatten = true)]
+    pub graphic: GraphicUnit,
+    /// 复合资源 ID。
+    #[yaserde(attribute = true, rename = "ResourceID")]
+    pub resource_id: StRefId,
+}
+
 /// 复合图元。
 #[derive(
     Clone, Debug, Default, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize,
 )]
 #[yaserde(rename = "CompositeObject")]
 pub struct CompositeObject {
-    /// 公共图元属性。
+    /// 图元 ID。
+    #[yaserde(attribute = true, rename = "ID")]
+    pub id: StId,
+    /// 复合内容。
     #[yaserde(flatten = true)]
-    pub common: GraphicUnit,
-    /// 复合资源 ID。
-    #[yaserde(attribute = true, rename = "ResourceID")]
-    pub resource_id: StRefId,
+    pub content: CompositeContent,
 }
 
 /// 页块内容。
@@ -894,6 +942,28 @@ pub struct ClipArea {
     pub content: ClipContent,
 }
 
+/// 裁剪路径图元，无 ID。
+#[derive(
+    Clone, Debug, Default, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize,
+)]
+#[yaserde(rename = "Path")]
+pub struct ClipPath {
+    /// 路径内容。
+    #[yaserde(flatten = true)]
+    pub content: PathContent,
+}
+
+/// 裁剪文字图元，无 ID。
+#[derive(
+    Clone, Debug, Default, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize,
+)]
+#[yaserde(rename = "Text")]
+pub struct ClipText {
+    /// 文字内容。
+    #[yaserde(flatten = true)]
+    pub content: TextContent,
+}
+
 /// 裁剪内容。
 #[derive(
     Clone, Debug, Default, PartialEq, ofdbox_yaserde::YaSerialize, ofdbox_yaserde::YaDeserialize,
@@ -904,10 +974,10 @@ pub enum ClipContent {
     Empty,
     /// 路径图元。
     #[yaserde(rename = "Path")]
-    Path(PathObject),
+    Path(ClipPath),
     /// 文字图元。
     #[yaserde(rename = "Text")]
-    Text(TextObject),
+    Text(ClipText),
 }
 
 /// 颜色。

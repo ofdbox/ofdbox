@@ -363,7 +363,7 @@ fn edits_encrypted_page_and_reencrypts() {
             let GraphicObject::Text(text) = object else {
                 return Err(OfdError::InvalidStructure("not text".to_owned()));
             };
-            text.text_codes[0].text = "after".to_owned();
+            text.content.text_codes[0].text = "after".to_owned();
             page.save()?;
             Ok(())
         },
@@ -381,7 +381,7 @@ fn edits_encrypted_page_and_reencrypts() {
     let GraphicObject::Text(text) = &page.content.as_ref().unwrap().layers[0].objects[0] else {
         panic!("not text");
     };
-    assert_eq!(text.text_codes[0].text, "after");
+    assert_eq!(text.content.text_codes[0].text, "after");
 }
 
 #[test]
@@ -419,7 +419,7 @@ fn preserves_unmodified_encrypted_entries() {
             else {
                 return Err(OfdError::InvalidStructure("not text".to_owned()));
             };
-            text.text_codes[0].text = "after".to_owned();
+            text.content.text_codes[0].text = "after".to_owned();
             page.save()?;
             Ok(())
         },
@@ -448,7 +448,7 @@ fn preserves_unmodified_encrypted_entries() {
     let GraphicObject::Text(text) = &page.content.as_ref().unwrap().layers[0].objects[0] else {
         panic!("not text");
     };
-    assert_eq!(text.text_codes[0].text, "after");
+    assert_eq!(text.content.text_codes[0].text, "after");
 }
 
 #[test]
@@ -611,7 +611,7 @@ fn edits_multilayer_encrypted_package() {
             else {
                 return Err(OfdError::InvalidStructure("not text".to_owned()));
             };
-            text.text_codes[0].text = "after".to_owned();
+            text.content.text_codes[0].text = "after".to_owned();
             page.save()?;
             Ok(())
         },
@@ -629,7 +629,7 @@ fn edits_multilayer_encrypted_package() {
     let GraphicObject::Text(text) = &page.content.as_ref().unwrap().layers[0].objects[0] else {
         panic!("not text");
     };
-    assert_eq!(text.text_codes[0].text, "after");
+    assert_eq!(text.content.text_codes[0].text, "after");
 }
 
 #[test]

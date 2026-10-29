@@ -13,8 +13,8 @@ use crate::model::definition::{StArray, StBox, StId, StLoc, StRefId};
 use crate::model::document::Document;
 use crate::model::ofd::Ofd;
 use crate::model::page::{
-    CgTransform, CompositeObject, GraphicObject, GraphicUnit, ImageObject, PageBlock, PathObject,
-    TextCode, TextObject,
+    CgTransform, CompositeContent, CompositeObject, GraphicObject, GraphicUnit, ImageContent,
+    ImageObject, PageBlock, PathContent, PathObject, TextCode, TextContent, TextObject,
 };
 use crate::model::res::{MultiMedia, MultiMediaType, MultiMedias, Res};
 use crate::model::signatures::Signatures;
@@ -629,23 +629,25 @@ fn build_annotation(
     let boundary = parse_boundary(&spec.boundary)?;
     let objects = if let Some((image_object_id, multimedia_id, width, height)) = image {
         vec![GraphicObject::Image(ImageObject {
-            common: GraphicUnit {
-                id: StId(image_object_id as u32),
-                boundary: StBox::new(0.0, 0.0, width as f64, height as f64),
-                ctm: Some(StArray(vec![
-                    width as f64,
-                    0.0,
-                    0.0,
-                    height as f64,
-                    0.0,
-                    0.0,
-                ])),
-                ..GraphicUnit::default()
+            id: StId(image_object_id as u32),
+            content: ImageContent {
+                graphic: GraphicUnit {
+                    boundary: StBox::new(0.0, 0.0, width as f64, height as f64),
+                    ctm: Some(StArray(vec![
+                        width as f64,
+                        0.0,
+                        0.0,
+                        height as f64,
+                        0.0,
+                        0.0,
+                    ])),
+                    ..GraphicUnit::default()
+                },
+                resource_id: StRefId(multimedia_id as u32),
+                substitution: None,
+                image_mask: None,
+                border: None,
             },
-            resource_id: StRefId(multimedia_id as u32),
-            substitution: None,
-            image_mask: None,
-            border: None,
         })]
     } else if let (Some(text), Some(object_id)) = (&spec.text, object_id) {
         let mut cg_transforms = Vec::new();
@@ -658,40 +660,46 @@ fn build_annotation(
             });
         }
         vec![GraphicObject::Text(TextObject {
-            common: GraphicUnit {
-                id: StId(object_id as u32),
-                boundary,
-                ..GraphicUnit::default()
+            id: StId(object_id as u32),
+            content: TextContent {
+                graphic: GraphicUnit {
+                    boundary,
+                    ..GraphicUnit::default()
+                },
+                font: StRefId(text.font.parse::<u32>().unwrap_or(0)),
+                size: text.size,
+                text_codes: vec![TextCode {
+                    x: Some(0.0),
+                    y: Some(0.0),
+                    text: text.text.clone(),
+                    ..TextCode::default()
+                }],
+                cg_transforms,
+                ..TextContent::default()
             },
-            font: StRefId(text.font.parse::<u32>().unwrap_or(0)),
-            size: text.size,
-            text_codes: vec![TextCode {
-                x: Some(0.0),
-                y: Some(0.0),
-                text: text.text.clone(),
-                ..TextCode::default()
-            }],
-            cg_transforms,
-            ..TextObject::default()
         })]
     } else if let (Some(path), Some(object_id)) = (&spec.path, object_id) {
         vec![GraphicObject::Path(PathObject {
-            common: GraphicUnit {
-                id: StId(object_id as u32),
-                boundary,
-                ..GraphicUnit::default()
+            id: StId(object_id as u32),
+            content: PathContent {
+                graphic: GraphicUnit {
+                    boundary,
+                    ..GraphicUnit::default()
+                },
+                abbreviated_data: path.data.clone(),
+                ..PathContent::default()
             },
-            abbreviated_data: path.data.clone(),
-            ..PathObject::default()
         })]
     } else if let (Some(composite), Some(object_id)) = (&spec.composite, object_id) {
         vec![GraphicObject::Composite(CompositeObject {
-            common: GraphicUnit {
-                id: StId(object_id as u32),
-                boundary,
-                ..GraphicUnit::default()
+            id: StId(object_id as u32),
+            content: CompositeContent {
+                graphic: GraphicUnit {
+                    boundary,
+                    ..GraphicUnit::default()
+                },
+                resource_id: StRefId(composite.resource_id.parse::<u32>().unwrap_or(0)),
             },
-            resource_id: StRefId(composite.resource_id.parse::<u32>().unwrap_or(0)),
         })]
     } else {
         Vec::new()

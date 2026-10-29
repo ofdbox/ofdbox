@@ -40,7 +40,7 @@ fn parses_delta_attributes_on_text_code() {
     let GraphicObject::Text(text) = &page.content.as_ref().unwrap().layers[0].objects[0] else {
         panic!("expected text object");
     };
-    let text_code = &text.text_codes[0];
+    let text_code = &text.content.text_codes[0];
     assert_eq!(
         text_code.delta_x.as_ref().unwrap().0,
         vec![1.0, 2.0, 3.0, 4.0, 1.0, 1.0, 1.0, 1.0, 2.0, 3.0]

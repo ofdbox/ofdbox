@@ -55,7 +55,7 @@ fn loads_saves_and_reloads_page_through_store() {
     let ofdbox_core::model::page::GraphicObject::Text(mut text) = text else {
         panic!("not text");
     };
-    text.text_codes[0].text = "after".to_owned();
+    text.content.text_codes[0].text = "after".to_owned();
     page.data.content.as_mut().unwrap().layers[0].objects[0] =
         ofdbox_core::model::page::GraphicObject::Text(text);
     page.save().expect("save page");
@@ -72,7 +72,7 @@ fn loads_saves_and_reloads_page_through_store() {
     let ofdbox_core::model::page::GraphicObject::Text(text) = object else {
         panic!("not text");
     };
-    assert_eq!(text.text_codes[0].text, "after");
+    assert_eq!(text.content.text_codes[0].text, "after");
 }
 
 #[test]

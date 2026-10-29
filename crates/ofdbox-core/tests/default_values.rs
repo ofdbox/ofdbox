@@ -45,6 +45,6 @@ fn outline_and_graphic_defaults() {
     let text: TextObject =
         model_xml::from_str(r#"<TextObject ID="1" Boundary="0 0 10 10" Font="1" Size="10"/>"#)
             .expect("parse TextObject");
-    assert_eq!(text.common.alpha, 255);
-    assert!(text.common.name.is_empty());
+    assert_eq!(text.content.graphic.alpha, 255);
+    assert!(text.content.graphic.name.is_empty());
 }

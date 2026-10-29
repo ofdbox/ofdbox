@@ -199,15 +199,22 @@ pub(crate) fn prepare(
                 boundary: Some(boundary),
                 page_block: PageBlock {
                     objects: vec![GraphicObject::Image(ImageObject {
-                        common: GraphicUnit {
-                            id: StId(image_object_id as u32),
-                            boundary: StBox::new(0.0, 0.0, stamp.image_width, stamp.image_height),
-                            ..GraphicUnit::default()
+                        id: StId(image_object_id as u32),
+                        content: crate::model::page::ImageContent {
+                            graphic: GraphicUnit {
+                                boundary: StBox::new(
+                                    0.0,
+                                    0.0,
+                                    stamp.image_width,
+                                    stamp.image_height,
+                                ),
+                                ..GraphicUnit::default()
+                            },
+                            resource_id: StRefId(multimedia_id as u32),
+                            substitution: None,
+                            image_mask: None,
+                            border: None,
                         },
-                        resource_id: StRefId(multimedia_id as u32),
-                        substitution: None,
-                        image_mask: None,
-                        border: None,
                     })],
                 },
             },

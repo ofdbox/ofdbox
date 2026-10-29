@@ -15,7 +15,8 @@
 use ofdbox::model;
 use ofdbox::model::definition::{ColorArray, DeltaArray, StBox, StId, StLoc, StRefId};
 use ofdbox::model::page::{
-    Color, GraphicObject, GraphicUnit, Layer, LayerType, Page, PageContent, TextCode, TextObject,
+    Color, GraphicObject, GraphicUnit, Layer, LayerType, Page, PageContent, TextCode, TextContent,
+    TextObject,
 };
 use ofdbox::model::res::{Charset, Font, Fonts, Res};
 use ofdbox::{ObjectContext, OfdFile, Stored};
@@ -147,27 +148,29 @@ struct TextSpec<'a> {
 
 fn text_object(spec: TextSpec<'_>) -> GraphicObject {
     GraphicObject::Text(TextObject {
-        common: GraphicUnit {
-            id: StId::new(spec.id),
-            boundary: spec.boundary,
+        id: StId::new(spec.id),
+        content: TextContent {
+            graphic: GraphicUnit {
+                boundary: spec.boundary,
+                ..Default::default()
+            },
+            font: StRefId::new(spec.font),
+            size: spec.size,
+            fill_color: Some(Color {
+                value: Some(ColorArray::new(vec![32, 36, 44])),
+                ..Default::default()
+            }),
+            text_codes: vec![TextCode {
+                x: Some(0.0),
+                y: Some(spec.size),
+                delta_x: Some(DeltaArray::new(vec![
+                    spec.size;
+                    spec.text.chars().count().max(1)
+                ])),
+                text: spec.text.to_owned(),
+                ..Default::default()
+            }],
             ..Default::default()
         },
-        font: StRefId::new(spec.font),
-        size: spec.size,
-        fill_color: Some(Color {
-            value: Some(ColorArray::new(vec![32, 36, 44])),
-            ..Default::default()
-        }),
-        text_codes: vec![TextCode {
-            x: Some(0.0),
-            y: Some(spec.size),
-            delta_x: Some(DeltaArray::new(vec![
-                spec.size;
-                spec.text.chars().count().max(1)
-            ])),
-            text: spec.text.to_owned(),
-            ..Default::default()
-        }],
-        ..Default::default()
     })
 }
